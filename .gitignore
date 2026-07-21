@@ -1,0 +1,40 @@
+node_modules/
+dist/
+data/
+test-results/
+testing/test-results/
+scripts/generated/
+.superpowers/
+.agentHarness/
+.momiji/
+.opencode/
+docs/
+*.local
+.env*
+tests/
+_backend/20*/
+_backend/index
+_backend/.watch-stamp
+_backend/notes.txt
+AGENT_CHANGE_IMPLEMENTATION_AUDIT.md
+*.bak
+*.swp
+
+# Build artifacts
+tsconfig.tsbuildinfo
+
+# Compiled scripts outputs
+scripts/*.js
+scripts/*.d.ts
+scripts/*.js.map
+
+# Compiled Playwright test outputs
+testing/**/*.js
+testing/**/*.d.ts
+testing/**/*.js.map
+
+# Compiled tailwind config (source is .ts)
+_frontend/tailwind.config.js
+_frontend/tailwind.config.js.map
+_frontend/tailwind.config.d.ts
+_frontend/tailwind.config.d.ts.map

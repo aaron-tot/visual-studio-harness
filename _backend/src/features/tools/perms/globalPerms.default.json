@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "tools": {
+    "read": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "todowrite": "allow",
+    "todoread": "allow",
+    "skill": "allow",
+    "find_symbol": "allow",
+    "read_symbol": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "write": "ask",
+    "edit": "ask",
+    "apply_patch": "ask",
+    "bash": "ask",
+    "task": "ask"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "_backend",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "nodemon --watch src -e ts --signal SIGTERM --exec 'MODE=dev bun run src/index.ts'",
+    "build": "bun run ../scripts/build-prod.ts",
+    "start": "bun run ../scripts/run-prod.ts",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "fastify": "^5.0.0",
+    "@fastify/websocket": "^11.0.0",
+    "@fastify/cors": "^10.0.0",
+    "@fastify/static": "^8.0.0",
+    "zod": "^3.23.0",
+    "ai": "^7.0.22",
+    "@ai-sdk/openai-compatible": "^3.0.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "nodemon": "^3.0.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,10 @@
+▶
+{toolName}
+{argSummary}
+{statusLabel}
+▶
+Input
+{argsJson}
+▶
+Output
+{result}

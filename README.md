@@ -1,21 +1,3 @@
-I agree with moving the first screenshot higher. GitHub READMEs are skimmed. The logo + UI screenshot should establish immediately that this is a real application, not just a concept.
-
-I would put the hero screenshot directly after the Overview paragraph and before Core Principles.
-
-I also made the following changes:
-
-* Added "Why Visual Studio Harness?" near the top.
-* Added observability as a first-class section.
-* Changed "thinking process" wording.
-* Kept future features clearly separated.
-* Kept current state honest.
-* Improved MCP wording.
-* Changed SQLite wording.
-* Added provider direction.
-* Kept screenshots integrated naturally.
-
-Here is the final README:
-
 ````md
 # Visual Studio Harness
 

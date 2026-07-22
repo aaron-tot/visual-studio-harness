@@ -2,9 +2,11 @@ import type { WorkspaceGraphServiceInput } from "./types";
 import type { WorkspaceGraphService } from "./api/types";
 import { NotInitializedError } from "./errors";
 import { getWorkspaceGraphDbPath } from "./config";
-import { openWorkspaceGraphDb, closeWorkspaceGraphDb } from "./storage/db";
+import { openWorkspaceGraphDb, closeWorkspaceGraphDb, type WorkspaceGraphDb } from "./storage/db";
 import { createWorkspaceGraphRepository } from "./storage/repository";
 import { reindexWorkspace } from "./indexer/reindex";
+import { createQueryApi } from "./api/query";
+import { createManifestApi } from "./api/manifest";
 import { startWorkspaceWatcher, type WorkspaceWatcherHandle } from "./watcher/watch";
 import type { WorkspaceFsEvent } from "./watcher/events";
 
@@ -12,51 +14,65 @@ export async function createWorkspaceGraphService(
   input: WorkspaceGraphServiceInput
 ): Promise<WorkspaceGraphService> {
   let started = false;
+  let _db: WorkspaceGraphDb | null = null;
   let _dbPath: string | null = null;
   let _watcher: WorkspaceWatcherHandle | null = null;
 
   const queryApi = {
     async findSymbol(_name: string, _kind?: string) {
-      return [];
+      if (!_db) return [];
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).findSymbol(_name, _kind);
     },
     async findFunction(_name: string) {
-      return [];
+      if (!_db) return [];
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).findFunction(_name);
     },
     async findClass(_name: string) {
-      return [];
+      if (!_db) return [];
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).findClass(_name);
     },
     async findInterface(_name: string) {
-      return [];
+      if (!_db) return [];
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).findInterface(_name);
     },
     async listImports(_filePath: string) {
-      return [];
+      if (!_db) return [];
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).listImports(_filePath);
     },
     async listExports(_filePath: string) {
-      return [];
+      if (!_db) return [];
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).listExports(_filePath);
     },
     async listFiles(_folderPath?: string) {
-      return [];
+      if (!_db) return [];
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).listFiles(_folderPath);
     },
     async listFolders(_parentPath?: string) {
-      return [];
+      if (!_db) return [];
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).listFolders(_parentPath);
     },
     async workspaceSummary() {
-      return { fileCount: 0, folderCount: 0, symbolCount: 0, languages: [], lastIndexedAt: 0 };
+      if (!_db) return { fileCount: 0, folderCount: 0, symbolCount: 0, languages: [], lastIndexedAt: 0 };
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).workspaceSummary();
     },
   };
 
   const manifestApi = {
     async workspaceManifest(_options?: Record<string, unknown>) {
-      return "";
+      if (!_db) return "";
+      return createManifestApi(_db).workspaceManifest(_options as any);
     },
     async workspaceManifestFiles(_options?: Record<string, unknown>) {
-      return "";
+      if (!_db) return "";
+      return createManifestApi(_db).workspaceManifestFiles(_options as any);
     },
     async workspaceManifestFolders(_options?: Record<string, unknown>) {
-      return "";
+      if (!_db) return "";
+      return createManifestApi(_db).workspaceManifestFolders(_options as any);
     },
     async workspaceSummary() {
-      return "";
+      if (!_db) return "";
+      return createManifestApi(_db).workspaceSummary();
     },
   };
 
@@ -66,7 +82,7 @@ export async function createWorkspaceGraphService(
       started = true;
 
       _dbPath = getWorkspaceGraphDbPath(input.workspaceRoot);
-      openWorkspaceGraphDb(_dbPath);
+      _db = openWorkspaceGraphDb(_dbPath);
 
       const report = await reindexWorkspace({
         workspaceRoot: input.workspaceRoot,
@@ -99,6 +115,7 @@ export async function createWorkspaceGraphService(
       if (_dbPath) {
         closeWorkspaceGraphDb(_dbPath);
         _dbPath = null;
+        _db = null;
       }
     },
     async reindexAll() {
@@ -123,12 +140,6 @@ async function processWatcherBatch(
   dbPath: string,
   events: WorkspaceFsEvent[]
 ): Promise<void> {
-  const paths = new Set(events.map((e) => e.path));
-
-  const db = openWorkspaceGraphDb(dbPath);
-  const repo = createWorkspaceGraphRepository(db);
-
-  // Simple approach: reindex changed files
   const report = await reindexWorkspace({
     workspaceRoot,
     dbPath,

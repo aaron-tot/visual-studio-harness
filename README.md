@@ -1,4 +1,3 @@
-````md
 # Visual Studio Harness
 
 > A local-first AI development environment focused on transparent agent workflows, persistent project knowledge, and complete customization of AI-assisted development.
@@ -214,7 +213,7 @@ design_read
 design_edit
 designs_list
 design_abandon
-````
+```
 
 Documents support:
 

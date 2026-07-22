@@ -84,3 +84,28 @@ export interface RelationshipRow {
   calleeId: number;
   type: "calls" | "extends" | "implements";
 }
+
+export interface ScannedFile {
+  path: string;
+  filename: string;
+  extension: string;
+  language: string;
+  size: number;
+  modifiedMs: number;
+  fileHash: string;
+  sourceText: string;
+}
+
+export interface ScanResult {
+  created: ScannedFile[];
+  modified: ScannedFile[];
+  deleted: { path: string; fileHash: string; modifiedMs: number }[];
+  unchanged: { path: string; fileHash: string; modifiedMs: number }[];
+}
+
+export interface ScanInput {
+  workspaceRoot: string;
+  existingIndex: { path: string; fileHash: string; modifiedMs: number }[];
+  includeExtensions?: string[];
+  excludeDirs?: string[];
+}

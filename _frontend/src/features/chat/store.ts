@@ -222,8 +222,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ messages: msgs, streaming: false, streamingContent: "", streamingParts: [], lastSeq: 0, _reasonIdx: 0 });
   },
 
-  appendToken: (token, seq) =>
-    set((state) => {
+  appendToken: (token, seq) => {
+    touchStreamTimeout();
+    return set((state) => {
       if (seq != null && seq <= state.lastSeq) return {};
       const nextSeq = seq ?? state.lastSeq + 1;
       const parts = [...state.streamingParts];
@@ -240,10 +241,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         msgs[msgs.length - 1] = { ...lastMsg, content };
       }
       return { messages: msgs, streamingParts: parts, streamingContent: content, lastSeq: nextSeq, _partSeq: nextSeq };
-    }),
+    });
+  },
 
-  appendReasoning: (delta, seq) =>
-    set((state) => {
+  appendReasoning: (delta, seq) => {
+    touchStreamTimeout();
+    return set((state) => {
       if (seq != null && seq <= state.lastSeq) return {};
       const nextSeq = seq ?? state.lastSeq + 1;
       const parts = [...state.streamingParts];
@@ -254,7 +257,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       parts.push({ type: "reasoning", content: delta, _seq: nextSeq } as any);
       return { streamingParts: parts, lastSeq: nextSeq, _partSeq: nextSeq, _reasonIdx: parts.length };
-    }),
+    });
+  },
 
   doneStreaming: (modelName?, providerName?, durationMs?, turnId?, agentName?) => {
     clearStreamTimeout();
@@ -320,8 +324,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
-  onToolStart: ({ toolCallId, toolName, args, parentToolCallId, seq }) =>
-    set((state) => {
+  onToolStart: ({ toolCallId, toolName, args, parentToolCallId, seq }) => {
+    touchStreamTimeout();
+    return set((state) => {
       if (seq != null && seq <= state.lastSeq) return {};
       if (state.streamingParts.some((p) => p.type === "tool" && p.toolCallId === toolCallId)) {
         return seq != null ? { lastSeq: Math.max(state.lastSeq, seq), _partSeq: Math.max(state._partSeq, seq) } : {};
@@ -329,17 +334,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const nextSeq = seq ?? state.lastSeq + 1;
       const parts = [...state.streamingParts, { type: "tool" as const, toolCallId, toolName, status: "running" as const, args, _seq: nextSeq, ...(parentToolCallId ? { parentToolCallId } : {}) }];
       return { streamingParts: parts, streamingContent: textContentFromParts(parts), lastSeq: nextSeq, _partSeq: nextSeq };
-    }),
+    });
+  },
 
-  onToolUpdate: ({ toolCallId, status }) =>
-    set((state) => ({
+  onToolUpdate: ({ toolCallId, status }) => {
+    touchStreamTimeout();
+    return set((state) => ({
       streamingParts: state.streamingParts.map((p) => p.type === "tool" && p.toolCallId === toolCallId ? { ...p, status } : p),
-    })),
+    }));
+  },
 
-  onToolEnd: ({ toolCallId, status, result, error }) =>
-    set((state) => ({
+  onToolEnd: ({ toolCallId, status, result, error }) => {
+    touchStreamTimeout();
+    return set((state) => ({
       streamingParts: state.streamingParts.map((p) => p.type === "tool" && p.toolCallId === toolCallId ? { ...p, status, result, error } : p),
-    })),
+    }));
+  },
 
   respondPermission: (toolCallId, decision, sessionId, toolName) => {
     const sid = sessionId ?? get().sessionId;

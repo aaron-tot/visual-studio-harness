@@ -11,7 +11,7 @@ export function createStepStreamWriter(sessionId: string, turnId: number, stepId
   let currentStepId = stepId;
   let hasBoundStep = stepId > 0;
   let open: { type: "text" | "reasoning"; partId: number; content: string; seq: number } | null = null;
-  const toolPartIds = new Map<string, { partId: number; args: unknown; seq: number }>();
+  const toolPartIds = new Map<string, { partId: number; args: unknown; seq: number; toolName: string }>();
   const writerId = ++createdStepIdCounter;
 
   const writeDelta = (type: "text" | "reasoning", delta: string, seq: number) => {
@@ -43,13 +43,14 @@ export function createStepStreamWriter(sessionId: string, turnId: number, stepId
       { toolCallId, toolName, parentToolCallId },
       dataDir,
     );
-    toolPartIds.set(toolCallId, { partId, args, seq });
+    toolPartIds.set(toolCallId, { partId, args, seq, toolName });
   };
 
   const updateToolResult = (toolCallId: string, result: unknown, isError?: boolean) => {
     const entry = toolPartIds.get(toolCallId);
     if (!entry) return;
-    const data = { toolCallId, args: entry.args, result, isError };
+    // Keep toolName on the data blob — projections and UI headers read it from data
+    const data = { toolCallId, toolName: entry.toolName, args: entry.args, result, isError };
     updateStepPartData(entry.partId, data, { status: isError ? "error" : "completed" }, dataDir);
     toolPartIds.delete(toolCallId);
   };

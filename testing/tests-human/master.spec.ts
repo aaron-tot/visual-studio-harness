@@ -1,8 +1,8 @@
 import { execSync } from "child_process";
 import type { Page } from "@playwright/test";
-import { test, expect } from "../../fixtures";
-import { setupSession, sendInitialMessage } from "../../components/setup";
-import { getExpectedText } from "../../backend/src/llm/mock-models";
+import { test, expect } from "@testing/fixtures";
+import { setupSession, sendInitialMessage } from "@testing/components/setup";
+import { getExpectedText } from "../../_backend/src/llm/mock-models";
 
 async function expandAllCollapsibles(page: Page): Promise<void> {
   const expandPass = async () => {
@@ -67,7 +67,7 @@ async function findProgressiveMatch(page: Page, expected: string): Promise<{ len
 }
 
 /**
- * At the progressive-match boundary: 10 chars before | 10 chars after
+ * At the progressive-match boundary: large windows before/after
  * for both UI body and expected. Shows *why* match stops / regressed.
  */
 async function logMatchBoundary(
@@ -78,53 +78,81 @@ async function logMatchBoundary(
   matchLen: number
 ): Promise<string> {
   await expandAllCollapsibles(page);
-  const boundary = await page.evaluate((exp: string) => {
-    const bodyNorm = document.body.innerText.replace(/\s+/g, " ").trim();
-    const expNorm = exp.replace(/\s+/g, " ").trim();
-    let bestLen = 0;
-    for (let len = expNorm.length; len > 0; len--) {
-      if (bodyNorm.includes(expNorm.slice(0, len))) {
-        bestLen = len;
-        break;
+  const CTX = 400;
+  const boundary = await page.evaluate(
+    ({ exp, ctx }: { exp: string; ctx: number }) => {
+      const bodyNorm = document.body.innerText.replace(/\s+/g, " ").trim();
+      const expNorm = exp.replace(/\s+/g, " ").trim();
+      let bestLen = 0;
+      for (let len = expNorm.length; len > 0; len--) {
+        if (bodyNorm.includes(expNorm.slice(0, len))) {
+          bestLen = len;
+          break;
+        }
       }
-    }
-    const matchStart = bestLen > 0 ? bodyNorm.indexOf(expNorm.slice(0, Math.min(bestLen, 200))) : -1;
-    // Prefer full-prefix search when short enough
-    const fullPrefix = bestLen > 0 ? expNorm.slice(0, bestLen) : "";
-    const start = fullPrefix ? bodyNorm.indexOf(fullPrefix) : matchStart;
+      const fullPrefix = bestLen > 0 ? expNorm.slice(0, bestLen) : "";
+      const start = fullPrefix ? bodyNorm.indexOf(fullPrefix) : -1;
 
-    const expBefore = expNorm.slice(Math.max(0, bestLen - 10), bestLen);
-    const expAfter = expNorm.slice(bestLen, bestLen + 10);
-    const bodyBefore =
-      start >= 0
-        ? bodyNorm.slice(Math.max(0, start + bestLen - 10), start + bestLen)
-        : "(match start not found)";
-    const bodyAfter =
-      start >= 0
-        ? bodyNorm.slice(start + bestLen, start + bestLen + 10)
-        : "(match start not found)";
+      const expBefore = expNorm.slice(Math.max(0, bestLen - ctx), bestLen);
+      const expAfter = expNorm.slice(bestLen, bestLen + ctx);
+      const bodyBefore =
+        start >= 0
+          ? bodyNorm.slice(Math.max(0, start + bestLen - ctx), start + bestLen)
+          : "(match start not found)";
+      const bodyAfter =
+        start >= 0
+          ? bodyNorm.slice(start + bestLen, start + bestLen + ctx)
+          : "(match start not found)";
 
-    return {
-      bestLen,
-      expLen: expNorm.length,
-      expWindow: `${JSON.stringify(expBefore)} | ${JSON.stringify(expAfter)}`,
-      bodyWindow: `${JSON.stringify(bodyBefore)} | ${JSON.stringify(bodyAfter)}`,
-      expBefore,
-      expAfter,
-      bodyBefore,
-      bodyAfter,
-    };
-  }, expected);
+      // Also grab assistant msg full text for the fail dump
+      const msg = document.querySelector("[data-assistant-msg]") as HTMLElement | null;
+      const assistantNorm = msg
+        ? msg.innerText.replace(/\s+/g, " ").trim()
+        : "(no [data-assistant-msg])";
+
+      return {
+        bestLen,
+        expLen: expNorm.length,
+        bodyLen: bodyNorm.length,
+        assistantLen: assistantNorm.length,
+        expBefore,
+        expAfter,
+        bodyBefore,
+        bodyAfter,
+        // last chunk of matched body + first unmatched
+        matchedTail: start >= 0
+          ? bodyNorm.slice(Math.max(0, start + bestLen - Math.min(ctx, bestLen)), start + bestLen)
+          : "",
+        assistantAround:
+          assistantNorm.length > 0
+            ? assistantNorm.slice(
+                Math.max(0, Math.min(bestLen, assistantNorm.length) - ctx),
+                Math.min(assistantNorm.length, bestLen + ctx)
+              )
+            : "",
+      };
+    },
+    { exp: expected, ctx: CTX }
+  );
 
   const lines = [
     `[boundary] ${label} ${reason}`,
-    `  progressive match: ${boundary.bestLen}/${boundary.expLen} (mapped len≈${matchLen})`,
-    `  expected  10< |>10 : ${boundary.expWindow}`,
-    `  body/ui   10< |>10 : ${boundary.bodyWindow}`,
-    `  expected before: ${JSON.stringify(boundary.expBefore)}`,
-    `  expected after:  ${JSON.stringify(boundary.expAfter)}`,
-    `  body     before: ${JSON.stringify(boundary.bodyBefore)}`,
-    `  body     after:  ${JSON.stringify(boundary.bodyAfter)}`,
+    `  progressive match: ${boundary.bestLen}/${boundary.expLen} (mapped len≈${matchLen}) bodyLen=${boundary.bodyLen} assistantLen=${boundary.assistantLen}`,
+    ``,
+    `  === EXPECTED before boundary (${boundary.expBefore.length} chars) ===`,
+    boundary.expBefore,
+    ``,
+    `  === EXPECTED after boundary (next ${boundary.expAfter.length} chars) ===`,
+    boundary.expAfter,
+    ``,
+    `  === BODY/UI before boundary (${boundary.bodyBefore.length} chars) ===`,
+    boundary.bodyBefore,
+    ``,
+    `  === BODY/UI after boundary (next ${boundary.bodyAfter.length} chars) ===`,
+    boundary.bodyAfter,
+    ``,
+    `  === ASSISTANT MSG around boundary (±${CTX}) ===`,
+    boundary.assistantAround,
   ];
   const block = lines.join("\n");
   console.log(block);
@@ -153,7 +181,7 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   const { loop, workspaceRoot } = await setupSession(page, settings, {
     agent: "Default (no system prompt)",
     model: "toolsV2",
-    modelSpeed: 30,
+    modelSpeed: 60,
     useCustomWorkspace: true,
     seedWorkspacePath: seedPath,
     archiveSessions: true,
@@ -256,7 +284,7 @@ test("multi-session flick", async ({ page, settings, chat }) => {
       );
       const rawDump = await page.evaluate((exp: string) => {
         const msg = document.querySelector("[data-assistant-msg]");
-        if (!msg) return { raw: "(no [data-assistant-msg] element)", norm: "", bodyNorm: "" };
+        if (!msg) return { raw: "(no [data-assistant-msg] element)", norm: "", bodyNorm: "", expNorm: "", stuck: 0, msgCount: 0 };
         const raw = (msg as HTMLElement).innerText;
         const norm = raw.replace(/\s+/g, " ").trim();
         const bodyNorm = document.body.innerText.replace(/\s+/g, " ").trim();
@@ -266,43 +294,86 @@ test("multi-session flick", async ({ page, settings, chat }) => {
         return { raw, norm, bodyNorm, expNorm, stuck: norm.length, msgCount };
       }, expected);
       const { raw, norm, bodyNorm, expNorm, stuck, msgCount } = rawDump;
+      const around = 800;
       const lines = [
         boundary,
         `\n[data-assistant-msg] count: ${msgCount}`,
-        `=== RAW innerText ===`,
+        `=== FULL ASSISTANT RAW innerText (len=${raw.length}) ===`,
         raw,
-        `\n=== NORMALIZED (len=${norm.length}) ===`,
+        `\n=== FULL ASSISTANT NORMALIZED (len=${norm.length}) ===`,
         norm,
-        `\n=== EXPECTED (len=${expNorm.length}) first 200 ===`,
-        expNorm.slice(0, 200),
-        `\n=== expected at ${stuck} (next 100) ===`,
-        expNorm.slice(stuck, stuck + 100),
-        `\n=== body at ${stuck} (next 100) ===`,
-        bodyNorm.slice(stuck, stuck + 100),
+        `\n=== FULL EXPECTED NORMALIZED (len=${expNorm.length}) ===`,
+        expNorm,
+        `\n=== expected ±${around} around stuck idx ${stuck} ===`,
+        expNorm.slice(Math.max(0, stuck - around), stuck + around),
+        `\n=== body ±${around} around stuck idx ${stuck} ===`,
+        bodyNorm.slice(Math.max(0, stuck - around), stuck + around),
+        `\n=== assistant ±${around} around stuck idx ${stuck} ===`,
+        norm.slice(Math.max(0, stuck - around), stuck + around),
       ];
+      const dump = lines.join("\n");
       const logPath = join(process.env.HOME || "/tmp", `session-stuck-${label}-r${round}.txt`);
-      writeFileSync(logPath, lines.join("\n"), "utf8");
+      writeFileSync(logPath, dump, "utf8");
       console.log(`===== STUCK DUMP saved to ${logPath} =====`);
-      throw new Error(`${label} stuck at ${len} — no progress since last check\n${boundary}`);
+      // Include large boundary in the thrown error so Playwright fail output shows it
+      throw new Error(`${label} stuck at ${len} — no progress since last check\n${boundary}\n\n(full dump: ${logPath})`);
     }
     prev.v = len;
     if (len > best.v) best.v = len;
     return len >= expected.length;
   }
 
-  loop.end();
+  async function assertSessionStable(
+    label: string,
+    locator: any,
+    swapRound: number
+  ): Promise<void> {
+    await locator.locator("p").first().click({ position: { x: 4, y: 4 } });
+    await page.mouse.move(420, 280);
+    await page.locator("[data-assistant-msg]").first().waitFor({
+      state: "visible",
+      timeout: 15000,
+    });
+    await page.waitForTimeout(300);
+
+    const { len } = await findProgressiveMatch(page, expected);
+    const pct = (len / expected.length * 100).toFixed(1);
+    console.log(`Post-flick ${swapRound}: ${label} = ${pct}% (${len}/${expected.length})`);
+
+    if (len < expected.length) {
+      const boundary = await logMatchBoundary(
+        page,
+        expected,
+        label,
+        `POST-FLICK MISMATCH at ${len}`,
+        len
+      );
+      throw new Error(
+        `${label} lost content after completion during post-flick round ${swapRound}\n${boundary}`
+      );
+    }
+  }
+
+  // Keep CheckLoop running through the flick rounds (no_chat_error scan)
   let round = 0;
   const best1 = { v: 0 }, best2 = { v: 0 };
   const prev1 = { v: -1 }, prev2 = { v: -1 };
   let done1 = false, done2 = false;
 
-  // GROK_EDIT: toolsV2 at 30 t/s needs ~3min; 30 rounds was not enough with flick overhead
-  while (round < 80 && !(done1 && done2)) {
-    // Move mouse to left edge to trigger sidebar proximity, then into the sidebar
+  // Robust sidebar reveal helper
+  async function revealSidebar() {
     await page.mouse.move(2, 240);
     await page.waitForTimeout(500);
     await page.mouse.move(60, 240);
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(300);
+    // Wait for at least one session item to be visible
+    await page.locator("[data-testid='session-item']").first().waitFor({ state: "visible", timeout: 5000 });
+  }
+
+  // GROK_EDIT: toolsV2 at 30 t/s needs ~3min; 30 rounds was not enough with flick overhead
+  while (round < 80 && !(done1 && done2)) {
+    loop.assertOk();
+    await revealSidebar();
 
     if (!done1) {
       const s1 = page.locator("[data-testid='session-item']").first();
@@ -313,6 +384,8 @@ test("multi-session flick", async ({ page, settings, chat }) => {
       }
     }
 
+    loop.assertOk();
+
     if (!done2) {
       const items = page.locator("[data-testid='session-item']");
       if ((await items.count()) >= 2) {
@@ -322,12 +395,31 @@ test("multi-session flick", async ({ page, settings, chat }) => {
       }
     }
 
+    loop.assertOk();
+
     if (!(done1 && done2)) {
       await page.waitForTimeout(2000);
     }
     round++;
   }
-  loop.end();
   expect(done1).toBe(true);
   expect(done2).toBe(true);
+
+  // After both sessions complete, flick back/forth 5x and verify output is retained.
+  for (let postRound = 1; postRound <= 5; postRound++) {
+    loop.assertOk();
+    await revealSidebar();
+    const itemsA = page.locator("[data-testid='session-item']");
+    expect(await itemsA.count()).toBeGreaterThanOrEqual(2);
+    await assertSessionStable("ses1", itemsA.first(), postRound);
+
+    loop.assertOk();
+    await revealSidebar();
+    const itemsB = page.locator("[data-testid='session-item']");
+    expect(await itemsB.count()).toBeGreaterThanOrEqual(2);
+    await assertSessionStable("ses2", itemsB.nth(1), postRound);
+  }
+
+  loop.end();
+  loop.assertOk();
 });

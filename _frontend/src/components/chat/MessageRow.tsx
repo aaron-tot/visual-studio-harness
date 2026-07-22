@@ -6,6 +6,9 @@
  * AgentMessageCard per turn, with each part (thinking, text, tool, etc.)
  * rendered as a distinct section inside it — matching the OpenCode pattern
  * where the card header appears once per turn.
+ *
+ * Errors always render UNDER the agent bubble in a red shaded ErrorPart
+ * (data-testid="chat-error") — never only inside the card body.
  */
 
 import { useState } from "react";
@@ -39,10 +42,39 @@ function formatTime(iso: string) {
   }
 }
 
+function collectErrors(message: Message): Array<{ message: string; raw?: string; isCustom?: boolean }> {
+  const out: Array<{ message: string; raw?: string; isCustom?: boolean }> = [];
+  const seen = new Set<string>();
+  const push = (messageText: string, raw?: string, isCustom?: boolean) => {
+    const key = messageText.trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push({ message: messageText, raw, isCustom });
+  };
+
+  if (message.errorDetail?.message) {
+    push(message.errorDetail.message, message.errorDetail.raw, message.errorDetail.isCustom);
+  }
+  for (const p of message.parts ?? []) {
+    if (p.type === "error") {
+      push(p.message, p.raw, p.isCustom);
+    }
+  }
+  if (message.content?.startsWith("[Error:")) {
+    push(message.content.replace(/^\[Error:\s*/, "").replace(/\]$/, ""));
+  }
+  return out;
+}
+
 function renderPart(part: MessagePartType, i: number, message: Message, isStreaming?: boolean, thinkingCollapsed?: boolean) {
   // Context tool group
   if (Array.isArray(part)) {
     return <ContextToolGroup key={`group-${i}`} parts={part} />;
+  }
+
+  // Errors render under the bubble, not inline in the card body
+  if (part.type === "error") {
+    return null;
   }
 
   // Thinking gets its own section
@@ -60,18 +92,6 @@ function renderPart(part: MessagePartType, i: number, message: Message, isStream
         agentName={message.agentName || "Default (no system prompt)"}
         modelName={message.modelName}
         durationMs={message.durationMs}
-      />
-    );
-  }
-
-  if (part.type === "error") {
-    console.log("MESSAGE_ROW_RENDER_ERROR", { message: part.message, raw: part.raw, isCustom: part.isCustom, agentName: message.agentName });
-    return (
-      <ErrorPart
-        key={i}
-        message={part.message}
-        raw={part.raw}
-        isCustom={part.isCustom}
       />
     );
   }
@@ -147,13 +167,15 @@ export function MessageRow({ message, isStreaming }: MessageRowProps) {
   }
 
   // Single card per assistant turn
-  const groupedParts = message.parts?.length ? groupContextParts(message.parts) : undefined;
+  const bodyParts = message.parts?.filter((p) => p.type !== "error") ?? [];
+  const groupedParts = bodyParts.length ? groupContextParts(bodyParts) : undefined;
   const hasReasoning = message.parts?.some((p) => p.type === "reasoning") ?? false;
-  const isError = isFailedStatus;
+  const errors = collectErrors(message);
+  const isError = isFailedStatus || errors.length > 0;
 
   return (
     <div data-assistant-msg className="flex items-end w-full group">
-      <div className={`flex-1 min-w-0 ${isError ? "rounded-lg ring-1 ring-red-500/40 bg-red-950/20" : ""}`}>
+      <div className={`flex-1 min-w-0 ${isError ? "rounded-lg ring-1 ring-red-500/40 bg-red-950/20 p-1" : ""}`}>
         <AgentMessageCard
           agentName={agentName}
           status={isStreaming ? "streaming" : isError ? "error" : "completed"}
@@ -162,22 +184,25 @@ export function MessageRow({ message, isStreaming }: MessageRowProps) {
             <div className="space-y-2">
               {groupedParts.map((part, i) => renderPart(part, i, message, isStreaming, thinkingCollapsed))}
             </div>
-          ) : isError && message.errorDetail ? (
-            <ErrorPart
-              message={message.errorDetail.message}
-              raw={message.errorDetail.raw}
-              isCustom={message.errorDetail.isCustom}
-            />
-          ) : isError && message.content?.startsWith("[Error:") ? (
-            <ErrorPart message={message.content.replace(/^\[Error:\s*/, "").replace(/\]$/, "")} />
           ) : (
             <TextPart
-              content={message.content}
+              content={message.content?.startsWith("[Error:") ? "" : message.content}
               isStreaming={isStreaming}
               className={isError ? "text-red-300" : undefined}
             />
           )}
         </AgentMessageCard>
+
+        {/* Errors ALWAYS under the bubble (red shaded), with stable test id */}
+        {errors.map((err, i) => (
+          <ErrorPart
+            key={`err-${i}-${err.message.slice(0, 24)}`}
+            message={err.message}
+            raw={err.raw}
+            isCustom={err.isCustom}
+          />
+        ))}
+
         <span className="text-xs text-zinc-600 mt-0.5 px-1 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
         {!isStreaming && (
           <CopyButton
@@ -204,7 +229,7 @@ export function MessageRow({ message, isStreaming }: MessageRowProps) {
           <span className="inline-block w-1.5 h-3 bg-zinc-400 ml-0.5 animate-pulse" />
         )}
       </span>
-      {isError && (
+      {isError && turnStatus && (
         <div className="text-right px-1 mt-0.5">
           <span className="text-[10px] text-red-400/80">{turnStatus}</span>
         </div>

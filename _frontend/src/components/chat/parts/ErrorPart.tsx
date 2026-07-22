@@ -1,8 +1,9 @@
 /**
  * ErrorPart
  *
- * Shows a stream/LLM failure in chat. Prefer the custom mapped message when
- * we have one; if isCustom + raw, offer a toggle to inspect the raw SDK text.
+ * Shows a stream/LLM failure under the agent message bubble.
+ * Prefer the custom mapped message when we have one; if isCustom + raw,
+ * offer a toggle to inspect the raw SDK text.
  */
 
 import { useState } from "react";
@@ -25,15 +26,19 @@ export function ErrorPart({ message, raw, isCustom, className }: ErrorPartProps)
   return (
     <div
       className={cn(
-        "rounded-md border border-red-500/40 bg-red-950/30 px-3 py-2 text-sm text-red-200",
+        "rounded-md border border-red-500/40 bg-red-950/30 px-3 py-2 text-sm text-red-200 mt-1",
         className
       )}
       data-error-part
+      data-testid="chat-error"
+      role="alert"
     >
       <div className="flex items-start gap-2">
         <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-400" />
         <div className="min-w-0 flex-1 space-y-2">
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{display}</p>
+          <p className="whitespace-pre-wrap break-words leading-relaxed" data-testid="chat-error-text">
+            {display}
+          </p>
           {canToggle && (
             <button
               type="button"

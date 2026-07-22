@@ -29,18 +29,20 @@ export function MessageList() {
 
 
 
-    console.log("sessionId:",sessionId)
-
   // When a session switches, freeze the container invisible and jump-scroll
   // to the bottom once messages arrive — no visible top-to-bottom animation.
   const [frozen, setFrozen] = useState(false);
   const lastSessionRef = useRef(sessionId);
   const needsInstantScrollRef = useRef(false);
-  if (sessionId !== lastSessionRef.current) {
+  useEffect(() => {
+    if (sessionId === lastSessionRef.current) return;
     lastSessionRef.current = sessionId;
     needsInstantScrollRef.current = true;
     setFrozen(true);
-  }
+    // Safety valve: never keep the list hidden forever if no new rows arrive.
+    const thaw = window.setTimeout(() => setFrozen(false), 300);
+    return () => window.clearTimeout(thaw);
+  }, [sessionId]);
 
   const checkPinned = useCallback(() => {
     const el = scrollRef.current;
@@ -83,18 +85,18 @@ export function MessageList() {
   }, [checkPinned]);
 
   useEffect(() => {
-    if (!pinnedRef.current) return;
-    // Don't fight the user mid-gesture; defer the jump until they stop.
-    if (isScrollingRef.current) {
-      pendingScrollRef.current = true;
-      return;
-    }
     if (needsInstantScrollRef.current && messages.length > 0) {
       // Session just switched — jump to bottom instantly while hidden.
       needsInstantScrollRef.current = false;
       const el = scrollRef.current;
       if (el) el.scrollTop = el.scrollHeight;
       setFrozen(false);
+      return;
+    }
+    if (!pinnedRef.current) return;
+    // Don't fight the user mid-gesture; defer the jump until they stop.
+    if (isScrollingRef.current) {
+      pendingScrollRef.current = true;
       return;
     }
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

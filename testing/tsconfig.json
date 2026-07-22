@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@testing/*": ["./*"],
+      "@testing/components/*": ["./components/*"],
+      "@testing/fixtures/*": ["./fixtures/*"]
+    }
+  },
+  "include": ["./**/*"]
+}

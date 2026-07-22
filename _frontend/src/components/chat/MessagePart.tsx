@@ -15,7 +15,6 @@ import { ToolCallPart } from "./parts/ToolCallPart";
 import { QuestionPart } from "./parts/QuestionPart";
 import { AgentPart } from "./parts/AgentPart";
 import { SubtaskPart } from "./parts/SubtaskPart";
-import { ErrorPart } from "./parts/ErrorPart";
 
 interface MessagePartProps {
   part: MessagePartType;
@@ -115,13 +114,9 @@ export function MessagePart({ part, allParts, isStreaming, agentName, modelName,
       );
 
     case "error":
-      return (
-        <ErrorPart
-          message={part.message}
-          raw={part.raw}
-          isCustom={part.isCustom}
-        />
-      );
+      // Errors are collected and rendered under the bubble by MessageRow
+      // (data-testid="chat-error"). Skip inline render here.
+      return null;
 
     default:
       return null;

@@ -58,9 +58,20 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
           status: p.status as any,
           _seq: p.seq,
           messageId: t.id * 2 + 1,
+          // Column fields win — data blob historically dropped toolName on tool_end
+          ...(p.toolCallId != null ? { toolCallId: p.toolCallId } : {}),
+          ...(p.toolName != null ? { toolName: p.toolName } : {}),
+          ...(p.parentToolCallId != null ? { parentToolCallId: p.parentToolCallId } : {}),
         };
       } catch {
-        return { type: p.type as MessagePartType["type"], content: p.data, _seq: p.seq };
+        return {
+          type: p.type as MessagePartType["type"],
+          content: p.data,
+          _seq: p.seq,
+          ...(p.toolCallId != null ? { toolCallId: p.toolCallId } : {}),
+          ...(p.toolName != null ? { toolName: p.toolName } : {}),
+          ...(p.parentToolCallId != null ? { parentToolCallId: p.parentToolCallId } : {}),
+        };
       }
     });
 
@@ -468,7 +479,17 @@ export function getStepWithParts(
     providerName: s.providerName ?? undefined,
     responseId: s.responseId ?? undefined,
     parts: parts.map((p) => {
-      try { return { ...JSON.parse(p.data), type: p.type, status: p.status, _seq: p.seq, toolCallId: p.toolCallId, toolName: p.toolName }; }
+      try {
+        return {
+          ...JSON.parse(p.data),
+          type: p.type,
+          status: p.status,
+          _seq: p.seq,
+          toolCallId: p.toolCallId ?? undefined,
+          toolName: p.toolName ?? undefined,
+          parentToolCallId: p.parentToolCallId ?? undefined,
+        };
+      }
       catch { return { type: p.type, content: p.data, _seq: p.seq }; }
     }),
   };

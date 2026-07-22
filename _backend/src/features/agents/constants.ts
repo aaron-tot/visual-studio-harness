@@ -1,4 +1,4 @@
-import type { AgentSettings, SystemPromptJoiners } from "../../../_shared/types";
+import type { AgentSettings, SystemPromptJoiners, WorkspaceManifestSettings } from "../../../_shared/types";
 
 export const AGENTS_MD_NAMES = ["agents.md", "AGENTS.md"] as const;
 
@@ -24,4 +24,5 @@ export interface BuildSystemBlockInput {
   agentSettings?: AgentSettings;
   noSystemPrompt?: boolean;
   systemPromptJoiners?: SystemPromptJoiners;
+  workspaceManifest?: WorkspaceManifestSettings;
 }

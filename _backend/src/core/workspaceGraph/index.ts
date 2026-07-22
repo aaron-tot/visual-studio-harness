@@ -5,12 +5,15 @@ import { getWorkspaceGraphDbPath } from "./config";
 import { openWorkspaceGraphDb, closeWorkspaceGraphDb } from "./storage/db";
 import { createWorkspaceGraphRepository } from "./storage/repository";
 import { reindexWorkspace } from "./indexer/reindex";
+import { startWorkspaceWatcher, type WorkspaceWatcherHandle } from "./watcher/watch";
+import type { WorkspaceFsEvent } from "./watcher/events";
 
 export async function createWorkspaceGraphService(
   input: WorkspaceGraphServiceInput
 ): Promise<WorkspaceGraphService> {
   let started = false;
   let _dbPath: string | null = null;
+  let _watcher: WorkspaceWatcherHandle | null = null;
 
   const queryApi = {
     async findSymbol(_name: string, _kind?: string) {
@@ -74,10 +77,25 @@ export async function createWorkspaceGraphService(
       console.log(
         `[workspace-graph] startup index: ${report.createdCount} created, ${report.modifiedCount} modified, ${report.deletedCount} deleted, ${report.skippedCount} skipped`
       );
+
+      if (input.enableWatcher !== false) {
+        _watcher = await startWorkspaceWatcher({
+          workspaceRoot: input.workspaceRoot,
+          debounceMs: input.debounceMs ?? 50,
+          onBatch: async (events: WorkspaceFsEvent[]) => {
+            await processWatcherBatch(input.workspaceRoot, _dbPath!, events);
+          },
+        });
+        console.log(`[workspace-graph] watcher started (debounce ${input.debounceMs ?? 50}ms)`);
+      }
     },
     async stop() {
       if (!started) return;
       started = false;
+      if (_watcher) {
+        await _watcher.close();
+        _watcher = null;
+      }
       if (_dbPath) {
         closeWorkspaceGraphDb(_dbPath);
         _dbPath = null;
@@ -98,4 +116,26 @@ export async function createWorkspaceGraphService(
     query: queryApi,
     manifest: manifestApi,
   };
+}
+
+async function processWatcherBatch(
+  workspaceRoot: string,
+  dbPath: string,
+  events: WorkspaceFsEvent[]
+): Promise<void> {
+  const paths = new Set(events.map((e) => e.path));
+
+  const db = openWorkspaceGraphDb(dbPath);
+  const repo = createWorkspaceGraphRepository(db);
+
+  // Simple approach: reindex changed files
+  const report = await reindexWorkspace({
+    workspaceRoot,
+    dbPath,
+    mode: "startup",
+  });
+
+  if (report.reindexedPaths.length > 0) {
+    console.log(`[workspace-graph] watcher batch: ${report.reindexedPaths.length} file(s) updated`);
+  }
 }

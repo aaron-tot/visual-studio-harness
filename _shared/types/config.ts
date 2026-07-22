@@ -94,6 +94,15 @@ export interface McpServerConfig {
   headers?: Record<string, string>;
 }
 
+export interface WorkspaceManifestSettings {
+  enabled: boolean;
+  maxDepth?: number;
+  excludeDirs?: string[];
+  excludeExtensions?: string[];
+  includeGitignore?: boolean;
+  agents?: string[];
+}
+
 export interface ConfigFile {
   providers: ProviderConfig[];
   agents?: Record<string, AgentSettings>;
@@ -104,6 +113,7 @@ export interface ConfigFile {
   defaultModel?: string;
   testModels?: Record<string, TestModelConfig>;
   mcpServers?: McpServerConfig[];
+  workspaceManifest?: WorkspaceManifestSettings;
   autoContinueOnToolEnd?: boolean;
   autoContinueOnToolEndMaxAttempts?: number;
   autoContinueOnToolEndWindowValue?: number;

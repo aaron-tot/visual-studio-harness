@@ -84,6 +84,15 @@ export const SystemPromptJoinersSchema = z.object({
   end: z.string().default(""),
 });
 
+export const WorkspaceManifestSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  maxDepth: z.number().int().positive().default(3).optional(),
+  excludeDirs: z.array(z.string()).optional(),
+  excludeExtensions: z.array(z.string()).optional(),
+  includeGitignore: z.boolean().optional(),
+  agents: z.array(z.string()).optional(),
+});
+
 export const SnippetConfigSchema = z.object({
   name: z.string(),
   content: z.string(),
@@ -115,6 +124,7 @@ export const ConfigFileSchema = z.object({
   })).default({}),
   headless: z.boolean().default(false).optional(),
   snippets: z.array(SnippetConfigSchema).default([]),
+  workspaceManifest: WorkspaceManifestSettingsSchema.optional(),
   messagePanelFullWidth: z.boolean().default(false),
   messagePanelPinnedDefault: z.boolean().default(false),
   showSessionName: z.boolean().default(false),

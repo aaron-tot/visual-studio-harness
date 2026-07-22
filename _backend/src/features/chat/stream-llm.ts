@@ -160,6 +160,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           if (turnEnded) break;
           const et = (event as { type: string }).type;
           evtCounts[et] = (evtCounts[et] ?? 0) + 1;
+          console.log(`[streamChat] Event: ${et}`, event.toolCallId || event.toolName || event.finishReason || "");
           if (!firstEventLogged) { dbg("streamChat:first-event", { type: et }); firstEventLogged = true; }
           if (!firstTokenLogged && (et === "text-delta" || et === "reasoning-delta")) { dbg("streamChat:first-token", { type: et }); firstTokenLogged = true; }
           if (!firstToolLogged && et === "tool-call") { dbg("streamChat:tool-call", { toolName: (event as { toolName?: string }).toolName }); firstToolLogged = true; }

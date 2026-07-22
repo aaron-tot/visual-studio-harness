@@ -29,14 +29,30 @@ function formatTokens(tokens: number): string {
 }
 
 function computeCacheHit(nextStep: StepSummary | null): CacheHitInfo | null {
-  if (!nextStep || !nextStep.inputTokens) return null;
-  const pct = (nextStep.cacheReadTokens! / nextStep.inputTokens) * 100;
+  if (!nextStep) return null;
+  const cacheReadTokens = nextStep.cacheReadTokens ?? 0;
+  const derivedInputTokens =
+    nextStep.inputTokens ??
+    ((nextStep.noCacheInputTokens ?? 0) + cacheReadTokens + (nextStep.cacheWriteTokens ?? 0));
+  if (derivedInputTokens < 0) return null;
+  const inputTokens = derivedInputTokens;
+  const pct = inputTokens > 0 ? (cacheReadTokens / inputTokens) * 100 : 0;
   return {
     pct: Math.round(pct * 10) / 10,
-    cacheReadTokens: nextStep.cacheReadTokens!,
-    inputTokens: nextStep.inputTokens,
+    cacheReadTokens,
+    inputTokens,
     nextStepIndex: nextStep.stepIndex,
-    formatted: `${formatTokens(nextStep.cacheReadTokens!)} / ${formatTokens(nextStep.inputTokens)} (${pct.toFixed(1)}%)`,
+    formatted: `${formatTokens(cacheReadTokens)} / ${formatTokens(inputTokens)} (${pct.toFixed(1)}%)`,
+  };
+}
+
+function defaultCacheHit(nextStepIndex: number): CacheHitInfo {
+  return {
+    pct: 0,
+    cacheReadTokens: 0,
+    inputTokens: 0,
+    nextStepIndex,
+    formatted: "0 / 0 (0.0%)",
   };
 }
 
@@ -53,7 +69,7 @@ export function computeToolGroups(
   const stepsById = new Map<number, StepSummary>();
   const stepsByIndex = new Map<number, StepSummary>();
   for (const s of turn.steps) {
-    stepsById.set(s.stepIndex, s);
+    if (typeof s.id === "number") stepsById.set(s.id, s);
     stepsByIndex.set(s.stepIndex, s);
   }
 
@@ -74,7 +90,7 @@ export function computeToolGroups(
     const step = stepsById.get(stepId);
     if (!step) continue;
     const nextStep = stepsByIndex.get(step.stepIndex + 1) ?? null;
-    const cacheHit = computeCacheHit(nextStep);
+    const cacheHit = computeCacheHit(nextStep) ?? defaultCacheHit(step.stepIndex + 1);
 
     groups.push({
       stepId,

@@ -95,6 +95,7 @@ export function emitErrorAndDone(
   socket: WebSocket,
   sessionId: string,
   info: ErrorInfo,
+  turnId?: number,
 ): void {
   const { error, rawError, errorIsCustom, category } = info;
 
@@ -111,7 +112,7 @@ export function emitErrorAndDone(
   sendJson(socket, errPayload);
 
   // Always deliver done so the frontend never hangs on "Thinking".
-  sendJson(socket, { type: "done", sessionId });
+  sendJson(socket, { type: "done", sessionId, ...(turnId != null ? { turnId } : {}) });
 
   // ── 2. Broadcast to all session listeners (best-effort) ───────────
   // Only for real registered sessions — "new" has no listeners.
@@ -125,7 +126,7 @@ export function emitErrorAndDone(
     };
     if (category) sessionErrPayload.category = category;
     sendToSession(sessionId, sessionErrPayload);
-    sendToSession(sessionId, { type: "done", sessionId });
+    sendToSession(sessionId, { type: "done", sessionId, ...(turnId != null ? { turnId } : {}) });
   }
 
   chatDebug("error-delivery", "emitErrorAndDone", {
@@ -139,10 +140,10 @@ export function emitErrorAndDone(
  * Deliver ONLY a done event (for abort / user-cancelled cases where error is
  * not needed, but the frontend must still un-stick).
  */
-export function emitDoneOnly(socket: WebSocket, sessionId: string): void {
-  sendJson(socket, { type: "done", sessionId });
+export function emitDoneOnly(socket: WebSocket, sessionId: string, turnId?: number): void {
+  sendJson(socket, { type: "done", sessionId, ...(turnId != null ? { turnId } : {}) });
   if (sessionId && sessionId !== "new") {
-    sendToSession(sessionId, { type: "done", sessionId });
+    sendToSession(sessionId, { type: "done", sessionId, ...(turnId != null ? { turnId } : {}) });
   }
   chatDebug("error-delivery", "emitDoneOnly", { sessionId });
 }

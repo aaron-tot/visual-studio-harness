@@ -36,11 +36,6 @@ import { chatDebug } from "./debug";
 const toolContinueAttempts = new Map<string, number[]>();
 const thinkingContinueAttempts = new Map<string, number[]>();
 
-// Guard against concurrent handleChatMessage invocations on the same socket.
-// Prevents orphaned AbortControllers, double onClose listeners, and cancel
-// targeting the wrong in-flight turn. See AUDIT_MEMORY_LEAKS.md finding #3.
-const busySockets = new WeakSet<WebSocket>();
-
 interface SessionUpdateWsMessage {
   sessionId: string;
   providerName?: string;
@@ -59,26 +54,17 @@ export async function handleSessionUpdate(msg: SessionUpdateWsMessage, dataDir: 
   return updateSessionMeta(dataDir, msg.sessionId, fields);
 }
 
-function streamWsHandlers(getSessionId: () => string): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate"> {
+function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate"> {
   return {
     onToken: (token, seq) => { const sid = getSessionId(); sendToSession(sid, { type: "token", sessionId: sid, content: token, seq }); },
     onReasoning: (delta, seq) => { const sid = getSessionId(); sendToSession(sid, { type: "reasoning", sessionId: sid, content: delta, seq }); },
     onToolCall: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_start", sessionId: sid, toolCallId: e.toolCallId, toolName: e.toolName, args: e.args, ...(e.seq != null ? { seq: e.seq } : {}), ...(e.parentToolCallId ? { parentToolCallId: e.parentToolCallId } : {}) }); },
-    onToolResult: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_end", sessionId: sid, toolCallId: e.toolCallId, status: e.isError ? "error" : "completed", result: e.output, error: e.isError ? String(e.output) : undefined, ...(e.seq != null ? { seq: e.seq } : {}) }); },
+    onToolResult: (e) => { const sid = getSessionId(); const tid = getTurnId(); sendToSession(sid, { type: "tool_end", sessionId: sid, toolCallId: e.toolCallId, status: e.isError ? "error" : "completed", result: e.output, error: e.isError ? String(e.output) : undefined, ...(e.seq != null ? { seq: e.seq } : {}), ...(tid != null ? { turnId: tid } : {}) }); },
     onToolUpdate: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_update", sessionId: sid, toolCallId: e.toolCallId, status: e.status, ...(e.seq != null ? { seq: e.seq } : {}) }); },
   };
 }
 
 export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: string, config: ConfigFile) {
-  // Reject concurrent turns on the same socket — prevents orphaned AbortControllers,
-  // double onClose listeners, and cancel targeting the wrong in-flight turn.
-  if (busySockets.has(socket)) {
-    console.warn("handleChatMessage: socket already busy, rejecting concurrent turn");
-    if (socket.readyState === 1) socket.send(JSON.stringify({ type: "error", error: "A chat session is already in progress. Cancel it first or wait for it to complete." }));
-    return;
-  }
-  busySockets.add(socket);
-
   const abortController = new AbortController();
   const sessionAborts = getSessionAborts();
 
@@ -91,8 +77,10 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
 
   let sessionId = msg.sessionId && msg.sessionId !== "new" ? msg.sessionId : "";
   if (sessionId) sessionAborts.set(sessionId, abortController);
+  let streamingTurnId: number | undefined;
   const getSid = () => sessionId;
-  const handlers = streamWsHandlers(getSid);
+  const getTurnId = () => streamingTurnId;
+  const handlers = streamWsHandlers(getSid, getTurnId);
 
   let streamAnnounced = false;
   let streamSuccess = true;
@@ -120,8 +108,9 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       modelName: msg.modelName, thinkingEffort: msg.thinkingEffort, noSystemPrompt: !msg.agentName,
     }, {
       source: "ws", signal: abortController.signal,
-      onSessionReady: ({ sessionId: id, created, meta }) => {
+      onSessionReady: ({ sessionId: id, created, meta, turnId }) => {
         sessionId = id; sessionAborts.set(id, abortController);
+        streamingTurnId = turnId;
         announceStreamStart();
         const active = getActiveSession(socket);
         if (created || !active || active === id) setActiveSession(socket, id);
@@ -171,9 +160,9 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
         rawError: result.rawError,
         errorIsCustom: result.errorIsCustom,
         category: "streaming",
-      });
+      }, result.turnId);
     } else {
-      emitDoneOnly(socket, result.sessionId);
+      emitDoneOnly(socket, result.sessionId, result.turnId);
     }
 
     if (!wasUserCancelled(sessionId) && config.autoContinueOnToolEnd) {
@@ -220,15 +209,14 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
         model: msg.modelName,
       });
       // Send directly to the originating socket — always guaranteed safe.
-      emitErrorAndDone(socket, effectiveSessionId, info);
+      emitErrorAndDone(socket, effectiveSessionId, info, streamingTurnId);
     } else {
       // For abort errors, still send done so the frontend un-sticks
-      emitDoneOnly(socket, effectiveSessionId);
+      emitDoneOnly(socket, effectiveSessionId, streamingTurnId);
     }
   } finally {
     announceStreamEnd(streamSuccess);
     socket.removeListener("close", onClose);
     if (sessionId) sessionAborts.delete(sessionId);
-    busySockets.delete(socket);
   }
 }

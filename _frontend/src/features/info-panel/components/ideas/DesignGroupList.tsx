@@ -214,7 +214,7 @@ export function DesignGroupList({
             {groupOpen &&
               (group.designs.length === 0 ? (
                 <div className="pl-8 pr-3 py-1 text-[10px] text-zinc-600">
-                  No designs yet — create above to save here
+                  No ideas yet — create above to save here
                 </div>
               ) : (
                 <PlanRows

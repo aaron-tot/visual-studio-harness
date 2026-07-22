@@ -1,7 +1,7 @@
 import type { PlanEntry } from "../../lib/api";
 
 /** Live Usage tree (former Usage V2). */
-export type InfoPanelTab = "usage" | "design" | "resources" | "research";
+export type InfoPanelTab = "usage" | "ideas" | "resources" | "research";
 export type PlanScope = "global" | "project" | "session";
 export type DocMode = "spec" | "plan";
 export type InjectSub = "full" | "path";

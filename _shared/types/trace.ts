@@ -124,6 +124,7 @@ export interface TurnSummary {
 }
 
 export interface StepSummary {
+  id?: number;
   stepIndex: number;
   status: string;
   finishReason?: string;

@@ -252,6 +252,13 @@ export function getTurnDetail(
     .orderBy(steps.stepIndex)
     .all();
 
+  const stepPartRows = db
+    .select()
+    .from(stepParts)
+    .where(eq(stepParts.turnId, t.id))
+    .orderBy(stepParts.seq)
+    .all();
+
   let systemPrompt: string | undefined;
   if (t.systemPromptSnapshotId) {
     const sp = db
@@ -294,6 +301,7 @@ export function getTurnDetail(
     success: t.success ?? undefined,
     contextTurnNumbers: ctxRows.map((r) => r.turnNumber),
     steps: stepRows.map((s) => ({
+      id: s.id,
       stepIndex: s.stepIndex,
       status: s.status,
       finishReason: s.finishReason ?? undefined,
@@ -457,6 +465,7 @@ export function getStepWithParts(
     .all();
 
   return {
+    id: s.id,
     stepIndex: s.stepIndex,
     status: s.status,
     finishReason: s.finishReason ?? undefined,

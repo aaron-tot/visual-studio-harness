@@ -13,6 +13,7 @@ export interface ChatState {
   _pendingDropdownAgent?: string;
   _pendingContinueMessage?: { content: string; agentName: string } | null;
   sessionId: string | null;
+  streamingTurnId: number | null;
   sessionMeta: SessionMeta | null;
   workspaceRoot: string;
   turns: TurnsFile;
@@ -55,6 +56,7 @@ export interface ChatState {
     result?: unknown;
     error?: string;
     seq?: number;
+    turnId?: number;
   }) => void;
   respondPermission: (toolCallId: string, decision: PermissionDecision, sessionId?: string | null, toolName?: string) => void;
   respondSubagentConfig: (payload: {
@@ -147,6 +149,7 @@ export type BufferedDelta =
       result?: unknown;
       error?: string;
       seq?: number;
+      turnId?: number;
     }
   | {
       kind: "tool_update";

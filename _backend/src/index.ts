@@ -25,7 +25,6 @@ import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
 import { createHooksSystem, setHooksSystem } from "./features/hooks";
 import { ensureGlobal } from "./features/tools/perms/store";
 import { migrateToSqlite } from "./storage/migrate";
-import { killAllBashSessions } from "./features/tools/host/pty-session";
 
 import { ensureGlobalAgentsFile } from "./agent/system-prompt";
 import type { ConfigFile } from "../../_shared/types";
@@ -200,11 +199,6 @@ async function main() {
   }
 
 
-
-  // Clean up all bash child processes on shutdown
-  const cleanup = () => { killAllBashSessions(); };
-  process.on("SIGTERM", cleanup);
-  process.on("SIGINT", cleanup);
 
   try {
     await app.listen({ port: PORT, host: "0.0.0.0" });

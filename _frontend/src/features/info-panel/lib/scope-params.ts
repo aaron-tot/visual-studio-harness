@@ -46,7 +46,7 @@ export function saveTargetHint(
     return `Saves to current workspace`;
   }
   if (scope === "session") {
-    if (!sessionId) return "Open a session to save session designs";
+    if (!sessionId) return "Open a session to save session ideas";
     return "Saves to current session";
   }
   return null;

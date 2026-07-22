@@ -44,7 +44,12 @@ async function findProgressiveMatch(page: Page, expected: string): Promise<{ len
   const normLen = expected.replace(/\s+/g, " ").trim().length;
   let normMatchLen = 0;
   const result = await page.evaluate((exp: string) => {
-    const bodyNorm = document.body.innerText.replace(/\s+/g, " ").trim();
+    const stripCache = (s: string) =>
+      s
+        .replace(/\d+(?:\.\d+)?(?:k|M)?\s*\/\s*\d+(?:\.\d+)?(?:k|M)?\s*\(\d+(?:\.\d+)?%\)\s*cache/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    const bodyNorm = stripCache(document.body.innerText);
     const expNorm = exp.replace(/\s+/g, " ").trim();
     for (let len = expNorm.length; len > 0; len--) {
       const search = expNorm.slice(0, len);
@@ -66,6 +71,43 @@ async function findProgressiveMatch(page: Page, expected: string): Promise<{ len
   return { len: isFull ? expected.length : mapped, text: isFull ? expected : expected.slice(0, mapped) };
 }
 
+async function assertCompletedToolCacheFormat(page: Page, label: string): Promise<void> {
+  const sample = () => page.evaluate(() => {
+    const CACHE_RE = /^\d+(?:\.\d+)?(?:k|M)?\s*\/\s*\d+(?:\.\d+)?(?:k|M)?\s*\(\d+(?:\.\d+)?%\)\s*cache$/i;
+    const headers = Array.from(
+      document.querySelectorAll("[data-assistant-msg] button[data-collapsible='true'][data-collapsible-level='main']")
+    ) as HTMLElement[];
+
+    const completed: Array<{ name: string; cache: string | null }> = [];
+    for (const h of headers) {
+      const statusEl = h.querySelector("span.uppercase") as HTMLElement | null;
+      const status = (statusEl?.innerText || "").trim().toLowerCase();
+      if (status !== "completed") continue;
+
+      const spans = Array.from(h.querySelectorAll("span")) as HTMLElement[];
+      const cacheSpan = spans.find((s) => /cache\s*$/i.test((s.innerText || "").trim())) || null;
+      const toolName = (spans.find((s) => (s.className || "").includes("font-mono"))?.innerText || "").trim();
+      completed.push({ name: toolName || "(unknown)", cache: cacheSpan ? cacheSpan.innerText.trim() : null });
+    }
+
+    const bad = completed.filter((c) => !c.cache || !CACHE_RE.test(c.cache));
+    return { completedCount: completed.length, bad, all: completed };
+  });
+
+  let result = await sample();
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline && result.completedCount > 0 && result.bad.length > 0) {
+    await page.waitForTimeout(250);
+    result = await sample();
+  }
+
+  expect(result.completedCount, `${label}: no completed tool cards found to validate cache format`).toBeGreaterThan(0);
+  expect(
+    result.bad,
+    `${label}: completed tools missing/invalid cache text. Expected format: "66.8k / 70.7k (94.5%) cache". Got bad=${JSON.stringify(result.bad)} all=${JSON.stringify(result.all)}`
+  ).toEqual([]);
+}
+
 /**
  * At the progressive-match boundary: large windows before/after
  * for both UI body and expected. Shows *why* match stops / regressed.
@@ -81,7 +123,12 @@ async function logMatchBoundary(
   const CTX = 400;
   const boundary = await page.evaluate(
     ({ exp, ctx }: { exp: string; ctx: number }) => {
-      const bodyNorm = document.body.innerText.replace(/\s+/g, " ").trim();
+      const stripCache = (s: string) =>
+        s
+          .replace(/\d+(?:\.\d+)?(?:k|M)?\s*\/\s*\d+(?:\.\d+)?(?:k|M)?\s*\(\d+(?:\.\d+)?%\)\s*cache/gi, "")
+          .replace(/\s+/g, " ")
+          .trim();
+      const bodyNorm = stripCache(document.body.innerText);
       const expNorm = exp.replace(/\s+/g, " ").trim();
       let bestLen = 0;
       for (let len = expNorm.length; len > 0; len--) {
@@ -107,7 +154,7 @@ async function logMatchBoundary(
       // Also grab assistant msg full text for the fail dump
       const msg = document.querySelector("[data-assistant-msg]") as HTMLElement | null;
       const assistantNorm = msg
-        ? msg.innerText.replace(/\s+/g, " ").trim()
+        ? stripCache(msg.innerText)
         : "(no [data-assistant-msg])";
 
       return {
@@ -242,7 +289,10 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     const { before } = await page.evaluate((exp: string) => {
       const msg = document.querySelector("[data-assistant-msg]");
       if (!msg) return { before: "(no msg)" };
-      const text = (msg as HTMLElement).innerText.replace(/\s+/g, " ").trim();
+      const text = (msg as HTMLElement).innerText
+        .replace(/\d+(?:\.\d+)?(?:k|M)?\s*\/\s*\d+(?:\.\d+)?(?:k|M)?\s*\(\d+(?:\.\d+)?%\)\s*cache/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
       const prefix = exp.replace(/\s+/g, " ").trim().slice(0, 10);
       const idx = text.indexOf(prefix);
       const before = idx > 0 ? text.slice(Math.max(0, idx - 10), idx) : "(at start)";
@@ -283,11 +333,16 @@ test("multi-session flick", async ({ page, settings, chat }) => {
         len
       );
       const rawDump = await page.evaluate((exp: string) => {
+        const stripCache = (s: string) =>
+          s
+            .replace(/\d+(?:\.\d+)?(?:k|M)?\s*\/\s*\d+(?:\.\d+)?(?:k|M)?\s*\(\d+(?:\.\d+)?%\)\s*cache/gi, "")
+            .replace(/\s+/g, " ")
+            .trim();
         const msg = document.querySelector("[data-assistant-msg]");
         if (!msg) return { raw: "(no [data-assistant-msg] element)", norm: "", bodyNorm: "", expNorm: "", stuck: 0, msgCount: 0 };
         const raw = (msg as HTMLElement).innerText;
-        const norm = raw.replace(/\s+/g, " ").trim();
-        const bodyNorm = document.body.innerText.replace(/\s+/g, " ").trim();
+        const norm = stripCache(raw);
+        const bodyNorm = stripCache(document.body.innerText);
         const expNorm = exp.replace(/\s+/g, " ").trim();
         const msgs = document.querySelectorAll("[data-assistant-msg]");
         const msgCount = msgs.length;
@@ -320,6 +375,9 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     }
     prev.v = len;
     if (len > best.v) best.v = len;
+    if (len >= expected.length) {
+      await assertCompletedToolCacheFormat(page, `${label} round ${round}`);
+    }
     return len >= expected.length;
   }
 
@@ -352,6 +410,8 @@ test("multi-session flick", async ({ page, settings, chat }) => {
         `${label} lost content after completion during post-flick round ${swapRound}\n${boundary}`
       );
     }
+
+    await assertCompletedToolCacheFormat(page, `${label} post-flick ${swapRound}`);
   }
 
   // Keep CheckLoop running through the flick rounds (no_chat_error scan)

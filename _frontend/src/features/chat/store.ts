@@ -65,6 +65,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _pendingDropdownAgent: undefined,
   _pendingContinueMessage: null,
   sessionId: null,
+  streamingTurnId: null,
   sessionMeta: null,
   workspaceRoot: localStorage.getItem("VISUAL STUDIO HARNESS.workspaceRoot") || "",
   turns: {},
@@ -117,6 +118,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: false,
       streamingContent: "",
       streamingParts: [],
+      streamingTurnId: null,
       lastSeq: 0,
       _partSeq: 0,
       _textSeq: 0,
@@ -154,6 +156,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: true,
       streamingContent: "",
       streamingParts: [],
+      streamingTurnId: null,
       lastSeq: 0,
       _partSeq: 0,
       _textSeq: 0,
@@ -185,6 +188,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: false,
       streamingContent: "",
       streamingParts: [],
+      streamingTurnId: null,
       lastSeq: 0,
       _partSeq: 0,
       _textSeq: 0,
@@ -219,7 +223,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
     msgs.push({ role: "user", content: "<system> Stream stopped by user </system>", timestamp: new Date().toISOString() });
-    set({ messages: msgs, streaming: false, streamingContent: "", streamingParts: [], lastSeq: 0, _reasonIdx: 0 });
+    set({ messages: msgs, streaming: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0 });
   },
 
   appendToken: (token, seq) => {
@@ -285,7 +289,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         updatedMessages = [...msgs, { role: "user" as const, content: hasContinue.content, timestamp: new Date().toISOString() }];
         nextAgentName = hasContinue.agentName;
       }
-      return { messages: updatedMessages, streaming: !!hasContinue, streamingContent: "", streamingParts: [], lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingDropdownAgent: undefined, _pendingContinueMessage: null };
+      return { messages: updatedMessages, streaming: !!hasContinue, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingDropdownAgent: undefined, _pendingContinueMessage: null };
     });
   },
 
@@ -320,7 +324,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (userIdx >= 0 && msgs[userIdx].role === "user") msgs[userIdx] = { ...msgs[userIdx], turnId: meta.turnId };
       }
       if (state.sessionId) void get().loadTurns(state.sessionId);
-      return { messages: msgs, streaming: false, streamingContent: "", streamingParts: [], lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null };
+      return { messages: msgs, streaming: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null };
     });
   },
 
@@ -344,10 +348,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
   },
 
-  onToolEnd: ({ toolCallId, status, result, error }) => {
+  onToolEnd: ({ toolCallId, status, result, error, turnId }) => {
     touchStreamTimeout();
     return set((state) => ({
       streamingParts: state.streamingParts.map((p) => p.type === "tool" && p.toolCallId === toolCallId ? { ...p, status, result, error } : p),
+      ...(turnId != null ? { streamingTurnId: turnId } : {}),
     }));
   },
 

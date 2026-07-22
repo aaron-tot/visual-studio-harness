@@ -4,7 +4,7 @@ import { ProximityRail } from "../../../components/layout/ProximityRail";
 import type { InfoPanelTab } from "../types";
 import { TabButton, EmptyState } from "./ui";
 import { UsageV2Tab } from "./usage-v2";
-import { DesignTab } from "./design/DesignTab";
+import { IdeasTab } from "./ideas/IdeasTab";
 
 const MIN_W = 200;
 const MAX_W = 640;
@@ -106,8 +106,8 @@ export function InfoPanel() {
             <TabButton active={tab === "usage"} onClick={() => setTab("usage")}>
               Usage
             </TabButton>
-            <TabButton active={tab === "design"} onClick={() => setTab("design")}>
-              Design
+            <TabButton active={tab === "ideas"} onClick={() => setTab("ideas")}>
+              Ideas
             </TabButton>
             <TabButton active={tab === "resources"} onClick={() => setTab("resources")}>
               Resources
@@ -120,8 +120,8 @@ export function InfoPanel() {
       >
         {tab === "usage" ? (
           <UsageV2Tab />
-        ) : tab === "design" ? (
-          <DesignTab active={panel.isOpen} />
+        ) : tab === "ideas" ? (
+          <IdeasTab active={panel.isOpen} />
         ) : (
           <EmptyState>Coming soon</EmptyState>
         )}

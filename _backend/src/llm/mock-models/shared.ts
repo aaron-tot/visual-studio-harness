@@ -117,7 +117,10 @@ export async function* executeActions(
   workspaceRoot?: string,
 ): AsyncGenerator<any> {
   let firstTokenEmitted = false;
-  for (const action of actions) {
+  console.log(`[mock-model] Starting executeActions with ${actions.length} actions`);
+  for (let actionIndex = 0; actionIndex < actions.length; actionIndex++) {
+    const action = actions[actionIndex];
+    console.log(`[mock-model] >>> Starting action ${actionIndex + 1}/${actions.length}:`, action.type, action.type === "tool" ? action.toolName : action.type === "text" ? action.prefix : "");
     switch (action.type) {
       case "text": {
         for (let i = 1; i <= action.count; i++) {
@@ -147,8 +150,10 @@ export async function* executeActions(
         break;
       }
     }
+    console.log(`[mock-model] <<< Finished action ${actionIndex + 1}/${actions.length}, continuing...`);
     await new Promise((r) => setTimeout(r, 500));
   }
+  console.log(`[mock-model] All actions completed`);
 }
 
 // ── Expected text: generate the human-readable final output ────────────────

@@ -20,6 +20,7 @@ interface MessagePartProps {
   part: MessagePartType;
   /** All parts in this message, used for nesting sub-agent tools */
   allParts?: MessagePartType[];
+  toolCacheByCallId?: Record<string, string>;
   isStreaming?: boolean;
   /** Agent name for text part meta line */
   agentName?: string;
@@ -29,7 +30,7 @@ interface MessagePartProps {
   durationMs?: number;
 }
 
-export function MessagePart({ part, allParts, isStreaming, agentName, modelName, durationMs }: MessagePartProps) {
+export function MessagePart({ part, allParts, toolCacheByCallId, isStreaming, agentName, modelName, durationMs }: MessagePartProps) {
   const sessionId = useChatStore((s) => s.sessionId);
 
   // Skip sub-agent child tool calls at the top level — they render nested inside the task card
@@ -61,6 +62,7 @@ export function MessagePart({ part, allParts, isStreaming, agentName, modelName,
           result={part.result}
           error={part.error}
           sessionId={sessionId}
+          cacheSummary={toolCacheByCallId?.[part.toolCallId]}
           childParts={childParts}
         />
       );

@@ -140,10 +140,10 @@ wsClient.on("tool_end", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
   if (awaitingSessionState) {
-    bufferDelta({ kind: "tool_end", sessionId: data.sessionId, toolCallId: data.toolCallId, status: data.status, result: data.result, error: data.error, seq: data.seq });
+    bufferDelta({ kind: "tool_end", sessionId: data.sessionId, toolCallId: data.toolCallId, status: data.status, result: data.result, error: data.error, seq: data.seq, turnId: data.turnId });
     return;
   }
-  useChatStore.getState().onToolEnd({ toolCallId: data.toolCallId, status: data.status, result: data.result, error: data.error, seq: data.seq });
+  useChatStore.getState().onToolEnd({ toolCallId: data.toolCallId, status: data.status, result: data.result, error: data.error, seq: data.seq, turnId: data.turnId });
 });
 
 wsClient.on("permission_request", (data: any) => {
@@ -338,6 +338,7 @@ wsClient.onDisconnect(() => {
         streaming: false,
         streamingContent: "",
         streamingParts: [],
+        streamingTurnId: null,
         lastSeq: 0,
         _reasonIdx: 0,
       });

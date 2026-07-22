@@ -149,15 +149,12 @@ function SessionActions({ id, isDragOverlay }: { id: string; isDragOverlay?: boo
   );
 }
 
-function GroupActions({ id, label, childCount, childSessionIds, onRemove, onUngroup, currentColor, onRecolor }: { id: string; label: string; childCount: number; childSessionIds?: string[]; onRemove?: () => void; onUngroup?: () => void; currentColor?: GroupColor; onRecolor?: (color: GroupColor) => void }) {
+function GroupActions({ id, label, childCount, childSessionIds, onRemove, onUngroup }: { id: string; label: string; childCount: number; childSessionIds?: string[]; onRemove?: () => void; onUngroup?: () => void }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(label);
-  const [color, setColor] = useState<GroupColor>(currentColor ?? "neutral");
+  const [color, setColor] = useState<GroupColor>("neutral");
   const [confirmArchive, setConfirmArchive] = useState(false);
-
-  // Sync local color state when the persisted color changes (e.g. from another session)
-  useEffect(() => { setColor(currentColor ?? "neutral"); }, [currentColor]);
 
   const cls = groupColorClass[color];
 
@@ -247,7 +244,7 @@ function GroupActions({ id, label, childCount, childSessionIds, onRemove, onUngr
               className={`w-4 h-4 rounded-full ${groupColorClass[c].dot} ${
                 color === c ? "ring-2 ring-offset-1 ring-offset-zinc-900 ring-zinc-300" : ""
               }`}
-              onClick={(e) => { e.stopPropagation(); setColor(c); onRecolor?.(c); setPaletteOpen(false); }}
+              onClick={(e) => { e.stopPropagation(); setColor(c); setPaletteOpen(false); }}
             />
           ))}
         </div>
@@ -263,7 +260,6 @@ export function TestingV3Tab({ search }: { search?: string }) {
   const addGroupStore = useSessionStore((s) => s.addGroup);
   const removeGroupStore = useSessionStore((s) => s.removeGroup);
   const saveLayout = useSessionStore((s) => s.saveLayout);
-  const recolorGroupStore = useSessionStore((s) => s.recolorGroup);
   const [focusIdx, setFocusIdx] = useState(-1);
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const layoutsLoaded = useRef<Set<string>>(new Set());
@@ -360,22 +356,17 @@ export function TestingV3Tab({ search }: { search?: string }) {
 
   const renderActions = useCallback(
     (itemId: string, label: string, childCount?: number, _requestRemove?: () => void, isDragOverlay?: boolean, childSessionIds?: string[]) => {
-      // Find workspace owning this group and its current color
+      // Find workspace owning this group
       let ws: string | undefined;
-      let groupColor: GroupColor | undefined;
       for (const [w, tree] of Object.entries(layouts)) {
-        function findGroupNode(nodes: LayoutNode[]): LayoutNode | undefined {
+        function findGroup(nodes: LayoutNode[]): boolean {
           for (const n of nodes) {
-            if (n.id === itemId && n.kind === "group") return n;
-            if (n.children) {
-              const found = findGroupNode(n.children);
-              if (found) return found;
-            }
+            if (n.id === itemId && n.kind === "group") return true;
+            if (n.children && findGroup(n.children)) return true;
           }
-          return undefined;
+          return false;
         }
-        const node = findGroupNode(tree);
-        if (node) { ws = w; groupColor = node.color; break; }
+        if (findGroup(tree)) { ws = w; break; }
       }
       if (ws != null && isGroupId(itemId)) {
         return (
@@ -384,8 +375,6 @@ export function TestingV3Tab({ search }: { search?: string }) {
             label={label}
             childCount={childCount ?? 0}
             childSessionIds={childSessionIds}
-            currentColor={groupColor}
-            onRecolor={(color) => void recolorGroupStore(ws!, itemId, color)}
             onRemove={() => removeGroup(ws!, itemId)}
             onUngroup={() => {
               // Recursively collect all sessions in this group and sub-groups
@@ -421,7 +410,7 @@ export function TestingV3Tab({ search }: { search?: string }) {
       }
       return <SessionActions id={itemId} isDragOverlay={isDragOverlay} />;
     },
-    [layouts, isGroupId, removeGroup, recolorGroupStore],
+    [layouts, isGroupId, removeGroup],
   );
 
   return (

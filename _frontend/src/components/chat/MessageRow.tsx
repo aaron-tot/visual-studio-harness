@@ -11,7 +11,7 @@
  * (data-testid="chat-error") — never only inside the card body.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Brain } from "lucide-react";
 import type { Message } from "../../../_shared/types";
 import type { MessagePartType } from "../../../_shared/types";
@@ -25,6 +25,8 @@ import { useChatStore } from "../../stores/chat";
 import { TurnInspectorModal } from "./TurnInspectorModal";
 import { CopyButton } from "./CopyButton";
 import { extractPrimaryText, extractAllText } from "../../lib/extract-message-text";
+import { getTurn } from "../../lib/api";
+import { computeToolGroups } from "../../lib/turn-inspector/cache-hit";
 
 interface MessageRowProps {
   message: Message;
@@ -66,10 +68,17 @@ function collectErrors(message: Message): Array<{ message: string; raw?: string;
   return out;
 }
 
-function renderPart(part: MessagePartType, i: number, message: Message, isStreaming?: boolean, thinkingCollapsed?: boolean) {
+function renderPart(
+  part: MessagePartType,
+  i: number,
+  message: Message,
+  toolCacheByCallId: Record<string, string>,
+  isStreaming?: boolean,
+  thinkingCollapsed?: boolean
+) {
   // Context tool group
   if (Array.isArray(part)) {
-    return <ContextToolGroup key={`group-${i}`} parts={part} />;
+    return <ContextToolGroup key={`group-${i}`} parts={part} toolCacheByCallId={toolCacheByCallId} />;
   }
 
   // Errors render under the bubble, not inline in the card body
@@ -102,6 +111,7 @@ function renderPart(part: MessagePartType, i: number, message: Message, isStream
       key={i}
       part={part}
       allParts={message.parts ?? []}
+      toolCacheByCallId={toolCacheByCallId}
       isStreaming={isStreaming}
       agentName={message.agentName || "Default (no system prompt)"}
       modelName={message.modelName}
@@ -122,12 +132,55 @@ export function MessageRow({ message, isStreaming }: MessageRowProps) {
   const inspectedTurnId = useChatStore((s) => s.inspectedTurnId);
   const setInspectedTurnId = useChatStore((s) => s.setInspectedTurnId);
 
-  const turnId = isUser ? (message.turnId ?? null) : null;
+  const turnId = message.turnId ?? null;
 
   // Always declare hooks before any early return
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true);
+  const [toolCacheByCallId, setToolCacheByCallId] = useState<Record<string, string>>({});
   const turnStatus = message.status || (message.success === false ? "error" : message.success === true ? "success" : "");
   const isFailedStatus = turnStatus && turnStatus !== "success" && turnStatus !== "streaming" && turnStatus !== "pending";
+
+  // Track which tools have completed so we re-fetch cache data when new tools finish
+  const completedToolKey = (message.parts ?? [])
+    .filter((p) => p.type === "tool" && (p as any).status === "completed")
+    .map((p) => (p as any).toolCallId)
+    .join(",");
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isUser || !sessionId || turnId == null) {
+      setToolCacheByCallId({});
+      return;
+    }
+    const hasTool = (message.parts ?? []).some((p) => p.type === "tool");
+    if (!hasTool) {
+      setToolCacheByCallId({});
+      return;
+    }
+
+    void (async () => {
+      try {
+        const res = await getTurn(sessionId, turnId);
+        const turn = (res as any)?.turn;
+        if (!turn || cancelled) return;
+        const groups = computeToolGroups(turn);
+        const next: Record<string, string> = {};
+        for (const g of groups) {
+          const cacheText = g.cacheHit?.formatted ?? "0 / 0 (0.0%)";
+          for (const t of g.tools) {
+            if (t.toolCallId) next[t.toolCallId] = cacheText;
+          }
+        }
+        if (!cancelled) setToolCacheByCallId(next);
+      } catch {
+        if (!cancelled) setToolCacheByCallId({});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isUser, message.parts, sessionId, turnId, completedToolKey]);
 
   // User messages: simple right-aligned bubble
   if (isUser) {
@@ -182,7 +235,7 @@ export function MessageRow({ message, isStreaming }: MessageRowProps) {
         >
           {groupedParts ? (
             <div className="space-y-2">
-              {groupedParts.map((part, i) => renderPart(part, i, message, isStreaming, thinkingCollapsed))}
+              {groupedParts.map((part, i) => renderPart(part, i, message, toolCacheByCallId, isStreaming, thinkingCollapsed))}
             </div>
           ) : (
             <TextPart

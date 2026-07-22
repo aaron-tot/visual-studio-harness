@@ -179,7 +179,7 @@ export async function runTurn(
   await bus?.emit("message.user_persisted", hookCtx, { message: userMessage, sessionId });
   const session = await getSession(dataDir, sessionId);
   if (!session) throw new Error("Session not found after create");
-  events.onSessionReady?.({ sessionId, created, meta: session.meta });
+  events.onSessionReady?.({ sessionId, created, meta: session.meta, turnId: turnNumber });
   await bus?.emit("turn.start", hookCtx, { sessionId, created, meta: session.meta, workspaceRoot });
 
   const useTools = toolsEnabled();

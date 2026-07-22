@@ -33,10 +33,14 @@ async function* wrapWithStepEvents(
   signal?: AbortSignal,
 ): AsyncGenerator<any> {
   yield { type: "start-step", stepNumber: 0, request: {}, warnings: [] };
+  let eventCount = 0;
   for await (const event of inner) {
+    eventCount++;
+    console.log(`[wrapWithStepEvents] Event #${eventCount}:`, event.type, event.toolCallId || event.toolName || "");
     if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     yield event;
   }
+  console.log(`[wrapWithStepEvents] Inner generator finished, total events: ${eventCount}`);
   // Shape matches AI SDK TextStreamFinishStepPart (nested usage details + performance)
   yield {
     type: "finish-step",

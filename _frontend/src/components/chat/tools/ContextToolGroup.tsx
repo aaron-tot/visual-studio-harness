@@ -94,9 +94,10 @@ function groupCategory(parts: MessagePartType[]): GroupCategory {
 
 interface ToolGroupProps {
   parts: MessagePartType[];
+  toolCacheByCallId?: Record<string, string>;
 }
 
-export function ContextToolGroup({ parts }: ToolGroupProps) {
+export function ContextToolGroup({ parts, toolCacheByCallId }: ToolGroupProps) {
   const [collapsed, setCollapsed] = useState(true);
   const summary = useMemo(() => summarize(parts), [parts]);
   const category = useMemo(() => groupCategory(parts), [parts]);
@@ -148,6 +149,7 @@ export function ContextToolGroup({ parts }: ToolGroupProps) {
                     result={p.result}
                     error={p.error}
                     sessionId={sessionId}
+                    cacheSummary={toolCacheByCallId?.[p.toolCallId]}
                   />
                 </ToolStatusBorder>
               );

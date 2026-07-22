@@ -97,6 +97,7 @@ interface ToolCallCardProps {
   result?: unknown;
   error?: string;
   sessionId?: string | null;
+  cacheSummary?: string;
 }
 
 const Chevron = ({ open }: { open: boolean }) => (
@@ -118,6 +119,7 @@ export function ToolCallCard({
   result,
   error,
   sessionId,
+  cacheSummary,
 }: ToolCallCardProps) {
   const respondPermission = useChatStore((s) => s.respondPermission);
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
@@ -221,6 +223,11 @@ export function ToolCallCard({
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {cacheSummary && (
+            <span className="text-[10px] text-zinc-400 font-mono" title="Prompt cache hit on next step">
+              {cacheSummary} cache
+            </span>
+          )}
           {taskId && (
             <button
               type="button"

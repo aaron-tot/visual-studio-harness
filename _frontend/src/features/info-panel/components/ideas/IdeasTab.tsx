@@ -13,12 +13,12 @@ import { CreateIdeaForm } from "./CreateIdeaForm";
 import { DesignGroupList } from "./DesignGroupList";
 import { AuditsSection } from "./AuditsSection";
 
-interface DesignTabProps {
+interface IdeasTabProps {
   /** When false, skip network fetches (panel closed) */
   active: boolean;
 }
 
-export function DesignTab({ active }: DesignTabProps) {
+export function IdeasTab({ active }: IdeasTabProps) {
   const [scope, setScope] = useState<PlanScope>("global");
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
@@ -114,7 +114,7 @@ export function DesignTab({ active }: DesignTabProps) {
         <div className="px-3 pt-3 pb-2 border-b border-zinc-800 space-y-1.5">
           <PanelSectionTitle>
             <ChevronDown size={12} />
-            Design
+            Plans & Ideas
           </PanelSectionTitle>
           <ScopeSwitcher
             scope={scope}
@@ -138,8 +138,8 @@ export function DesignTab({ active }: DesignTabProps) {
           ) : (
             <div className="text-[10px] text-amber-600/90">
               {scope === "project"
-                ? "Set a workspace in the chat toolbar to create project designs."
-                : "Open or start a session to create session designs."}
+                ? "Set a workspace in the chat toolbar to create project ideas."
+                : "Open or start a session to create session ideas."}
             </div>
           )}
           <ResultBanner result={mutations.result} />

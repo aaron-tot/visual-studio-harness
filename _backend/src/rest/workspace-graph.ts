@@ -70,4 +70,17 @@ export function registerWorkspaceGraphRoutes(
     if (!graph) return { error: "Workspace graph not initialized" };
     return graph.query.workspaceSummary();
   });
+
+  app.get("/api/workspace-graph/status", async () => {
+    const graph = getGraph();
+    if (!graph) return { state: "idle", fileCount: 0, folderCount: 0, symbolCount: 0, languages: [], lastIndexedAt: 0, dbPath: "" };
+    return graph.getStatus();
+  });
+
+  app.post("/api/workspace-graph/reindex", async () => {
+    const graph = getGraph();
+    if (!graph) return { error: "Workspace graph not initialized" };
+    await graph.reindexAll();
+    return { ok: true };
+  });
 }

@@ -41,4 +41,30 @@ describe("createWorkspaceGraphService", () => {
 
     await expect(service.reindexAll()).rejects.toThrow("not initialized");
   });
+
+  it("getStatus returns idle state before start", async () => {
+    const service = await createWorkspaceGraphService({
+      workspaceRoot: "/tmp/ws4",
+      enableWatcher: false,
+    });
+
+    const status = await service.getStatus();
+    expect(status.state).toBe("idle");
+    expect(status.fileCount).toBe(0);
+    expect(status.folderCount).toBe(0);
+    expect(status.symbolCount).toBe(0);
+    expect(Array.isArray(status.languages)).toBe(true);
+  });
+
+  it("getStatus returns watching state after start", async () => {
+    const service = await createWorkspaceGraphService({
+      workspaceRoot: "/tmp/ws5",
+      enableWatcher: false,
+    });
+
+    await service.start();
+    const status = await service.getStatus();
+    expect(status.state).toBe("watching");
+    await service.stop();
+  });
 });

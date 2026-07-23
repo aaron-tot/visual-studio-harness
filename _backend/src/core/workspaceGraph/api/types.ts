@@ -86,10 +86,21 @@ export interface WorkspaceManifestApi {
   workspaceSummary(): Promise<string>;
 }
 
+export interface GraphStatusResponse {
+  state: "idle" | "indexing" | "watching";
+  fileCount: number;
+  folderCount: number;
+  symbolCount: number;
+  languages: string[];
+  lastIndexedAt: number;
+  dbPath: string;
+}
+
 export interface WorkspaceGraphService {
   start(): Promise<void>;
   stop(): Promise<void>;
   reindexAll(): Promise<void>;
+  getStatus(): Promise<GraphStatusResponse>;
   query: WorkspaceGraphQueryApi;
   manifest: WorkspaceManifestApi;
 }

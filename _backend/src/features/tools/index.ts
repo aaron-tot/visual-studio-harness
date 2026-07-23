@@ -19,6 +19,13 @@ import { designReadTool } from "./builtins/design_read";
 import { designEditTool } from "./builtins/design_edit";
 import { designAbandonTool } from "./builtins/design_abandon";
 import { designsListTool } from "./builtins/designs_list";
+import { graphSearchTool } from "./builtins/graph_search";
+import { graphFilesTool } from "./builtins/graph_files";
+import { graphInfoTool } from "./builtins/graph_info";
+import { graphImportsTool } from "./builtins/graph_imports";
+import { graphExportsTool } from "./builtins/graph_exports";
+import { graphManifestTool } from "./builtins/graph_manifest";
+import { graphStatusTool } from "./builtins/graph_status";
 import { setDefaultTools } from "./perms/defaults";
 import type { ToolDef } from "./types";
 import type { AgentSettings } from "../../../../_shared/types";
@@ -45,6 +52,13 @@ const ALL_TOOLS: ToolDef[] = [
   designEditTool,
   designsListTool,
   designAbandonTool,
+  graphSearchTool,
+  graphFilesTool,
+  graphInfoTool,
+  graphImportsTool,
+  graphExportsTool,
+  graphManifestTool,
+  graphStatusTool,
 ];
 
 export interface CreateRegistryOptions {

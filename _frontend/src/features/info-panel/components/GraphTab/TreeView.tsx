@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getGraphManifest } from "../../../../lib/api";
 import { EmptyState } from "../ui";
 
@@ -64,6 +64,14 @@ export function TreeView() {
   const [manifest, setManifest] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const copyManifest = useCallback(() => {
+    if (!manifest) return;
+    navigator.clipboard.writeText(manifest);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [manifest]);
 
   useEffect(() => {
     getGraphManifest()
@@ -77,10 +85,23 @@ export function TreeView() {
 
   const tree = parseManifestTree(manifest);
   return (
-    <div className="px-1 py-1 font-mono">
-      {tree.map((node, i) => (
-        <TreeItem key={`${node.name}-${i}`} node={node} depth={0} />
-      ))}
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800/50">
+        <span className="text-[9px] text-zinc-600">Workspace tree</span>
+        <button
+          className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+            copied ? "bg-emerald-800/60 text-emerald-300" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+          }`}
+          onClick={copyManifest}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+      <div className="px-1 py-1 font-mono">
+        {tree.map((node, i) => (
+          <TreeItem key={`${node.name}-${i}`} node={node} depth={0} />
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,7 +1,25 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { getGraphFiles, getGraphImports, getGraphExports } from "../../../../lib/api";
 import type { GraphFileRecord, GraphImportRecord, GraphExportRecord } from "../../../../lib/api";
 import { EmptyState, PanelInput } from "../ui";
+
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+        copied ? "bg-emerald-800/60 text-emerald-300" : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800"
+      }`}
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? "Copied!" : label ?? "Copy"}
+    </button>
+  );
+}
 
 export function DepsView() {
   const [files, setFiles] = useState<GraphFileRecord[]>([]);
@@ -28,6 +46,14 @@ export function DepsView() {
       .then(([imp, exp]) => { setImports(imp); setExports(exp); })
       .finally(() => setLoadingDeps(false));
   }, [selectedFile]);
+
+  const importsText = useMemo(() => {
+    return imports.map((imp) => `${imp.importType} ${imp.module} ${imp.symbols.length ? `{${imp.symbols.join(", ")}}` : ""}`).join("\n");
+  }, [imports]);
+
+  const exportsText = useMemo(() => {
+    return exports.map((exp) => `${exp.isDefault ? "default " : ""}${exp.symbol}`).join("\n");
+  }, [exports]);
 
   return (
     <div className="flex flex-col">
@@ -58,8 +84,9 @@ export function DepsView() {
           ) : (
             <div className="grid grid-cols-2 gap-0 min-h-0">
               <div className="border-r border-zinc-800/50 overflow-y-auto">
-                <div className="px-2 py-1 text-[9px] text-zinc-500 font-medium border-b border-zinc-800/50">
-                  Imports ({imports.length})
+                <div className="flex items-center justify-between px-2 py-1 text-[9px] text-zinc-500 font-medium border-b border-zinc-800/50">
+                  <span>Imports ({imports.length})</span>
+                  {imports.length > 0 && <CopyButton text={importsText} label="Copy" />}
                 </div>
                 {imports.length === 0 ? (
                   <div className="px-2 py-1 text-[9px] text-zinc-600">none</div>
@@ -75,8 +102,9 @@ export function DepsView() {
                 )}
               </div>
               <div className="overflow-y-auto">
-                <div className="px-2 py-1 text-[9px] text-zinc-500 font-medium border-b border-zinc-800/50">
-                  Exports ({exports.length})
+                <div className="flex items-center justify-between px-2 py-1 text-[9px] text-zinc-500 font-medium border-b border-zinc-800/50">
+                  <span>Exports ({exports.length})</span>
+                  {exports.length > 0 && <CopyButton text={exportsText} label="Copy" />}
                 </div>
                 {exports.length === 0 ? (
                   <div className="px-2 py-1 text-[9px] text-zinc-600">none</div>

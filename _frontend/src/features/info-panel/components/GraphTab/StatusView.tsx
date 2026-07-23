@@ -12,10 +12,14 @@ function relativeTime(ms: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1048576).toFixed(1)} MB`;
+function useCopyButton(timeout = 1500) {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback((text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), timeout);
+  }, [timeout]);
+  return { copied, copy };
 }
 
 function StateBadge({ state }: { state: GraphStatusResponse["state"] }) {
@@ -36,6 +40,7 @@ export function StatusView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reindexing, setReindexing] = useState(false);
+  const { copied: dbCopied, copy: copyDb } = useCopyButton();
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -80,9 +85,14 @@ export function StatusView() {
           <span className="text-[11px] text-zinc-300 font-medium">Graph Status</span>
           <StateBadge state={status.state} />
         </div>
-        <PanelButton onClick={handleReindex} disabled={reindexing}>
-          {reindexing ? "Indexing…" : "Reindex"}
-        </PanelButton>
+        <div className="flex gap-1">
+          <PanelButton onClick={() => copyDb(status.dbPath)} disabled={!status.dbPath}>
+            {dbCopied ? "Copied!" : "Copy DB Path"}
+          </PanelButton>
+          <PanelButton onClick={handleReindex} disabled={reindexing}>
+            {reindexing ? "Indexing…" : "Reindex"}
+          </PanelButton>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-2">

@@ -9,6 +9,25 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className={`text-[9px] px-1 py-0.5 rounded transition-colors shrink-0 ${
+        copied ? "bg-emerald-800/60 text-emerald-300" : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800"
+      }`}
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? "Copied!" : label ?? "Copy"}
+    </button>
+  );
+}
+
 function FileDetail({ file, onClose }: { file: GraphFileRecord; onClose: () => void }) {
   const [imports, setImports] = useState<GraphImportRecord[]>([]);
   const [exports, setExports] = useState<GraphExportRecord[]>([]);
@@ -62,6 +81,7 @@ export function FilesView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<GraphFileRecord | null>(null);
+  const [exported, setExported] = useState(false);
 
   useEffect(() => {
     getGraphFiles()
@@ -69,13 +89,27 @@ export function FilesView() {
       .catch((e) => { setError(e instanceof Error ? e.message : "Failed"); setLoading(false); });
   }, []);
 
+  const handleExport = () => {
+    navigator.clipboard.writeText(JSON.stringify(files, null, 2));
+    setExported(true);
+    setTimeout(() => setExported(false), 1500);
+  };
+
   if (loading) return <EmptyState>Loading files…</EmptyState>;
   if (error) return <EmptyState><span className="text-red-400">Error: {error}</span></EmptyState>;
 
   return (
     <div className="flex flex-col">
-      <div className="px-3 py-1 text-[9px] text-zinc-500 border-b border-zinc-800/50">
-        {files.length} files indexed
+      <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-800/50">
+        <span className="text-[9px] text-zinc-500">{files.length} files indexed</span>
+        <button
+          className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+            exported ? "bg-emerald-800/60 text-emerald-300" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+          }`}
+          onClick={handleExport}
+        >
+          {exported ? "Copied!" : "Export JSON"}
+        </button>
       </div>
       <div className="flex-1 overflow-y-auto">
         {files.map((file) => (
@@ -89,6 +123,7 @@ export function FilesView() {
               <span className="text-[10px]">{file.language === "typescript" ? "🔷" : "🟨"}</span>
               <span className="text-[11px] text-zinc-300 font-mono truncate flex-1">{file.path}</span>
               <span className="text-[9px] text-zinc-600 shrink-0">{formatBytes(file.size)}</span>
+              <CopyButton text={file.path} />
             </div>
             {selected?.id === file.id && (
               <FileDetail file={file} onClose={() => setSelected(null)} />

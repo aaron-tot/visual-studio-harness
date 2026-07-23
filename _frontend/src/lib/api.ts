@@ -480,3 +480,98 @@ export function callMcpTool(server: import("../../_shared/types").McpServerConfi
     { method: "POST", body: JSON.stringify({ server, toolName, args }) }
   );
 }
+
+export interface GraphStatusResponse {
+  state: "idle" | "indexing" | "watching";
+  fileCount: number;
+  folderCount: number;
+  symbolCount: number;
+  languages: string[];
+  lastIndexedAt: number;
+  dbPath: string;
+}
+
+export interface GraphFileRecord {
+  id: number;
+  path: string;
+  filename: string;
+  extension: string;
+  language: string;
+  size: number;
+  modifiedMs: number;
+  fileHash: string;
+  indexedAtMs: number;
+}
+
+export interface GraphSymbolMatch {
+  symbol: {
+    id: number;
+    name: string;
+    kind: string;
+    fileId: number;
+    exported: boolean;
+    async: boolean;
+    static: boolean;
+    visibility: string;
+    signature: string | null;
+    startLine: number;
+    endLine: number;
+    structuralHash: string;
+  };
+  filePath: string;
+  fileName: string;
+}
+
+export interface GraphImportRecord {
+  module: string;
+  symbols: string[];
+  importType: string;
+  filePath: string;
+}
+
+export interface GraphExportRecord {
+  symbol: string;
+  isDefault: boolean;
+  filePath: string;
+}
+
+export function getGraphStatus() {
+  return fetchJson<GraphStatusResponse>(`${BASE}/workspace-graph/status`);
+}
+
+export function triggerGraphReindex() {
+  return fetchJson<{ ok: boolean }>(`${BASE}/workspace-graph/reindex`, { method: "POST" });
+}
+
+export function getGraphManifest(maxDepth?: number, includeFiles?: boolean) {
+  const params = new URLSearchParams();
+  if (maxDepth !== undefined) params.set("maxDepth", String(maxDepth));
+  if (includeFiles !== undefined) params.set("includeFiles", String(includeFiles));
+  const qs = params.toString();
+  return fetchJson<{ manifest: string }>(`${BASE}/workspace-graph/manifest${qs ? `?${qs}` : ""}`);
+}
+
+export function getGraphFiles(folderPath?: string) {
+  const q = folderPath ? `?folderPath=${encodeURIComponent(folderPath)}` : "";
+  return fetchJson<GraphFileRecord[]>(`${BASE}/workspace-graph/files${q}`);
+}
+
+export function getGraphSymbols(name?: string, kind?: string) {
+  const params = new URLSearchParams();
+  if (name) params.set("name", name);
+  if (kind) params.set("kind", kind);
+  const qs = params.toString();
+  return fetchJson<GraphSymbolMatch[]>(`${BASE}/workspace-graph/symbols${qs ? `?${qs}` : ""}`);
+}
+
+export function getGraphImports(filePath: string) {
+  return fetchJson<GraphImportRecord[]>(
+    `${BASE}/workspace-graph/imports?filePath=${encodeURIComponent(filePath)}`
+  );
+}
+
+export function getGraphExports(filePath: string) {
+  return fetchJson<GraphExportRecord[]>(
+    `${BASE}/workspace-graph/exports?filePath=${encodeURIComponent(filePath)}`
+  );
+}

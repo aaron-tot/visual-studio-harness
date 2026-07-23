@@ -14,6 +14,7 @@ export async function createWorkspaceGraphService(
   input: WorkspaceGraphServiceInput
 ): Promise<WorkspaceGraphService> {
   let started = false;
+  let state: "idle" | "indexing" | "watching" = "idle";
   let _db: WorkspaceGraphDb | null = null;
   let _dbPath: string | null = null;
   let _watcher: WorkspaceWatcherHandle | null = null;
@@ -80,6 +81,7 @@ export async function createWorkspaceGraphService(
     async start() {
       if (started) return;
       started = true;
+      state = "indexing";
 
       _dbPath = getWorkspaceGraphDbPath(input.workspaceRoot);
       _db = openWorkspaceGraphDb(_dbPath);
@@ -104,10 +106,13 @@ export async function createWorkspaceGraphService(
         });
         console.log(`[workspace-graph] watcher started (debounce ${input.debounceMs ?? 50}ms)`);
       }
+
+      state = "watching";
     },
     async stop() {
       if (!started) return;
       started = false;
+      state = "idle";
       if (_watcher) {
         await _watcher.close();
         _watcher = null;
@@ -120,15 +125,24 @@ export async function createWorkspaceGraphService(
     },
     async reindexAll() {
       if (!started) throw new NotInitializedError();
+      const prevState = state;
+      state = "indexing";
       const dbPath = getWorkspaceGraphDbPath(input.workspaceRoot);
       const report = await reindexWorkspace({
         workspaceRoot: input.workspaceRoot,
         dbPath,
         mode: "full",
       });
+      state = prevState;
       console.log(
         `[workspace-graph] reindexAll: ${report.createdCount} created, ${report.modifiedCount} modified, ${report.deletedCount} deleted, ${report.skippedCount} skipped`
       );
+    },
+    async getStatus() {
+      const empty = { state, fileCount: 0, folderCount: 0, symbolCount: 0, languages: [] as string[], lastIndexedAt: 0, dbPath: "" };
+      if (!_db) return { ...empty, dbPath: _dbPath ?? "" };
+      const summary = await createQueryApi(_db, createWorkspaceGraphRepository(_db)).workspaceSummary();
+      return { state, ...summary, dbPath: _dbPath ?? "" };
     },
     query: queryApi,
     manifest: manifestApi,

@@ -18,3 +18,7 @@ export function getWorkspaceGraphConfig(workspaceRoot: string) {
 export function getWorkspaceGraphDbPath(workspaceRoot: string): string {
   return resolve(workspaceRoot, ".vsh", "workspace-graph.db");
 }
+
+export function getWorkspaceGraphDbDir(workspaceRoot: string): string {
+  return resolve(workspaceRoot, ".vsh");
+}

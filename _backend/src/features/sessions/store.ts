@@ -26,6 +26,8 @@ import { sessionHasTurns } from "../chat/db-trace";
 export interface ListSessionsOptions {
   /** When true, include subagent child sessions. Default false. */
   includeSubagents?: boolean;
+  /** When true, include archived sessions. Default false. */
+  includeArchived?: boolean;
 }
 
 export async function listSessions(
@@ -34,6 +36,7 @@ export async function listSessions(
 ): Promise<SessionMeta[]> {
   return dbListSessions({
     includeSubagents: opts?.includeSubagents,
+    includeArchived: opts?.includeArchived,
     dataDir,
   });
 }

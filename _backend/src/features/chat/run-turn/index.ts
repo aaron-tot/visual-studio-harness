@@ -37,6 +37,7 @@ import {
 } from "../../agents/system-prompt";
 import { getMode } from "../../../paths";
 import { getWorkspaceGraphManager } from "../../../core/workspaceGraph/service-singleton";
+import type { WorkspaceGraphService } from "../../../core/workspaceGraph/api/types";
 import { createStepStreamWriter } from "../persist-stream";
 import { buildErrorAssistantMessage } from "../turn-errors";
 import {
@@ -207,6 +208,20 @@ export async function runTurn(
   const sessionAbortController = new AbortController();
   registerSession(sessionId, sessionAbortController, traceTurnId);
 
+  // Resolve workspace graph service for this session's workspaceRoot (lazy init if needed)
+  let graphService: WorkspaceGraphService | undefined;
+  if (config.workspaceGraph !== false) {
+    const manager = getWorkspaceGraphManager();
+    if (manager) {
+      let gs = manager.get(workspaceRoot);
+      if (!gs) {
+        await manager.initializeForWorkspace(workspaceRoot, { enableWatcher: true });
+        gs = manager.get(workspaceRoot);
+      }
+      graphService = gs ?? undefined;
+    }
+  }
+
   try {
     let partSeq = 0;
     const resolveCtx: ResolveContext = { dataDir, sessionId, workspaceRoot };
@@ -215,7 +230,7 @@ export async function runTurn(
           sessionId, turnId: traceTurnId, workspaceRoot, dataDir,
           abortSignal: abortSignal ?? new AbortController().signal,
           callId, hookCtx,
-          graphService: config.workspaceGraph !== false ? (getWorkspaceGraphManager()?.get(workspaceRoot) ?? undefined) : undefined,
+          graphService,
           askPermission: async (toolName, args) => {
             events.onToolUpdate?.({ toolCallId: callId, status: "awaiting_permission" });
             if (events.askPermission) return events.askPermission(toolName, args, callId);
@@ -256,7 +271,7 @@ export async function runTurn(
       agentSettings: runtime.settings, noSystemPrompt,
       systemPromptJoiners: config.systemPromptJoiners,
       workspaceManifest: config.workspaceGraph !== false ? config.workspaceManifest : undefined,
-      graphService: config.workspaceGraph !== false ? (getWorkspaceGraphManager()?.get(workspaceRoot) ?? undefined) : undefined,
+      graphService,
     });
 
     // Build model messages from trace context turns

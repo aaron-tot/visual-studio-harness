@@ -22,6 +22,7 @@ import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
 import { setWorkspaceGraphManager, getWorkspaceGraphManager } from "./core/workspaceGraph/service-singleton";
 import { WorkspaceGraphManager } from "./core/workspaceGraph/graph-manager";
+import { listSessions } from "./features/sessions/store";
 import { getMcpManager } from "./features/mcp";
 import { resolveDataDir, getMode, getPort } from "./paths";
 import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
@@ -184,21 +185,32 @@ async function main() {
   registerPlansRoutes(app, DATA_DIR);
   registerMcpRoutes(app);
 
-  // Workspace graph: create manager, register REST routes
-  const workspaceRoot = resolve(import.meta.dir, "../..");
-  registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphManager()?.get(workspaceRoot) ?? null);
+  // Workspace graph: create manager, register REST routes (per-workspace lookup via query param)
+  registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphManager());
 
-  // Initialize workspace graph in background (non-blocking) — gated by workspaceGraph config
+  // Initialize workspace graphs in background (non-blocking) — gated by workspaceGraph config
   if (currentConfig.workspaceGraph !== false) {
     const manager = new WorkspaceGraphManager();
     setWorkspaceGraphManager(manager);
-    manager.initializeForWorkspace(workspaceRoot, { enableWatcher: MODE === "dev" })
-      .then(() => {
-        console.log(`[workspace-graph] ready (${workspaceRoot})`);
-      })
-      .catch((err) => {
-        console.error("[workspace-graph] failed to initialize:", err);
-      });
+
+    // Discover workspaces from non-archived sessions
+    const sessions = listSessions(DATA_DIR, { includeSubagents: false, includeArchived: false });
+    const workspaceRoots = sessions
+      .map((s) => s.workspaceRoot)
+      .filter((r): r is string => !!r?.trim());
+
+    if (workspaceRoots.length > 0) {
+      const unique = [...new Set(workspaceRoots)];
+      manager.initializeFromSessions(unique, { enableWatcher: true })
+        .then(() => {
+          console.log(`[workspace-graph] initialized for ${unique.length} unique workspace(s) from ${workspaceRoots.length} session(s)`);
+        })
+        .catch((err) => {
+          console.error("[workspace-graph] background init error:", err);
+        });
+    } else {
+      console.log("[workspace-graph] no sessions with workspaceRoot found — waiting for lazy init");
+    }
   } else {
     console.log("[workspace-graph] disabled by config (workspaceGraph: false)");
   }

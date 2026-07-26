@@ -8,6 +8,7 @@ scripts/generated/
 .agentHarness/
 .momiji/
 .opencode/
+.vsh/
 docs/
 *.local
 .env*

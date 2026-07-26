@@ -1,9 +1,5 @@
 import { z } from "zod";
 import type { ToolDef } from "../types";
-import { getWorkspaceGraphDbPath } from "../../../core/workspaceGraph/config";
-import { openWorkspaceGraphDb } from "../../../core/workspaceGraph/storage/db";
-import { createWorkspaceGraphRepository } from "../../../core/workspaceGraph/storage/repository";
-import { createQueryApi } from "../../../core/workspaceGraph/api/query";
 
 export const graphInfoTool: ToolDef = {
   name: "graph_info",
@@ -14,15 +10,13 @@ export const graphInfoTool: ToolDef = {
     file_path: z.string().describe("File path relative to workspace root"),
   }),
   execute: async (args, ctx) => {
-    const dbPath = getWorkspaceGraphDbPath(ctx.workspaceRoot);
-    const db = openWorkspaceGraphDb(dbPath);
-    const repo = createWorkspaceGraphRepository(db);
-    const api = createQueryApi(db, repo);
-
+    if (!ctx.graphService) {
+      return { title: "graph_info", output: "Graph service not available", isError: true };
+    }
     const [imports, exports, allSymbols] = await Promise.all([
-      api.listImports(args.file_path),
-      api.listExports(args.file_path),
-      api.findSymbol(""),
+      ctx.graphService.query.listImports(args.file_path),
+      ctx.graphService.query.listExports(args.file_path),
+      ctx.graphService.query.findSymbol(""),
     ]);
 
     const symbols = allSymbols.filter((s) => s.filePath === args.file_path);

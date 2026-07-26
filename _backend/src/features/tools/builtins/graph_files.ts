@@ -1,9 +1,5 @@
 import { z } from "zod";
 import type { ToolDef } from "../types";
-import { getWorkspaceGraphDbPath } from "../../../core/workspaceGraph/config";
-import { openWorkspaceGraphDb } from "../../../core/workspaceGraph/storage/db";
-import { createWorkspaceGraphRepository } from "../../../core/workspaceGraph/storage/repository";
-import { createQueryApi } from "../../../core/workspaceGraph/api/query";
 
 export const graphFilesTool: ToolDef = {
   name: "graph_files",
@@ -17,11 +13,10 @@ export const graphFilesTool: ToolDef = {
       .describe("Optional subdirectory to list (relative to workspace root)"),
   }),
   execute: async (args, ctx) => {
-    const dbPath = getWorkspaceGraphDbPath(ctx.workspaceRoot);
-    const db = openWorkspaceGraphDb(dbPath);
-    const repo = createWorkspaceGraphRepository(db);
-    const api = createQueryApi(db, repo);
-    const files = await api.listFiles(args.folder_path);
+    if (!ctx.graphService) {
+      return { title: "graph_files", output: "Graph service not available", isError: true };
+    }
+    const files = await ctx.graphService.query.listFiles(args.folder_path);
     if (files.length === 0) {
       return { title: "graph_files", output: "No indexed files found" };
     }

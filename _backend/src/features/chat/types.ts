@@ -66,6 +66,7 @@ export interface TurnResult {
   error?: string;
   rawError?: string;
   errorIsCustom?: boolean;
+  agentName?: string;
   modelName?: string;
   providerName?: string;
   durationMs?: number;

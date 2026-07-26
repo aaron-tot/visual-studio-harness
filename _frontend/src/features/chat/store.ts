@@ -65,6 +65,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _pendingDropdownAgent: undefined,
   _pendingContinueMessage: null,
   sessionId: null,
+  streamingTurnId: null,
   sessionMeta: null,
   workspaceRoot: localStorage.getItem("VISUAL STUDIO HARNESS.workspaceRoot") || "",
   turns: {},
@@ -117,6 +118,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: false,
       streamingContent: "",
       streamingParts: [],
+      streamingTurnId: null,
       lastSeq: 0,
       _partSeq: 0,
       _textSeq: 0,
@@ -154,11 +156,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: true,
       streamingContent: "",
       streamingParts: [],
+      streamingTurnId: null,
       lastSeq: 0,
       _partSeq: 0,
       _textSeq: 0,
       _reasonIdx: 0,
       _pendingAgentName: config.agentName || "Default (no system prompt)",
+      _pendingModelName: config.modelName,
+      _pendingProviderName: config.providerName,
     });
     console.log("STORE_SEND_MESSAGE streaming=true", { sessionId, contentLen: content?.length, awaitingSessionState });
     chatDebug("store", "sendMessage -> streaming=true", { sessionId, agentName: config.agentName });
@@ -185,6 +190,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: false,
       streamingContent: "",
       streamingParts: [],
+      streamingTurnId: null,
       lastSeq: 0,
       _partSeq: 0,
       _textSeq: 0,
@@ -219,11 +225,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
     msgs.push({ role: "user", content: "<system> Stream stopped by user </system>", timestamp: new Date().toISOString() });
-    set({ messages: msgs, streaming: false, streamingContent: "", streamingParts: [], lastSeq: 0, _reasonIdx: 0 });
+    set({ messages: msgs, streaming: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0 });
   },
 
-  appendToken: (token, seq) =>
-    set((state) => {
+  appendToken: (token, seq) => {
+    touchStreamTimeout();
+    return set((state) => {
       if (seq != null && seq <= state.lastSeq) return {};
       const nextSeq = seq ?? state.lastSeq + 1;
       const parts = [...state.streamingParts];
@@ -240,10 +247,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         msgs[msgs.length - 1] = { ...lastMsg, content };
       }
       return { messages: msgs, streamingParts: parts, streamingContent: content, lastSeq: nextSeq, _partSeq: nextSeq };
-    }),
+    });
+  },
 
-  appendReasoning: (delta, seq) =>
-    set((state) => {
+  appendReasoning: (delta, seq) => {
+    touchStreamTimeout();
+    return set((state) => {
       if (seq != null && seq <= state.lastSeq) return {};
       const nextSeq = seq ?? state.lastSeq + 1;
       const parts = [...state.streamingParts];
@@ -254,7 +263,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       parts.push({ type: "reasoning", content: delta, _seq: nextSeq } as any);
       return { streamingParts: parts, lastSeq: nextSeq, _partSeq: nextSeq, _reasonIdx: parts.length };
-    }),
+    });
+  },
 
   doneStreaming: (modelName?, providerName?, durationMs?, turnId?, agentName?) => {
     clearStreamTimeout();
@@ -265,10 +275,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const last = msgs[msgs.length - 1];
       const parts = state.streamingParts.length > 0 ? sortParts(state.streamingParts) : undefined;
       const content = parts ? textContentFromParts(parts) : "";
+      const effectiveAgentName = agentName || state._pendingAgentName || last?.agentName;
+      const effectiveModelName = modelName || state._pendingModelName || last?.modelName;
+      const effectiveProviderName = providerName || state._pendingProviderName || last?.providerName;
       if (last?.role === "assistant") {
-        msgs[msgs.length - 1] = { ...last, content: content || last.content, parts: parts || last.parts, modelName: modelName || last.modelName, providerName: providerName || last.providerName, agentName: agentName || last.agentName, durationMs, turnId, success: true as any };
+        msgs[msgs.length - 1] = { ...last, content: content || last.content, parts: parts || last.parts, modelName: effectiveModelName, providerName: effectiveProviderName, agentName: effectiveAgentName, durationMs, turnId, success: true as any };
       } else {
-        msgs.push({ role: "assistant", content, timestamp: new Date().toISOString(), parts, modelName, providerName, agentName, durationMs, turnId, success: true as any });
+        msgs.push({ role: "assistant", content, timestamp: new Date().toISOString(), parts, modelName: effectiveModelName, providerName: effectiveProviderName, agentName: effectiveAgentName, durationMs, turnId, success: true as any });
       }
       if (turnId != null) {
         const userIdx = msgs.length - 2;
@@ -281,7 +294,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         updatedMessages = [...msgs, { role: "user" as const, content: hasContinue.content, timestamp: new Date().toISOString() }];
         nextAgentName = hasContinue.agentName;
       }
-      return { messages: updatedMessages, streaming: !!hasContinue, streamingContent: "", streamingParts: [], lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingDropdownAgent: undefined, _pendingContinueMessage: null };
+      return { messages: updatedMessages, streaming: !!hasContinue, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null };
     });
   },
 
@@ -316,12 +329,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (userIdx >= 0 && msgs[userIdx].role === "user") msgs[userIdx] = { ...msgs[userIdx], turnId: meta.turnId };
       }
       if (state.sessionId) void get().loadTurns(state.sessionId);
-      return { messages: msgs, streaming: false, streamingContent: "", streamingParts: [], lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null };
+      return { messages: msgs, streaming: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null };
     });
   },
 
-  onToolStart: ({ toolCallId, toolName, args, parentToolCallId, seq }) =>
-    set((state) => {
+  onToolStart: ({ toolCallId, toolName, args, parentToolCallId, seq }) => {
+    touchStreamTimeout();
+    return set((state) => {
       if (seq != null && seq <= state.lastSeq) return {};
       if (state.streamingParts.some((p) => p.type === "tool" && p.toolCallId === toolCallId)) {
         return seq != null ? { lastSeq: Math.max(state.lastSeq, seq), _partSeq: Math.max(state._partSeq, seq) } : {};
@@ -329,17 +343,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const nextSeq = seq ?? state.lastSeq + 1;
       const parts = [...state.streamingParts, { type: "tool" as const, toolCallId, toolName, status: "running" as const, args, _seq: nextSeq, ...(parentToolCallId ? { parentToolCallId } : {}) }];
       return { streamingParts: parts, streamingContent: textContentFromParts(parts), lastSeq: nextSeq, _partSeq: nextSeq };
-    }),
+    });
+  },
 
-  onToolUpdate: ({ toolCallId, status }) =>
-    set((state) => ({
+  onToolUpdate: ({ toolCallId, status }) => {
+    touchStreamTimeout();
+    return set((state) => ({
       streamingParts: state.streamingParts.map((p) => p.type === "tool" && p.toolCallId === toolCallId ? { ...p, status } : p),
-    })),
+    }));
+  },
 
-  onToolEnd: ({ toolCallId, status, result, error }) =>
-    set((state) => ({
+  onToolEnd: ({ toolCallId, status, result, error, turnId }) => {
+    touchStreamTimeout();
+    return set((state) => ({
       streamingParts: state.streamingParts.map((p) => p.type === "tool" && p.toolCallId === toolCallId ? { ...p, status, result, error } : p),
-    })),
+      ...(turnId != null ? { streamingTurnId: turnId } : {}),
+    }));
+  },
 
   respondPermission: (toolCallId, decision, sessionId, toolName) => {
     const sid = sessionId ?? get().sessionId;

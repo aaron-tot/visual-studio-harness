@@ -264,19 +264,15 @@ export function MessageRow({ message, isStreaming }: MessageRowProps) {
           />
         )}
         {formatTime(message.timestamp)}
-        {!isStreaming && (
-          <>
-            {agentName !== "Default (no system prompt)" && <span>{agentName}</span>}
-            {displayProviderName && <span>{displayProviderName}</span>}
-            {displayModelName && <span>{displayModelName}</span>}
-            {message.durationMs !== undefined && message.durationMs >= 0 && (
-              <span>
-                {message.durationMs < 1000
-                  ? "<1s"
-                  : `${(message.durationMs / 1000).toFixed(1)}s`}
-              </span>
-            )}
-          </>
+        {agentName !== "Default (no system prompt)" && <span>{agentName}</span>}
+        {displayProviderName && <span>{displayProviderName}</span>}
+        {displayModelName && <span>{displayModelName}</span>}
+        {!isStreaming && message.durationMs !== undefined && message.durationMs >= 0 && (
+          <span>
+            {message.durationMs < 1000
+              ? "<1s"
+              : `${(message.durationMs / 1000).toFixed(1)}s`}
+          </span>
         )}
         {isStreaming && (
           <span className="inline-block w-1.5 h-3 bg-zinc-400 ml-0.5 animate-pulse" />

@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { chatDebug } from "../chat/debug";
 import { getSessionMetaPublic } from "./store";
+import { getSession } from "./db";
 import { projectSessionChat, projectStreamingContent } from "../chat/project-chat";
 import { sessionHasTurns, getActiveTraceTurn } from "../chat/db-trace";
 import { maxStepPartSeq } from "../chat/project-chat";
@@ -58,7 +59,8 @@ function buildSessionStatePayload(sessionId: string, requestId?: number): Record
   const history = projectSessionChat(sessionId);
   const openTurn = getActiveTraceTurn(sessionId);
   const streaming = openTurn ? projectStreamingContent(sessionId) : null;
-  return { type: "session_state", sessionId, ...(requestId != null ? { requestId } : {}), history, streaming };
+  const meta = getSession(sessionId);
+  return { type: "session_state", sessionId, ...(requestId != null ? { requestId } : {}), history, streaming, meta };
 }
 
 export function sendSessionState(socket: WebSocket, sessionId: string, requestId?: number): void {

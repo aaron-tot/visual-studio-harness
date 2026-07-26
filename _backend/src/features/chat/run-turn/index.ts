@@ -36,7 +36,7 @@ import {
   messagesForModel,
 } from "../../agents/system-prompt";
 import { getMode } from "../../../paths";
-import { getWorkspaceGraphService } from "../../../core/workspaceGraph/service-singleton";
+import { getWorkspaceGraphManager } from "../../../core/workspaceGraph/service-singleton";
 import { createStepStreamWriter } from "../persist-stream";
 import { buildErrorAssistantMessage } from "../turn-errors";
 import {
@@ -215,7 +215,7 @@ export async function runTurn(
           sessionId, turnId: traceTurnId, workspaceRoot, dataDir,
           abortSignal: abortSignal ?? new AbortController().signal,
           callId, hookCtx,
-          graphService: config.workspaceGraph !== false ? getWorkspaceGraphService() : undefined,
+          graphService: config.workspaceGraph !== false ? (getWorkspaceGraphManager()?.get(workspaceRoot) ?? undefined) : undefined,
           askPermission: async (toolName, args) => {
             events.onToolUpdate?.({ toolCallId: callId, status: "awaiting_permission" });
             if (events.askPermission) return events.askPermission(toolName, args, callId);
@@ -256,7 +256,7 @@ export async function runTurn(
       agentSettings: runtime.settings, noSystemPrompt,
       systemPromptJoiners: config.systemPromptJoiners,
       workspaceManifest: config.workspaceGraph !== false ? config.workspaceManifest : undefined,
-      graphService: config.workspaceGraph !== false ? (getWorkspaceGraphService() ?? undefined) : undefined,
+      graphService: config.workspaceGraph !== false ? (getWorkspaceGraphManager()?.get(workspaceRoot) ?? undefined) : undefined,
     });
 
     // Build model messages from trace context turns

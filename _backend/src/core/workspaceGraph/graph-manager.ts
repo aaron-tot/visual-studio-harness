@@ -1,0 +1,66 @@
+import { createWorkspaceGraphService } from ".";
+import type { WorkspaceGraphService } from "./api/types";
+
+export interface ManagedGraph {
+  service: WorkspaceGraphService;
+  started: boolean;
+  watcherEnabled: boolean;
+}
+
+export class WorkspaceGraphManager {
+  private _graphs = new Map<string, ManagedGraph>();
+
+  get(workspaceRoot: string): WorkspaceGraphService | null {
+    const normalized = resolveWorkspaceKey(workspaceRoot);
+    return this._graphs.get(normalized)?.service ?? null;
+  }
+
+  async initializeForWorkspace(
+    workspaceRoot: string,
+    opts?: { enableWatcher?: boolean }
+  ): Promise<void> {
+    const key = resolveWorkspaceKey(workspaceRoot);
+    if (this._graphs.has(key)) return;
+    const service = await createWorkspaceGraphService({
+      workspaceRoot,
+      enableWatcher: opts?.enableWatcher ?? false,
+    });
+    const watcherEnabled = opts?.enableWatcher ?? false;
+    await service.start();
+    this._graphs.set(key, { service, started: true, watcherEnabled });
+  }
+
+  async initializeFromSessions(
+    workspaceRoots: string[],
+    opts?: { enableWatcher?: boolean }
+  ): Promise<void> {
+    const unique = [...new Set(workspaceRoots.map(resolveWorkspaceKey))];
+    await Promise.all(
+      unique.map((root) =>
+        this.initializeForWorkspace(root, opts).catch((err) => {
+          console.error(`[workspace-graph] failed to init for ${root}:`, err);
+        })
+      )
+    );
+  }
+
+  async stop(workspaceRoot: string): Promise<void> {
+    const key = resolveWorkspaceKey(workspaceRoot);
+    const entry = this._graphs.get(key);
+    if (entry) {
+      await entry.service.stop();
+      this._graphs.delete(key);
+    }
+  }
+
+  async stopAll(): Promise<void> {
+    await Promise.all(
+      Array.from(this._graphs.values()).map((e) => e.service.stop())
+    );
+    this._graphs.clear();
+  }
+}
+
+function resolveWorkspaceKey(workspaceRoot: string): string {
+  return workspaceRoot.replace(/[/\\]+$/, "");
+}

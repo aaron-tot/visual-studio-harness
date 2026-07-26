@@ -20,8 +20,8 @@ import { registerAgentsRoutes } from "./rest/agents";
 import { registerPlansRoutes } from "./rest/plans";
 import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
-import { createWorkspaceGraphService } from "./core/workspaceGraph";
-import { setWorkspaceGraphService, getWorkspaceGraphService } from "./core/workspaceGraph/service-singleton";
+import { setWorkspaceGraphManager, getWorkspaceGraphManager } from "./core/workspaceGraph/service-singleton";
+import { WorkspaceGraphManager } from "./core/workspaceGraph/graph-manager";
 import { getMcpManager } from "./features/mcp";
 import { resolveDataDir, getMode, getPort } from "./paths";
 import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
@@ -184,16 +184,16 @@ async function main() {
   registerPlansRoutes(app, DATA_DIR);
   registerMcpRoutes(app);
 
-  // Workspace graph: create service lazily, register REST routes
-  registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphService());
+  // Workspace graph: create manager, register REST routes
+  const workspaceRoot = resolve(import.meta.dir, "../..");
+  registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphManager()?.get(workspaceRoot) ?? null);
 
   // Initialize workspace graph in background (non-blocking) — gated by workspaceGraph config
   if (currentConfig.workspaceGraph !== false) {
-    const workspaceRoot = resolve(import.meta.dir, "../..");
-    createWorkspaceGraphService({ workspaceRoot, enableWatcher: MODE === "dev" })
-      .then(async (graph) => {
-        setWorkspaceGraphService(graph);
-        await graph.start();
+    const manager = new WorkspaceGraphManager();
+    setWorkspaceGraphManager(manager);
+    manager.initializeForWorkspace(workspaceRoot, { enableWatcher: MODE === "dev" })
+      .then(() => {
         console.log(`[workspace-graph] ready (${workspaceRoot})`);
       })
       .catch((err) => {

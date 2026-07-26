@@ -1,11 +1,11 @@
-import type { WorkspaceGraphService } from "./api/types";
+import type { WorkspaceGraphManager } from "./graph-manager";
 
-let _service: WorkspaceGraphService | null = null;
+let _manager: WorkspaceGraphManager | null = null;
 
-export function setWorkspaceGraphService(service: WorkspaceGraphService | null): void {
-  _service = service;
+export function setWorkspaceGraphManager(manager: WorkspaceGraphManager | null): void {
+  _manager = manager;
 }
 
-export function getWorkspaceGraphService(): WorkspaceGraphService | null {
-  return _service;
+export function getWorkspaceGraphManager(): WorkspaceGraphManager | null {
+  return _manager;
 }

@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { HookContext } from "../hooks/types";
 import type { ThinkingEffort } from "../../../../_shared/types";
+import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
 
 export type PermissionMode = "allow" | "ask" | "deny";
 
@@ -63,6 +64,8 @@ export interface BaseToolContext {
   askPermission: (toolName: string, args: unknown) => Promise<boolean>;
   /** When set, tool.* hooks fire after the permission gate */
   hookCtx?: HookContext;
+  /** Workspace graph service (may be null if not initialized) */
+  graphService?: WorkspaceGraphService | null;
 }
 
 /** Extended context used only by the task tool — adds subagent/slot/agent callbacks. */

@@ -64,13 +64,22 @@ export interface SubagentToolSettings {
 
 export interface SystemPromptJoiners {
   start: string;
-  afterGlobal: string;
-  afterAgentMd: string;
-  afterSkillMds: string;
-  afterProject: string;
-  afterRuntime: string;
-  afterTodoList: string;
-  afterExtras: string;
+  preGlobal: string;
+  postGlobal: string;
+  preAgent: string;
+  postAgent: string;
+  preSkills: string;
+  postSkills: string;
+  preProject: string;
+  postProject: string;
+  preRuntime: string;
+  postRuntime: string;
+  preTodoList: string;
+  postTodoList: string;
+  preWorkspaceManifest: string;
+  postWorkspaceManifest: string;
+  preExtras: string;
+  postExtras: string;
   end: string;
 }
 
@@ -94,6 +103,18 @@ export interface McpServerConfig {
   headers?: Record<string, string>;
 }
 
+export interface WorkspaceManifestSettings {
+  enabled: boolean;
+  maxDepth?: number;
+  includeFiles?: boolean;
+  excludeDirs?: string[];
+  excludeExtensions?: string[];
+  includeGitignore?: boolean;
+  agents?: string[];
+  prefix?: string;
+  postfix?: string;
+}
+
 export interface ConfigFile {
   providers: ProviderConfig[];
   agents?: Record<string, AgentSettings>;
@@ -104,6 +125,8 @@ export interface ConfigFile {
   defaultModel?: string;
   testModels?: Record<string, TestModelConfig>;
   mcpServers?: McpServerConfig[];
+  workspaceManifest?: WorkspaceManifestSettings;
+  workspaceGraph?: boolean;
   autoContinueOnToolEnd?: boolean;
   autoContinueOnToolEndMaxAttempts?: number;
   autoContinueOnToolEndWindowValue?: number;

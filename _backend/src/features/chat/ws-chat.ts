@@ -160,9 +160,9 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
         rawError: result.rawError,
         errorIsCustom: result.errorIsCustom,
         category: "streaming",
-      }, result.turnId);
+      }, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs);
     } else {
-      emitDoneOnly(socket, result.sessionId, result.turnId);
+      emitDoneOnly(socket, result.sessionId, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs);
     }
 
     if (!wasUserCancelled(sessionId) && config.autoContinueOnToolEnd) {

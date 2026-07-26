@@ -1,53 +1,43 @@
 import { useState } from "react";
 import { Edit3, RefreshCw, X } from "lucide-react";
 import { useConfigStore } from "../../stores/config";
-import type { SystemPromptJoiners } from "../../../../_shared/types";
+import type { SystemPromptJoiners, WorkspaceManifestSettings } from "../../../../_shared/types";
 
 const DEFAULT_JOINERS: SystemPromptJoiners = {
   start: "",
-  afterGlobal: "\n\n",
-  afterAgentMd: "\n\n",
-  afterSkillMds: "\n\n",
-  afterProject: "\n\n",
-  afterRuntime: "\n\n",
-  afterTodoList: "\n\n",
-  afterExtras: "\n\n",
+  preGlobal: "<global>",
+  postGlobal: "</global>",
+  preAgent: "<agent>",
+  postAgent: "</agent>",
+  preSkills: "<skills>",
+  postSkills: "</skills>",
+  preProject: "<project>",
+  postProject: "</project>",
+  preRuntime: "<runtime>",
+  postRuntime: "</runtime>",
+  preTodoList: "<todoList>",
+  postTodoList: "</todoList>",
+  preWorkspaceManifest: "<workspaceManifest>",
+  postWorkspaceManifest: "</workspaceManifest>",
+  preExtras: "<extras>",
+  postExtras: "</extras>",
   end: "",
 };
 
-const SECTION_LABELS = [
-  "1. Global agents.md",
-  "2. Agent MD attachment",
-  "3. Skill MD attachments",
-  "4. Project agents.md",
-  "5. Runtime info",
-  "6. TODO List",
-  "7. Extras",
+const SECTIONS: Array<{
+  label: string;
+  preKey: keyof SystemPromptJoiners;
+  postKey: keyof SystemPromptJoiners;
+}> = [
+  { label: "1. Global agents.md", preKey: "preGlobal", postKey: "postGlobal" },
+  { label: "2. Agent MD attachment", preKey: "preAgent", postKey: "postAgent" },
+  { label: "3. Skill MD attachments", preKey: "preSkills", postKey: "postSkills" },
+  { label: "4. Project agents.md", preKey: "preProject", postKey: "postProject" },
+  { label: "5. Runtime info", preKey: "preRuntime", postKey: "postRuntime" },
+  { label: "6. TODO List", preKey: "preTodoList", postKey: "postTodoList" },
+  { label: "7. Workspace Manifest", preKey: "preWorkspaceManifest", postKey: "postWorkspaceManifest" },
+  { label: "8. Extras", preKey: "preExtras", postKey: "postExtras" },
 ];
-
-const JOINER_KEYS: (keyof SystemPromptJoiners)[] = [
-  "start",
-  "afterGlobal",
-  "afterAgentMd",
-  "afterSkillMds",
-  "afterProject",
-  "afterRuntime",
-  "afterTodoList",
-  "afterExtras",
-  "end",
-];
-
-const JOINER_LABELS: Record<string, string> = {
-  start: "Start prefix",
-  afterGlobal: "After Global",
-  afterAgentMd: "After Agent MD",
-  afterSkillMds: "After Skill MDs",
-  afterProject: "After Project",
-  afterRuntime: "After Runtime",
-  afterTodoList: "After TODO List",
-  afterExtras: "After Extras",
-  end: "End suffix",
-};
 
 export function SystemPromptPanel() {
   const { config, update } = useConfigStore();
@@ -63,8 +53,17 @@ export function SystemPromptPanel() {
     });
   };
 
+  const patchManifest = async (partial: Partial<WorkspaceManifestSettings>) => {
+    const current = useConfigStore.getState().config;
+    const currentManifest = current.workspaceManifest ?? { enabled: true };
+    await update({
+      ...current,
+      workspaceManifest: { ...currentManifest, ...partial },
+    });
+  };
+
   const openEdit = (key: keyof SystemPromptJoiners) => {
-    setEditValue(joiners[key]);
+    setEditValue(joiners[key] ?? "");
     setEditingKey(key);
   };
 
@@ -84,30 +83,30 @@ export function SystemPromptPanel() {
     update({ ...current, systemPromptJoiners: { ...DEFAULT_JOINERS } });
   };
 
-  const renderJoinerRow = (key: keyof SystemPromptJoiners) => (
-    <div key={key} className="flex items-start gap-2 py-1.5">
+  const renderField = (key: keyof SystemPromptJoiners, label: string) => (
+    <div key={key} className="flex items-start gap-2 py-1">
       <div className="flex-1 min-w-0">
-        <div className="text-xs text-zinc-500 mb-0.5">{JOINER_LABELS[key]}</div>
+        <div className="text-[10px] text-zinc-500 mb-0.5">{label}</div>
         <div className="text-xs font-mono text-zinc-300 bg-zinc-950 rounded px-2 py-1 truncate whitespace-pre-wrap break-all">
           {joiners[key] || <span className="text-zinc-600 italic">empty</span>}
         </div>
       </div>
-      <div className="flex items-center gap-1 pt-4 shrink-0">
+      <div className="flex items-center gap-1 pt-3 shrink-0">
         <button
           type="button"
           onClick={() => openEdit(key)}
           className="p-1 text-zinc-500 hover:text-zinc-200 rounded hover:bg-zinc-800"
-          title={`Edit ${JOINER_LABELS[key]}`}
+          title={`Edit ${label}`}
         >
-          <Edit3 size={14} />
+          <Edit3 size={12} />
         </button>
         <button
           type="button"
           onClick={() => resetOne(key)}
           className="p-1 text-zinc-500 hover:text-zinc-200 rounded hover:bg-zinc-800"
-          title={`Reset ${JOINER_LABELS[key]} to default`}
+          title={`Reset ${label} to default`}
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={12} />
         </button>
       </div>
     </div>
@@ -119,7 +118,7 @@ export function SystemPromptPanel() {
         <div className="min-w-0">
           <h2 className="text-sm font-medium text-zinc-100">System Prompt Assembly</h2>
           <p className="text-xs text-zinc-500 mt-1">
-            Separators between each section. Each present section is auto-wrapped with <code className="text-zinc-500">&lt;tag&gt;</code> / <code className="text-zinc-500">&lt;/tag&gt;</code>.
+            Each section is wrapped with a customizable prefix and postfix.
           </p>
         </div>
         <button
@@ -132,15 +131,18 @@ export function SystemPromptPanel() {
         </button>
       </div>
 
-      <div className="flex-1 space-y-0">
-        {renderJoinerRow("start")}
-
-        {SECTION_LABELS.map((label, i) => (
-          <div key={label}>
-            <div className="py-1.5 px-2 rounded my-2 bg-zinc-950/40 border border-zinc-800/50">
-              <span className="text-xs text-zinc-300">{label}</span>
-            </div>
-            {renderJoinerRow(JOINER_KEYS[i + 1])}
+        <div className="flex-1 space-y-2 overflow-y-auto">
+        {SECTIONS.map((section, i) => (
+          <div key={section.preKey} className="border border-zinc-800 rounded-lg p-3 space-y-1">
+            <div className="text-xs text-zinc-300 font-medium mb-2">{section.label}</div>
+            {renderField(section.preKey, "Prefix")}
+            {renderField(section.postKey, "Postfix")}
+            {section.preKey === "preWorkspaceManifest" && (
+              <WorkspaceManifestSettings
+                settings={config.workspaceManifest}
+                onChange={patchManifest}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -156,7 +158,7 @@ export function SystemPromptPanel() {
           >
             <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-zinc-800">
               <h2 className="text-sm font-medium text-zinc-200">
-                Edit {JOINER_LABELS[editingKey]}
+                Edit {editingKey}
               </h2>
               <button
                 type="button"
@@ -176,7 +178,7 @@ export function SystemPromptPanel() {
                 autoFocus
               />
               <p className="text-[10px] text-zinc-600 mt-1">
-                This text is inserted between sections as-is. Use <code className="text-zinc-500">\n</code> for newlines.
+                This text is applied as-is. Use <code className="text-zinc-500">\n</code> for newlines.
               </p>
             </div>
 
@@ -196,6 +198,119 @@ export function SystemPromptPanel() {
                 Save
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const DEFAULT_EXCLUDE_DIRS = "node_modules, .git, dist, build, .vsh, coverage, .turbo";
+const DEFAULT_EXCLUDE_EXTS = ".png, .jpg, .jpeg, .gif, .svg, .ico, .woff2, .woff, .eot, .ttf";
+
+const MANIFEST_DEFAULTS = {
+  enabled: true,
+  maxDepth: 3,
+  includeFiles: false,
+  excludeDirs: DEFAULT_EXCLUDE_DIRS.split(", "),
+  excludeExtensions: DEFAULT_EXCLUDE_EXTS.split(", "),
+};
+
+function WorkspaceManifestSettings({
+  settings,
+  onChange,
+}: {
+  settings?: WorkspaceManifestSettings;
+  onChange: (partial: Partial<WorkspaceManifestSettings>) => void;
+}) {
+  const enabled = settings?.enabled ?? true;
+  const [dirsText, setDirsText] = useState(settings?.excludeDirs?.join(", ") ?? DEFAULT_EXCLUDE_DIRS);
+  const [extsText, setExtsText] = useState(settings?.excludeExtensions?.join(", ") ?? DEFAULT_EXCLUDE_EXTS);
+
+  const commitDirs = () => {
+    const parsed = dirsText.split(",").map((s) => s.trim()).filter(Boolean);
+    onChange({ excludeDirs: parsed.length > 0 ? parsed : undefined });
+  };
+
+  const commitExts = () => {
+    const parsed = extsText.split(",").map((s) => s.trim()).filter(Boolean);
+    onChange({ excludeExtensions: parsed.length > 0 ? parsed : undefined });
+  };
+
+  const resetAll = () => {
+    onChange(MANIFEST_DEFAULTS);
+    setDirsText(DEFAULT_EXCLUDE_DIRS);
+    setExtsText(DEFAULT_EXCLUDE_EXTS);
+  };
+
+  return (
+    <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
+      <label className="flex items-start gap-3 cursor-pointer group">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onChange({ enabled: e.target.checked })}
+          className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+        />
+        <div>
+          <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+            Inject workspace manifest into system prompt
+          </div>
+          <div className="text-xs text-zinc-500 mt-0.5">
+            Adds a tree view of your workspace to the system prompt so the agent
+            understands the project structure.
+          </div>
+        </div>
+      </label>
+
+      {enabled && (
+        <div className="ml-7 space-y-2">
+          <button
+            type="button"
+            onClick={resetAll}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300"
+          >
+            Reset to defaults
+          </button>
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-zinc-500">Max depth</label>
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={settings?.maxDepth ?? 3}
+              onChange={(e) => onChange({ maxDepth: parseInt(e.target.value, 10) || 3 })}
+              className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+            />
+            <label className="flex items-center gap-1.5 ml-3">
+              <input
+                type="checkbox"
+                checked={settings?.includeFiles ?? false}
+                onChange={(e) => onChange({ includeFiles: e.target.checked })}
+                className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+              />
+              <span className="text-[11px] text-zinc-500">Include files in tree</span>
+            </label>
+          </div>
+          <div>
+            <label className="text-[11px] text-zinc-500 block mb-0.5">Excluded directories (comma-separated)</label>
+            <input
+              type="text"
+              value={dirsText}
+              onChange={(e) => setDirsText(e.target.value)}
+              onBlur={commitDirs}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-zinc-500 block mb-0.5">Excluded extensions (comma-separated)</label>
+            <input
+              type="text"
+              value={extsText}
+              onChange={(e) => setExtsText(e.target.value)}
+              onBlur={commitExts}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+            />
           </div>
         </div>
       )}

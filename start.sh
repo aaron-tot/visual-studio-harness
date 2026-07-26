@@ -38,7 +38,7 @@ elif [ "$MODE" = "prod" ]; then
     echo ""
   fi
 
-  echo "Building + running single-file prod binary (port 3002)..."
+  echo "Building + running single-file prod binary (port 4100)..."
   echo "Data: $PROD_DATA"
   "$BUN" run prod
 elif [ "$MODE" = "package" ]; then

@@ -535,43 +535,52 @@ export interface GraphExportRecord {
   filePath: string;
 }
 
-export function getGraphStatus() {
-  return fetchJson<GraphStatusResponse>(`${BASE}/workspace-graph/status`);
+export function getGraphStatus(workspaceRoot?: string) {
+  const q = workspaceRoot ? `?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : "";
+  return fetchJson<GraphStatusResponse>(`${BASE}/workspace-graph/status${q}`);
 }
 
-export function triggerGraphReindex() {
-  return fetchJson<{ ok: boolean }>(`${BASE}/workspace-graph/reindex`, { method: "POST" });
+export function triggerGraphReindex(workspaceRoot?: string) {
+  const q = workspaceRoot ? `?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : "";
+  return fetchJson<{ ok: boolean }>(`${BASE}/workspace-graph/reindex${q}`, { method: "POST" });
 }
 
-export function getGraphManifest(maxDepth?: number, includeFiles?: boolean) {
+export function getGraphManifest(maxDepth?: number, includeFiles?: boolean, workspaceRoot?: string) {
   const params = new URLSearchParams();
   if (maxDepth !== undefined) params.set("maxDepth", String(maxDepth));
   if (includeFiles !== undefined) params.set("includeFiles", String(includeFiles));
+  if (workspaceRoot) params.set("workspaceRoot", workspaceRoot);
   const qs = params.toString();
   return fetchJson<{ manifest: string }>(`${BASE}/workspace-graph/manifest${qs ? `?${qs}` : ""}`);
 }
 
-export function getGraphFiles(folderPath?: string) {
-  const q = folderPath ? `?folderPath=${encodeURIComponent(folderPath)}` : "";
-  return fetchJson<GraphFileRecord[]>(`${BASE}/workspace-graph/files${q}`);
+export function getGraphFiles(folderPath?: string, workspaceRoot?: string) {
+  const params = new URLSearchParams();
+  if (folderPath) params.set("folderPath", folderPath);
+  if (workspaceRoot) params.set("workspaceRoot", workspaceRoot);
+  const qs = params.toString();
+  return fetchJson<GraphFileRecord[]>(`${BASE}/workspace-graph/files${qs ? `?${qs}` : ""}`);
 }
 
-export function getGraphSymbols(name?: string, kind?: string) {
+export function getGraphSymbols(name?: string, kind?: string, workspaceRoot?: string) {
   const params = new URLSearchParams();
   if (name) params.set("name", name);
   if (kind) params.set("kind", kind);
+  if (workspaceRoot) params.set("workspaceRoot", workspaceRoot);
   const qs = params.toString();
   return fetchJson<GraphSymbolMatch[]>(`${BASE}/workspace-graph/symbols${qs ? `?${qs}` : ""}`);
 }
 
-export function getGraphImports(filePath: string) {
-  return fetchJson<GraphImportRecord[]>(
-    `${BASE}/workspace-graph/imports?filePath=${encodeURIComponent(filePath)}`
-  );
+export function getGraphImports(filePath: string, workspaceRoot?: string) {
+  const q = workspaceRoot
+    ? `?filePath=${encodeURIComponent(filePath)}&workspaceRoot=${encodeURIComponent(workspaceRoot)}`
+    : `?filePath=${encodeURIComponent(filePath)}`;
+  return fetchJson<GraphImportRecord[]>(`${BASE}/workspace-graph/imports${q}`);
 }
 
-export function getGraphExports(filePath: string) {
-  return fetchJson<GraphExportRecord[]>(
-    `${BASE}/workspace-graph/exports?filePath=${encodeURIComponent(filePath)}`
-  );
+export function getGraphExports(filePath: string, workspaceRoot?: string) {
+  const q = workspaceRoot
+    ? `?filePath=${encodeURIComponent(filePath)}&workspaceRoot=${encodeURIComponent(workspaceRoot)}`
+    : `?filePath=${encodeURIComponent(filePath)}`;
+  return fetchJson<GraphExportRecord[]>(`${BASE}/workspace-graph/exports${q}`);
 }

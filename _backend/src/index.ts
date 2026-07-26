@@ -25,7 +25,6 @@ import type { WorkspaceGraphService } from "./core/workspaceGraph/api/types";
 import { getMcpManager } from "./features/mcp";
 import { resolveDataDir, getMode, getPort } from "./paths";
 import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
-import { getWorkspaceRoot } from "./features/tools/sandbox";
 import { createHooksSystem, setHooksSystem } from "./features/hooks";
 import { ensureGlobal } from "./features/tools/perms/store";
 import { migrateToSqlite } from "./storage/migrate";
@@ -192,11 +191,12 @@ async function main() {
   registerWorkspaceGraphRoutes(app, getGraph);
 
   // Initialize workspace graph in background (non-blocking)
-  const workspaceRoot = getWorkspaceRoot();
+  // _backend/src -> _backend -> repoRoot
+  const workspaceRoot = resolve(import.meta.dir, "../..");
   createWorkspaceGraphService({ workspaceRoot, enableWatcher: MODE === "dev" })
     .then(async (graph) => {
       _graphService = graph;
-      await graph.startupIndex();
+      await graph.start();
       console.log(`[workspace-graph] ready (${workspaceRoot})`);
     })
     .catch((err) => {

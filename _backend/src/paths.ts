@@ -69,5 +69,5 @@ export function getMode(): string {
 }
 
 export function getPort(): number {
-  return parseInt(process.env.BACKEND_PORT || (MODE === "prod" ? "3002" : "3001"), 10);
+  return parseInt(process.env.BACKEND_PORT || (MODE === "prod" ? "4100" : "3101"), 10);
 }

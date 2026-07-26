@@ -1,4 +1,5 @@
 import type { AgentSettings, SystemPromptJoiners, WorkspaceManifestSettings } from "../../../_shared/types";
+import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
 
 export const AGENTS_MD_NAMES = ["agents.md", "AGENTS.md"] as const;
 
@@ -10,6 +11,7 @@ export const DEFAULT_SYSTEM_PROMPT_JOINERS: SystemPromptJoiners = {
   afterProject: "\n\n",
   afterRuntime: "\n\n",
   afterTodoList: "\n\n",
+  afterWorkspaceManifest: "\n\n",
   afterExtras: "\n\n",
   end: "",
 };
@@ -25,4 +27,5 @@ export interface BuildSystemBlockInput {
   noSystemPrompt?: boolean;
   systemPromptJoiners?: SystemPromptJoiners;
   workspaceManifest?: WorkspaceManifestSettings;
+  graphService?: WorkspaceGraphService;
 }

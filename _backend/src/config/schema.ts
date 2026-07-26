@@ -91,6 +91,8 @@ export const WorkspaceManifestSettingsSchema = z.object({
   excludeExtensions: z.array(z.string()).optional(),
   includeGitignore: z.boolean().optional(),
   agents: z.array(z.string()).optional(),
+  prefix: z.string().optional(),
+  postfix: z.string().optional(),
 });
 
 export const SnippetConfigSchema = z.object({

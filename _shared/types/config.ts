@@ -70,6 +70,7 @@ export interface SystemPromptJoiners {
   afterProject: string;
   afterRuntime: string;
   afterTodoList: string;
+  afterWorkspaceManifest: string;
   afterExtras: string;
   end: string;
 }
@@ -101,6 +102,8 @@ export interface WorkspaceManifestSettings {
   excludeExtensions?: string[];
   includeGitignore?: boolean;
   agents?: string[];
+  prefix?: string;
+  postfix?: string;
 }
 
 export interface ConfigFile {

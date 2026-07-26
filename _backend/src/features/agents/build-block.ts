@@ -5,8 +5,9 @@ import { formatRuntimeInfo } from "./format";
 import { formatTodoList } from "./todo-list-format";
 import { DEFAULT_SYSTEM_PROMPT_JOINERS, type BuildSystemBlockInput } from "./constants";
 import { ensureGlobalAgentsFile } from "./system-prompt";
+import { buildWorkspaceManifestContext } from "../../core/workspaceGraph/prompt/manifest-context";
 
-const SLOT_TAGS = ["global", "agent", "skills", "project", "runtime", "todoList", "extras"] as const;
+const SLOT_TAGS = ["global", "agent", "skills", "project", "runtime", "todoList", "workspaceManifest", "extras"] as const;
 
 function wrapTag(content: string, tag: string): string {
   return `<${tag}>\n${content}\n</${tag}>`;
@@ -41,9 +42,22 @@ export async function buildSystemBlock(input: BuildSystemBlockInput): Promise<st
   const todoListText = await formatTodoList(input.sessionId, input.dataDir);
   if (todoListText) presentBlocks.push({ content: wrapTag(todoListText, SLOT_TAGS[5]), after: joiners.afterTodoList });
 
+  if (input.workspaceManifest && input.workspaceManifest.enabled && input.graphService) {
+    const manifestText = await buildWorkspaceManifestContext({
+      config: input.workspaceManifest,
+      graph: input.graphService,
+      agentId: input.agentSettings?.name,
+    });
+    if (manifestText) {
+      const prefix = input.workspaceManifest.prefix ?? "## Workspace Manifest\n\n";
+      const postfix = input.workspaceManifest.postfix ?? "";
+      presentBlocks.push({ content: wrapTag(prefix + manifestText + postfix, SLOT_TAGS[6]), after: joiners.afterWorkspaceManifest });
+    }
+  }
+
   for (const extra of input.extras ?? []) {
     const t = extra.trim();
-    if (t) presentBlocks.push({ content: wrapTag(t, SLOT_TAGS[6]), after: joiners.afterExtras });
+    if (t) presentBlocks.push({ content: wrapTag(t, SLOT_TAGS[7]), after: joiners.afterExtras });
   }
 
   let result = joiners.start;

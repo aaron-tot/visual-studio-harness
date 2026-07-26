@@ -17,9 +17,10 @@ export function createQueryApi(
   return {
     async findSymbol(name: string, kind?: string): Promise<SymbolMatch[]> {
       const conditions: any[] = [];
-      conditions.push(eq(schema.symbols.name, name));
+      conditions.push(like(schema.symbols.name, `%${name}%`));
       if (kind) {
-        conditions.push(eq(schema.symbols.kind, kind as any));
+        const dbKind = kind === "type" ? "typeAlias" : kind;
+        conditions.push(eq(schema.symbols.kind, dbKind as any));
       }
 
       const rows = await db

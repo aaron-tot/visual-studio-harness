@@ -4,7 +4,7 @@ import { openWorkspaceGraphDb } from "../storage/db";
 import { createWorkspaceGraphRepository, type WorkspaceGraphRepository } from "../storage/repository";
 import { getParserProject, resetParserProject } from "../parser/project";
 import { applyFileUpdate } from "./apply-file-update";
-import type { ScanInput } from "../types";
+import type { ScanInput, FolderRow } from "../types";
 
 export interface ReindexInput {
   workspaceRoot: string;
@@ -63,6 +63,23 @@ export async function reindexWorkspace(input: ReindexInput): Promise<ReindexRepo
   for (const file of scanResult.deleted) {
     await repo.deleteFileByPath(file.path);
     reindexedPaths.push(file.path + " (deleted)");
+  }
+
+  // Derive folder hierarchy from all indexed file paths
+  const allFiles = await repo.listIndexedFiles();
+  const folderSet = new Set<string>();
+  for (const file of allFiles) {
+    const parts = file.path.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      folderSet.add(parts.slice(0, i).join("/"));
+    }
+  }
+  if (folderSet.size > 0) {
+    const folderRows: FolderRow[] = Array.from(folderSet).map((path) => ({
+      path,
+      parentId: null,
+    }));
+    await repo.upsertFolders(folderRows);
   }
 
   return {

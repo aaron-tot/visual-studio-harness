@@ -188,18 +188,21 @@ async function main() {
   // Workspace graph: create service lazily, register REST routes
   registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphService());
 
-  // Initialize workspace graph in background (non-blocking)
-  // _backend/src -> _backend -> repoRoot
-  const workspaceRoot = resolve(import.meta.dir, "../..");
-  createWorkspaceGraphService({ workspaceRoot, enableWatcher: MODE === "dev" })
-    .then(async (graph) => {
-      setWorkspaceGraphService(graph);
-      await graph.start();
-      console.log(`[workspace-graph] ready (${workspaceRoot})`);
-    })
-    .catch((err) => {
-      console.error("[workspace-graph] failed to initialize:", err);
-    });
+  // Initialize workspace graph in background (non-blocking) — gated by workspaceGraph config
+  if (currentConfig.workspaceGraph !== false) {
+    const workspaceRoot = resolve(import.meta.dir, "../..");
+    createWorkspaceGraphService({ workspaceRoot, enableWatcher: MODE === "dev" })
+      .then(async (graph) => {
+        setWorkspaceGraphService(graph);
+        await graph.start();
+        console.log(`[workspace-graph] ready (${workspaceRoot})`);
+      })
+      .catch((err) => {
+        console.error("[workspace-graph] failed to initialize:", err);
+      });
+  } else {
+    console.log("[workspace-graph] disabled by config (workspaceGraph: false)");
+  }
 
   registerWsHandler(app, () => DATA_DIR, () => currentConfig);
 

@@ -215,7 +215,7 @@ export async function runTurn(
           sessionId, turnId: traceTurnId, workspaceRoot, dataDir,
           abortSignal: abortSignal ?? new AbortController().signal,
           callId, hookCtx,
-          graphService: getWorkspaceGraphService(),
+          graphService: config.workspaceGraph !== false ? getWorkspaceGraphService() : undefined,
           askPermission: async (toolName, args) => {
             events.onToolUpdate?.({ toolCallId: callId, status: "awaiting_permission" });
             if (events.askPermission) return events.askPermission(toolName, args, callId);
@@ -255,8 +255,8 @@ export async function runTurn(
       dataDir, workspaceRoot, mode: getMode(), sessionId,
       agentSettings: runtime.settings, noSystemPrompt,
       systemPromptJoiners: config.systemPromptJoiners,
-      workspaceManifest: config.workspaceManifest,
-      graphService: getWorkspaceGraphService() ?? undefined,
+      workspaceManifest: config.workspaceGraph !== false ? config.workspaceManifest : undefined,
+      graphService: config.workspaceGraph !== false ? (getWorkspaceGraphService() ?? undefined) : undefined,
     });
 
     // Build model messages from trace context turns

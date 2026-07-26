@@ -3,7 +3,6 @@ import type { WorkspaceGraphService } from "./api/types";
 
 export interface ManagedGraph {
   service: WorkspaceGraphService;
-  started: boolean;
   watcherEnabled: boolean;
 }
 
@@ -27,7 +26,7 @@ export class WorkspaceGraphManager {
     });
     const watcherEnabled = opts?.enableWatcher ?? false;
     await service.start();
-    this._graphs.set(key, { service, started: true, watcherEnabled });
+    this._graphs.set(key, { service, watcherEnabled });
   }
 
   async initializeFromSessions(
@@ -47,8 +46,10 @@ export class WorkspaceGraphManager {
   async stop(workspaceRoot: string): Promise<void> {
     const key = resolveWorkspaceKey(workspaceRoot);
     const entry = this._graphs.get(key);
-    if (entry) {
+    if (!entry) return;
+    try {
       await entry.service.stop();
+    } finally {
       this._graphs.delete(key);
     }
   }

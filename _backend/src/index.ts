@@ -19,9 +19,13 @@ import { registerSkillsRoutes } from "./rest/skills";
 import { registerAgentsRoutes } from "./rest/agents";
 import { registerPlansRoutes } from "./rest/plans";
 import { registerMcpRoutes } from "./rest/mcp";
+import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
+import { createWorkspaceGraphService } from "./core/workspaceGraph";
+import type { WorkspaceGraphService } from "./core/workspaceGraph/api/types";
 import { getMcpManager } from "./features/mcp";
 import { resolveDataDir, getMode, getPort } from "./paths";
 import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
+import { getWorkspaceRoot } from "./features/tools/sandbox";
 import { createHooksSystem, setHooksSystem } from "./features/hooks";
 import { ensureGlobal } from "./features/tools/perms/store";
 import { migrateToSqlite } from "./storage/migrate";
@@ -181,11 +185,29 @@ async function main() {
   registerAgentsRoutes(app, DATA_DIR);
   registerPlansRoutes(app, DATA_DIR);
   registerMcpRoutes(app);
+
+  // Workspace graph: create service lazily, register REST routes
+  let _graphService: WorkspaceGraphService | null = null;
+  const getGraph = () => _graphService;
+  registerWorkspaceGraphRoutes(app, getGraph);
+
+  // Initialize workspace graph in background (non-blocking)
+  const workspaceRoot = getWorkspaceRoot();
+  createWorkspaceGraphService({ workspaceRoot, enableWatcher: MODE === "dev" })
+    .then(async (graph) => {
+      _graphService = graph;
+      await graph.startupIndex();
+      console.log(`[workspace-graph] ready (${workspaceRoot})`);
+    })
+    .catch((err) => {
+      console.error("[workspace-graph] failed to initialize:", err);
+    });
+
   registerWsHandler(app, () => DATA_DIR, () => currentConfig);
 
   app.get("/api/health", async () => ({ status: "ok", mode: MODE, dataDir: DATA_DIR }));
 
-  // Prod binary serves embedded frontend; dev uses Vite on :5173
+  // Prod binary serves embedded frontend; dev uses Vite on :3100
   if (MODE === "prod" || hasEmbeddedFrontend()) {
     if (hasEmbeddedFrontend()) {
       registerEmbeddedFrontend(app);

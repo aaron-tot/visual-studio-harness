@@ -1,9 +1,5 @@
 import { z } from "zod";
 import type { ToolDef } from "../types";
-import { getWorkspaceGraphDbPath } from "../../../core/workspaceGraph/config";
-import { openWorkspaceGraphDb } from "../../../core/workspaceGraph/storage/db";
-import { createWorkspaceGraphRepository } from "../../../core/workspaceGraph/storage/repository";
-import { createQueryApi } from "../../../core/workspaceGraph/api/query";
 
 export const graphImportsTool: ToolDef = {
   name: "graph_imports",
@@ -14,11 +10,10 @@ export const graphImportsTool: ToolDef = {
     file_path: z.string().describe("File path relative to workspace root"),
   }),
   execute: async (args, ctx) => {
-    const dbPath = getWorkspaceGraphDbPath(ctx.workspaceRoot);
-    const db = openWorkspaceGraphDb(dbPath);
-    const repo = createWorkspaceGraphRepository(db);
-    const api = createQueryApi(db, repo);
-    const imports = await api.listImports(args.file_path);
+    if (!ctx.graphService) {
+      return { title: "graph_imports", output: "Graph service not available", isError: true };
+    }
+    const imports = await ctx.graphService.query.listImports(args.file_path);
     if (imports.length === 0) {
       return { title: "graph_imports", output: `No imports in ${args.file_path}` };
     }

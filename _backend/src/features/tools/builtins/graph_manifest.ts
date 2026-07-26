@@ -1,8 +1,5 @@
 import { z } from "zod";
 import type { ToolDef } from "../types";
-import { getWorkspaceGraphDbPath } from "../../../core/workspaceGraph/config";
-import { openWorkspaceGraphDb } from "../../../core/workspaceGraph/storage/db";
-import { createManifestApi } from "../../../core/workspaceGraph/api/manifest";
 
 export const graphManifestTool: ToolDef = {
   name: "graph_manifest",
@@ -23,10 +20,10 @@ export const graphManifestTool: ToolDef = {
       .describe("Include files in output (default: true)"),
   }),
   execute: async (args, ctx) => {
-    const dbPath = getWorkspaceGraphDbPath(ctx.workspaceRoot);
-    const db = openWorkspaceGraphDb(dbPath);
-    const api = createManifestApi(db);
-    const manifest = await api.workspaceManifest({
+    if (!ctx.graphService) {
+      return { title: "graph_manifest", output: "Graph service not available", isError: true };
+    }
+    const manifest = await ctx.graphService.manifest.workspaceManifest({
       maxDepth: args.max_depth,
       includeFiles: args.include_files,
     });

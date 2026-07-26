@@ -162,6 +162,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       _textSeq: 0,
       _reasonIdx: 0,
       _pendingAgentName: config.agentName || "Default (no system prompt)",
+      _pendingModelName: config.modelName,
+      _pendingProviderName: config.providerName,
     });
     console.log("STORE_SEND_MESSAGE streaming=true", { sessionId, contentLen: content?.length, awaitingSessionState });
     chatDebug("store", "sendMessage -> streaming=true", { sessionId, agentName: config.agentName });
@@ -273,10 +275,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const last = msgs[msgs.length - 1];
       const parts = state.streamingParts.length > 0 ? sortParts(state.streamingParts) : undefined;
       const content = parts ? textContentFromParts(parts) : "";
+      const effectiveAgentName = agentName || state._pendingAgentName || last?.agentName;
+      const effectiveModelName = modelName || state._pendingModelName || last?.modelName;
+      const effectiveProviderName = providerName || state._pendingProviderName || last?.providerName;
       if (last?.role === "assistant") {
-        msgs[msgs.length - 1] = { ...last, content: content || last.content, parts: parts || last.parts, modelName: modelName || last.modelName, providerName: providerName || last.providerName, agentName: agentName || last.agentName, durationMs, turnId, success: true as any };
+        msgs[msgs.length - 1] = { ...last, content: content || last.content, parts: parts || last.parts, modelName: effectiveModelName, providerName: effectiveProviderName, agentName: effectiveAgentName, durationMs, turnId, success: true as any };
       } else {
-        msgs.push({ role: "assistant", content, timestamp: new Date().toISOString(), parts, modelName, providerName, agentName, durationMs, turnId, success: true as any });
+        msgs.push({ role: "assistant", content, timestamp: new Date().toISOString(), parts, modelName: effectiveModelName, providerName: effectiveProviderName, agentName: effectiveAgentName, durationMs, turnId, success: true as any });
       }
       if (turnId != null) {
         const userIdx = msgs.length - 2;
@@ -289,7 +294,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         updatedMessages = [...msgs, { role: "user" as const, content: hasContinue.content, timestamp: new Date().toISOString() }];
         nextAgentName = hasContinue.agentName;
       }
-      return { messages: updatedMessages, streaming: !!hasContinue, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingDropdownAgent: undefined, _pendingContinueMessage: null };
+      return { messages: updatedMessages, streaming: !!hasContinue, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null };
     });
   },
 

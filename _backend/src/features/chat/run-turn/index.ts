@@ -494,11 +494,12 @@ export async function runTurn(
       assistantMessage.modelName = model.displayName;
       assistantMessage.providerName = provider.displayName;
       assistantMessage.durationMs = responseDurationMs;
-      assistantMessage.agentName = agentName || "Default (no system prompt)";
+      assistantMessage.agentName = agentName || undefined;
     }
 
     return {
       sessionId, created, meta, workspaceRoot, userMessage, assistantMessage,
+      agentName: agentName || undefined,
       modelName: model.displayName, providerName: provider.displayName,
       durationMs: responseDurationMs, turnId: turnNumber, success: true,
     };

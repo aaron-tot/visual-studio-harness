@@ -14,6 +14,10 @@ export class WorkspaceGraphManager {
     return this._graphs.get(normalized)?.service ?? null;
   }
 
+  getFirstWorkspace(): WorkspaceGraphService | null {
+    return this._graphs.values().next().value?.service ?? null;
+  }
+
   async initializeForWorkspace(
     workspaceRoot: string,
     opts?: { enableWatcher?: boolean }

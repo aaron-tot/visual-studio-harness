@@ -9,8 +9,8 @@ export function registerWorkspaceGraphRoutes(
     const manager = getManager();
     if (!manager) return null;
     const workspaceRoot = request.query.workspaceRoot;
-    if (!workspaceRoot) return null;
-    return manager.get(workspaceRoot);
+    if (workspaceRoot) return manager.get(workspaceRoot);
+    return manager.getFirstWorkspace();
   }
 
   app.get("/api/workspace-graph/symbols", async (request) => {

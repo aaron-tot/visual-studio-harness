@@ -21,7 +21,7 @@ import { registerPlansRoutes } from "./rest/plans";
 import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
 import { createWorkspaceGraphService } from "./core/workspaceGraph";
-import { setWorkspaceGraphService } from "./core/workspaceGraph/service-singleton";
+import { setWorkspaceGraphService, getWorkspaceGraphService } from "./core/workspaceGraph/service-singleton";
 import { getMcpManager } from "./features/mcp";
 import { resolveDataDir, getMode, getPort } from "./paths";
 import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";

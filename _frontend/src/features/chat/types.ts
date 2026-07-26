@@ -10,6 +10,8 @@ export interface ChatState {
   _textSeq: number;
   _reasonIdx: number;
   _pendingAgentName?: string;
+  _pendingModelName?: string;
+  _pendingProviderName?: string;
   _pendingDropdownAgent?: string;
   _pendingContinueMessage?: { content: string; agentName: string } | null;
   sessionId: string | null;

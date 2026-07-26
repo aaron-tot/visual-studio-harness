@@ -25,7 +25,7 @@ const DATA_DIR = process.env.DATA_DIR
 
 console.log(`Starting ${BINARY}`);
 console.log(`Data dir: ${DATA_DIR}`);
-console.log("Open http://localhost:3002");
+console.log("Open http://localhost:4100");
 console.log("");
 
 const proc = Bun.spawn([BINARY], {
@@ -38,7 +38,7 @@ const proc = Bun.spawn([BINARY], {
     MODE: "prod",
     // Force absolute data dir so globalPerms.json is never resolved under /$bunfs
     DATA_DIR,
-    BACKEND_PORT: process.env.BACKEND_PORT || "3002",
+    BACKEND_PORT: process.env.BACKEND_PORT || "4100",
     "visual-studio-harness_IN_TERMINAL": "1",
   },
 });

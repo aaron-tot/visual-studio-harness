@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileText, Edit3, Plus } from "lucide-react";
+import { FileText, Edit3, Plus, AlertTriangle } from "lucide-react";
 import type {
   AgentSettings,
   SkillMdConfig,
@@ -44,6 +44,23 @@ export function AgentRuntimeEditor({
   const [agentTaggedMds, setAgentTaggedMds] = useState<{ path: string; fullPath: string }[]>([]);
   const [skillTaggedMds, setSkillTaggedMds] = useState<{ path: string; fullPath: string }[]>([]);
   const [editingMd, setEditingMd] = useState<{ path: string; tag: string; content: string; source?: string } | null>(null);
+  const [fileErrors, setFileErrors] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const paths: string[] = [];
+    if (value.agentMd?.path) paths.push(value.agentMd.path);
+    for (const s of value.skillMds ?? []) {
+      if (s.mode === "custom" && s.path) paths.push(s.path);
+    }
+    const errors = new Set<string>();
+    Promise.all(paths.map(async (p) => {
+      try {
+        await readMd(sessionId, p);
+      } catch {
+        errors.add(p);
+      }
+    })).then(() => setFileErrors(errors));
+  }, [value.agentMd, value.skillMds, sessionId]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -366,7 +383,8 @@ export function AgentRuntimeEditor({
         {/* Attached agent MD pill */}
         {value.agentMd && (
           <div className="flex flex-wrap gap-1">
-            <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">
+            <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${fileErrors.has(value.agentMd.path ?? "") ? "bg-red-900/50 text-red-300 ring-1 ring-red-500/50" : "bg-zinc-800 text-zinc-300"}`} title={fileErrors.has(value.agentMd.path ?? "") ? `File not found at: ${value.agentMd.path}` : undefined}>
+              {fileErrors.has(value.agentMd.path ?? "") && <AlertTriangle className="h-3 w-3 shrink-0 text-red-400" />}
               {value.agentMd.path ?? "Inline"}
               {value.agentMd.path && (
                 <button
@@ -530,11 +548,14 @@ export function AgentRuntimeEditor({
           <div className="flex flex-wrap gap-1">
             {value.skillMds.map((skill, i) => {
               const skillPath = skill.mode === "custom" ? skill.path : undefined;
+              const hasError = skillPath ? fileErrors.has(skillPath) : false;
               return (
                 <span
                   key={i}
-                  className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300"
+                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${hasError ? "bg-red-900/50 text-red-300 ring-1 ring-red-500/50" : "bg-zinc-800 text-zinc-300"}`}
+                  title={hasError ? `File not found at: ${skillPath}` : undefined}
                 >
+                  {hasError && <AlertTriangle className="h-3 w-3 shrink-0 text-red-400" />}
                   {skill.mode === "existing" ? skill.name ?? "Unnamed" : skill.path ?? "Custom"}
                   {skillPath && (
                     <button

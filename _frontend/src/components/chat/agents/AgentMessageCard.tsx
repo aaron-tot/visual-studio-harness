@@ -98,6 +98,7 @@ export function AgentMessageCard({
 
         {/* Agent name */}
         <span
+          data-testid="agent-header-name"
           className="text-xs font-medium truncate"
           style={{ color: colors.text }}
         >

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { TurnDetail, StepSummary } from "../../../_shared/types/trace";
 import { getTurn, getTurnRaw } from "../../lib/api";
+import { ToolCacheGroups } from "./ToolCacheGroups";
 
 interface TurnInspectorModalProps {
   sessionId: string;

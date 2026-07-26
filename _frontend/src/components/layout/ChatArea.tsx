@@ -51,14 +51,8 @@ export function ChatArea({ onOpenSettings }: ChatAreaProps) {
     lastSyncedAgent.current = metaAgent;
     if (metaAgent) {
       setSelectedAgent({ id: metaAgent, name: metaAgent });
-    } else if (!sessionId) {
-      if (config.defaultAgent && config.agents?.[config.defaultAgent]) {
-        setSelectedAgent({ id: config.defaultAgent, name: config.defaultAgent });
-      } else {
-        setSelectedAgent(null);
-      }
     }
-  }, [sessionMeta?.agentName, sessionId, setSelectedAgent, config.defaultAgent, config.agents]);
+  }, [sessionMeta?.agentName, setSelectedAgent]);
 
   return (
     <main className="flex-1 flex flex-col h-full relative min-w-0">

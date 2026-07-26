@@ -193,24 +193,25 @@ async function main() {
     const manager = new WorkspaceGraphManager();
     setWorkspaceGraphManager(manager);
 
-    // Discover workspaces from non-archived sessions
-    const sessions = listSessions(DATA_DIR, { includeSubagents: false, includeArchived: false });
-    const workspaceRoots = sessions
-      .map((s) => s.workspaceRoot)
-      .filter((r): r is string => !!r?.trim());
+    // Discover workspaces from non-archived sessions (non-blocking)
+    (async () => {
+      try {
+        const sessions = await listSessions(DATA_DIR, { includeSubagents: false, includeArchived: false });
+        const workspaceRoots = sessions
+          .map((s) => s.workspaceRoot)
+          .filter((r): r is string => !!r?.trim());
 
-    if (workspaceRoots.length > 0) {
-      const unique = [...new Set(workspaceRoots)];
-      manager.initializeFromSessions(unique, { enableWatcher: true })
-        .then(() => {
+        if (workspaceRoots.length > 0) {
+          const unique = [...new Set(workspaceRoots)];
+          await manager.initializeFromSessions(unique, { enableWatcher: true });
           console.log(`[workspace-graph] initialized for ${unique.length} unique workspace(s) from ${workspaceRoots.length} session(s)`);
-        })
-        .catch((err) => {
-          console.error("[workspace-graph] background init error:", err);
-        });
-    } else {
-      console.log("[workspace-graph] no sessions with workspaceRoot found — waiting for lazy init");
-    }
+        } else {
+          console.log("[workspace-graph] no sessions with workspaceRoot found — waiting for lazy init");
+        }
+      } catch (err) {
+        console.error("[workspace-graph] background init error:", err);
+      }
+    })();
   } else {
     console.log("[workspace-graph] disabled by config (workspaceGraph: false)");
   }

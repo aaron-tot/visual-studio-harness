@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getGraphStatus, triggerGraphReindex } from "../../../../lib/api";
 import type { GraphStatusResponse } from "../../../../lib/api";
-import { useChatStore } from "../../../../stores/chat";
 import { EmptyState, PanelButton } from "../ui";
 import { ViewToggle, RawPanel } from "./view-toggle";
 import type { ViewMode } from "./view-toggle";
@@ -45,11 +44,10 @@ export function StatusView() {
   const [error, setError] = useState<string | null>(null);
   const [reindexing, setReindexing] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("pretty");
-  const workspaceRoot = useChatStore((s) => s.workspaceRoot);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const s = await getGraphStatus(workspaceRoot || undefined);
+      const s = await getGraphStatus();
       setStatus(s);
       setError(null);
     } catch (e) {
@@ -57,7 +55,7 @@ export function StatusView() {
     } finally {
       setLoading(false);
     }
-  }, [workspaceRoot]);
+  }, []);
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
@@ -70,7 +68,7 @@ export function StatusView() {
   const handleReindex = async () => {
     setReindexing(true);
     try {
-      await triggerGraphReindex(workspaceRoot || undefined);
+      await triggerGraphReindex();
       await fetchStatus();
     } finally {
       setReindexing(false);

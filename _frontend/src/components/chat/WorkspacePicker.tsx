@@ -78,7 +78,7 @@ export function WorkspacePicker({ menuPlacement = "up", className = "" }: Worksp
         title={workspaceRoot}
       >
         <FolderOpen size={12} className="shrink-0" />
-        <span className="truncate font-mono">{workspaceRoot ? short(workspaceRoot) : "—"}</span>
+        <span className="truncate font-mono" data-testid="workspace-path">{workspaceRoot ? short(workspaceRoot) : "—"}</span>
       </div>
     );
   }

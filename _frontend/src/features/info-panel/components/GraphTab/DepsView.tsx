@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { getGraphFiles, getGraphImports, getGraphExports } from "../../../../lib/api";
 import type { GraphFileRecord, GraphImportRecord, GraphExportRecord } from "../../../../lib/api";
-import { useChatStore } from "../../../../stores/chat";
 import { EmptyState, PanelInput } from "../ui";
 import { ViewToggle, RawPanel } from "./view-toggle";
 import type { ViewMode } from "./view-toggle";
@@ -35,11 +34,10 @@ export function DepsView() {
   const [exports, setExports] = useState<GraphExportRecord[]>([]);
   const [loadingDeps, setLoadingDeps] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("pretty");
-  const workspaceRoot = useChatStore((s) => s.workspaceRoot);
 
   useEffect(() => {
-    getGraphFiles(undefined, workspaceRoot || undefined).then(setFiles).catch(() => {});
-  }, [workspaceRoot]);
+    getGraphFiles().then(setFiles).catch(() => {});
+  }, []);
 
   const filtered = useMemo(() => {
     if (!search) return files.slice(0, 50);
@@ -50,7 +48,7 @@ export function DepsView() {
   useEffect(() => {
     if (!selectedFile) { setImports([]); setExports([]); return; }
     setLoadingDeps(true);
-    Promise.all([getGraphImports(selectedFile, workspaceRoot || undefined), getGraphExports(selectedFile, workspaceRoot || undefined)])
+    Promise.all([getGraphImports(selectedFile), getGraphExports(selectedFile)])
       .then(([imp, exp]) => { setImports(imp); setExports(exp); })
       .finally(() => setLoadingDeps(false));
   }, [selectedFile]);

@@ -56,7 +56,7 @@ function CopyButtonSimple({ text }: { text: string }) {
       className="relative group inline-flex items-center gap-1.5 text-[10px] text-zinc-600 font-mono cursor-pointer"
       onClick={doCopy}
     >
-      <span>{text}</span>
+      <span data-testid="workspace-path">{text}</span>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); doCopy(); }}

@@ -249,45 +249,54 @@ const TEST_CONFIG = {
 };
 
 test("multi-session flick", async ({ page, settings, chat }) => {
-  // Hard cap only; real fail path is two consecutive checks with no char growth.
   test.setTimeout(5 * 60 * 1000);
   await page.goto("/");
 
-  // GROK_EDIT: same workspace for expected + both sessions (mirrors "mixed parts v2")
-  const seedPath = timestampDir();
-  const { loop, workspaceRoot } = await setupSession(page, settings, {
+  const seedPathA = timestampDir();
+  const { loop, workspaceRoot: workspaceRootA } = await setupSession(page, settings, {
     agent: TEST_CONFIG.agent,
     model: TEST_CONFIG.model,
     modelSpeed: 60,
     thinking: "medium",
     useCustomWorkspace: true,
-    seedWorkspacePath: seedPath,
+    seedWorkspacePath: seedPathA,
     archiveSessions: true,
   });
 
-  const wsSnapshot = workspaceRoot + ".snap";
-  execSync(`cp -r "${workspaceRoot}" "${wsSnapshot}"`, { stdio: "pipe" });
-  const expected = getExpectedText("toolsV2", workspaceRoot).replace("b1 ", "\nb1 ");
-  execSync(`rm -rf "${workspaceRoot}" && mv "${wsSnapshot}" "${workspaceRoot}"`, { stdio: "pipe" });
-  console.log("Workspace + expected bound to: " + workspaceRoot);
+  const wsSnapshotA = workspaceRootA + ".snap";
+  execSync(`cp -r "${workspaceRootA}" "${wsSnapshotA}"`, { stdio: "pipe" });
+  const expectedA = getExpectedText("toolsV2", workspaceRootA).replace("b1 ", "\nb1 ");
+  execSync(`rm -rf "${workspaceRootA}" && mv "${wsSnapshotA}" "${workspaceRootA}"`, { stdio: "pipe" });
+  console.log("[ses1] workspace=" + workspaceRootA);
 
   await sendInitialMessage(page, chat, "1");
   await page.waitForTimeout(3000);
 
-  // Click "New Chat" in sidebar header
-  const newBtn = page.locator("[data-testid='new-chat'], button:has-text('New Chat'), a:has-text('New Chat'), [aria-label='New chat']").first();
-  if (await newBtn.isVisible().catch(() => false)) {
-    await newBtn.click();
-    await page.waitForTimeout(1500);
-    console.log("New session created");
-  } else {
-    console.log("No New Chat button — trying page header click");
-    await page.locator("header, nav, [data-testid='header']").first().click();
-    await page.waitForTimeout(500);
-  }
+  // Create workspace B as a copy of workspace A, then switch to it
+  const workspaceRootB = workspaceRootA + "_wsB";
+  execSync(`cp -r "${workspaceRootA}" "${workspaceRootB}"`, { stdio: "pipe" });
+  const expectedB = getExpectedText("toolsV2", workspaceRootB).replace("b1 ", "\nb1 ");
+  console.log("[ses2] workspace=" + workspaceRootB);
+
+  // Change workspace via picker before creating session 2
+  await page.getByText("Browse folders").first().click();
+  await page.waitForTimeout(300);
+  await page.locator("input[placeholder='/path/to/folder']").fill(workspaceRootB);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(1000);
+  await page.getByText("Use this folder").first().click();
+  await page.waitForTimeout(500);
 
   await sendInitialMessage(page, chat, "2");
   await page.waitForTimeout(3000);
+
+  // Map session index to its expected text and workspace path
+  const sessionInfo = [
+    { label: "ses1", expected: expectedA, workspacePath: workspaceRootA },
+    { label: "ses2", expected: expectedB, workspacePath: workspaceRootB },
+  ];
+  // Pick an initial expected text for the progressive match helper
+  const expected = expectedA;
 
   let expectedBefore = "";
 
@@ -301,7 +310,9 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     label: string,
     locator: any,
     best: { v: number },
-    prev: { v: number }
+    prev: { v: number },
+    expected: string,
+    expectedWorkspace: string,
   ): Promise<boolean> {
     // Click the title area (left), not the row center — archive/info sit on
     // the right and used to intercept hover-clicks in headed mode.
@@ -316,6 +327,12 @@ test("multi-session flick", async ({ page, settings, chat }) => {
       timeout: 15000,
     });
     await page.waitForTimeout(300);
+
+    // Verify the workspace path display matches this session
+    const wpText = await page.locator("[data-testid='workspace-path']").first().textContent().catch(() => null);
+    if (wpText && !wpText.includes(expectedWorkspace) && !expectedWorkspace.includes(wpText)) {
+      throw new Error(`${label}: expected workspace path containing ${JSON.stringify(expectedWorkspace)}, got ${JSON.stringify(wpText)}`);
+    }
 
     const { before } = await page.evaluate((exp: string) => {
       const msg = document.querySelector("[data-assistant-msg]");
@@ -436,7 +453,7 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     if (!done1) {
       const s1 = page.locator("[data-testid='session-item']").first();
       if (await s1.isVisible().catch(() => false)) {
-        done1 = await checkSession("ses1", s1, best1, prev1);
+        done1 = await checkSession("ses1", s1, best1, prev1, sessionInfo[0].expected, sessionInfo[0].workspacePath);
       } else {
         console.log(`Round ${round}: ses1 not visible`);
       }
@@ -447,7 +464,7 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     if (!done2) {
       const items = page.locator("[data-testid='session-item']");
       if ((await items.count()) >= 2) {
-        done2 = await checkSession("ses2", items.nth(1), best2, prev2);
+        done2 = await checkSession("ses2", items.nth(1), best2, prev2, sessionInfo[1].expected, sessionInfo[1].workspacePath);
       } else {
         console.log(`Round ${round}: only ${await items.count()} session(s)`);
       }

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getGraphManifest } from "../../../../lib/api";
-import { useChatStore } from "../../../../stores/chat";
 import { EmptyState } from "../ui";
 import { ViewToggle, RawPanel } from "./view-toggle";
 import type { ViewMode } from "./view-toggle";
@@ -110,13 +109,12 @@ export function TreeView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("pretty");
-  const workspaceRoot = useChatStore((s) => s.workspaceRoot);
 
   useEffect(() => {
-    getGraphManifest(undefined, undefined, workspaceRoot || undefined)
+    getGraphManifest()
       .then((r) => { setManifest(r.manifest); setLoading(false); })
       .catch((e) => { setError(e instanceof Error ? e.message : "Failed"); setLoading(false); });
-  }, [workspaceRoot]);
+  }, []);
 
   const tree = useMemo(() => manifest ? parseManifestTree(manifest) : [], [manifest]);
 

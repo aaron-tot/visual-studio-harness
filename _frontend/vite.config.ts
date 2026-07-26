@@ -45,11 +45,11 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 3100,
     proxy: {
-      "/api": "http://localhost:3001",
+      "/api": "http://localhost:3101",
       "/chat": {
-        target: "ws://localhost:3001",
+        target: "ws://localhost:3101",
         ws: true,
         filter: (pathname, req) => req.headers.upgrade === "websocket",
         bypass: (req) => {

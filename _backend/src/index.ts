@@ -19,6 +19,9 @@ import { registerSkillsRoutes } from "./rest/skills";
 import { registerAgentsRoutes } from "./rest/agents";
 import { registerPlansRoutes } from "./rest/plans";
 import { registerMcpRoutes } from "./rest/mcp";
+import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
+import { createWorkspaceGraphService } from "./core/workspaceGraph";
+import { setWorkspaceGraphService, getWorkspaceGraphService } from "./core/workspaceGraph/service-singleton";
 import { getMcpManager } from "./features/mcp";
 import { resolveDataDir, getMode, getPort } from "./paths";
 import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
@@ -180,11 +183,31 @@ async function main() {
   registerAgentsRoutes(app, DATA_DIR);
   registerPlansRoutes(app, DATA_DIR);
   registerMcpRoutes(app);
+
+  // Workspace graph: create service lazily, register REST routes
+  registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphService());
+
+  // Initialize workspace graph in background (non-blocking) — gated by workspaceGraph config
+  if (currentConfig.workspaceGraph !== false) {
+    const workspaceRoot = resolve(import.meta.dir, "../..");
+    createWorkspaceGraphService({ workspaceRoot, enableWatcher: MODE === "dev" })
+      .then(async (graph) => {
+        setWorkspaceGraphService(graph);
+        await graph.start();
+        console.log(`[workspace-graph] ready (${workspaceRoot})`);
+      })
+      .catch((err) => {
+        console.error("[workspace-graph] failed to initialize:", err);
+      });
+  } else {
+    console.log("[workspace-graph] disabled by config (workspaceGraph: false)");
+  }
+
   registerWsHandler(app, () => DATA_DIR, () => currentConfig);
 
   app.get("/api/health", async () => ({ status: "ok", mode: MODE, dataDir: DATA_DIR }));
 
-  // Prod binary serves embedded frontend; dev uses Vite on :5173
+  // Prod binary serves embedded frontend; dev uses Vite on :3100
   if (MODE === "prod" || hasEmbeddedFrontend()) {
     if (hasEmbeddedFrontend()) {
       registerEmbeddedFrontend(app);

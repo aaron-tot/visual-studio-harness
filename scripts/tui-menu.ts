@@ -131,7 +131,7 @@ async function tuiInput(prompt: string, defaultValue: string): Promise<string | 
 async function main() {
   log("main()");
   const mode = await tuiMenu("Momiji — Select Mode", [
-    { label: "Dev (hot reload · ports 3001 + 5173)", value: "dev" },
+    { label: "Dev (hot reload · ports 3101 + 3100)", value: "dev" },
     { label: "Prod (build + run single-file binary)", value: "prod" },
     { label: "Package (cross-compile binary for Linux/Windows)", value: "package" },
   ], { noBack: true });

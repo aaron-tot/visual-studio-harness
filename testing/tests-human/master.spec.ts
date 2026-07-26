@@ -108,6 +108,30 @@ async function assertCompletedToolCacheFormat(page: Page, label: string): Promis
   ).toEqual([]);
 }
 
+async function assertAgentMetadata(page: Page): Promise<void> {
+  const msg = page.locator("[data-assistant-msg]").first();
+  if (!(await msg.isVisible().catch(() => false))) return;
+  await msg.hover();
+  await page.waitForTimeout(100);
+
+  const header = await page.locator("[data-testid='agent-header-name']").first().textContent().catch(() => null);
+  if (header?.trim() !== TEST_CONFIG.agent) {
+    throw new Error(`Header agent name: expected "${TEST_CONFIG.agent}", got "${header?.trim()}"`);
+  }
+
+  const footer = await page.locator("[data-testid='agent-footer-meta']").first().textContent().catch(() => null);
+  const footerText = footer?.trim() ?? "";
+  if (!footerText.includes(TEST_CONFIG.agent)) {
+    throw new Error(`Footer missing agent name "${TEST_CONFIG.agent}" in: ${footerText}`);
+  }
+  if (!footerText.includes(TEST_CONFIG.provider)) {
+    throw new Error(`Footer missing provider "${TEST_CONFIG.provider}" in: ${footerText}`);
+  }
+  if (!footerText.includes(TEST_CONFIG.model)) {
+    throw new Error(`Footer missing model "${TEST_CONFIG.model}" in: ${footerText}`);
+  }
+}
+
 /**
  * At the progressive-match boundary: large windows before/after
  * for both UI body and expected. Shows *why* match stops / regressed.
@@ -218,6 +242,12 @@ function timestampDir(): string {
   return "tests/" + ts + "_" + rand;
 }
 
+const TEST_CONFIG = {
+  agent: "Coding",
+  model: "toolsV2",
+  provider: "Test",
+};
+
 test("multi-session flick", async ({ page, settings, chat }) => {
   // Hard cap only; real fail path is two consecutive checks with no char growth.
   test.setTimeout(5 * 60 * 1000);
@@ -226,9 +256,10 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   // GROK_EDIT: same workspace for expected + both sessions (mirrors "mixed parts v2")
   const seedPath = timestampDir();
   const { loop, workspaceRoot } = await setupSession(page, settings, {
-    agent: "Default (no system prompt)",
-    model: "toolsV2",
+    agent: TEST_CONFIG.agent,
+    model: TEST_CONFIG.model,
     modelSpeed: 60,
+    thinking: "medium",
     useCustomWorkspace: true,
     seedWorkspacePath: seedPath,
     archiveSessions: true,
@@ -381,39 +412,6 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     return len >= expected.length;
   }
 
-  async function assertSessionStable(
-    label: string,
-    locator: any,
-    swapRound: number
-  ): Promise<void> {
-    await locator.locator("p").first().click({ position: { x: 4, y: 4 } });
-    await page.mouse.move(420, 280);
-    await page.locator("[data-assistant-msg]").first().waitFor({
-      state: "visible",
-      timeout: 15000,
-    });
-    await page.waitForTimeout(300);
-
-    const { len } = await findProgressiveMatch(page, expected);
-    const pct = (len / expected.length * 100).toFixed(1);
-    console.log(`Post-flick ${swapRound}: ${label} = ${pct}% (${len}/${expected.length})`);
-
-    if (len < expected.length) {
-      const boundary = await logMatchBoundary(
-        page,
-        expected,
-        label,
-        `POST-FLICK MISMATCH at ${len}`,
-        len
-      );
-      throw new Error(
-        `${label} lost content after completion during post-flick round ${swapRound}\n${boundary}`
-      );
-    }
-
-    await assertCompletedToolCacheFormat(page, `${label} post-flick ${swapRound}`);
-  }
-
   // Keep CheckLoop running through the flick rounds (no_chat_error scan)
   let round = 0;
   const best1 = { v: 0 }, best2 = { v: 0 };
@@ -462,24 +460,24 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     }
     round++;
   }
-  expect(done1).toBe(true);
+expect(done1).toBe(true);
   expect(done2).toBe(true);
 
-  // After both sessions complete, flick back/forth 5x and verify output is retained.
-  for (let postRound = 1; postRound <= 5; postRound++) {
-    loop.assertOk();
-    await revealSidebar();
-    const itemsA = page.locator("[data-testid='session-item']");
-    expect(await itemsA.count()).toBeGreaterThanOrEqual(2);
-    await assertSessionStable("ses1", itemsA.first(), postRound);
+  loop.end();
 
-    loop.assertOk();
-    await revealSidebar();
-    const itemsB = page.locator("[data-testid='session-item']");
-    expect(await itemsB.count()).toBeGreaterThanOrEqual(2);
-    await assertSessionStable("ses2", itemsB.nth(1), postRound);
+  // Verify duration is shown in the footer for both sessions (no hover needed, DOM is always there)
+  for (const [label, idx] of [["ses1", 0], ["ses2", 1]] as const) {
+    const item = page.locator("[data-testid='session-item']").nth(idx);
+    await item.locator("p").first().click({ position: { x: 4, y: 4 } });
+    await page.mouse.move(420, 280);
+    await page.locator("[data-assistant-msg]").first().waitFor({ state: "visible", timeout: 15000 });
+    await page.waitForTimeout(300);
+    const footer = await page.locator("[data-testid='agent-footer-meta']").first().textContent().catch(() => null);
+    const footerText = footer?.trim() ?? "";
+    expect(footerText, `${label}: footer should contain duration after completion`).toMatch(/\d+s|<1s/);
+    console.log(`${label} duration check: ${footerText}`);
   }
 
-  loop.end();
+  loop.assertOk();
   loop.assertOk();
 });

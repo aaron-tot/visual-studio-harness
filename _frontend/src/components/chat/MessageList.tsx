@@ -18,7 +18,7 @@ function sortParts(parts: MessagePartType[]): MessagePartType[] {
 }
 
 export function MessageList() {
-  const { messages, streaming, streamingContent, streamingParts, sessionId, streamingTurnId } = useChatStore();
+  const { messages, streaming, streamingContent, streamingParts, sessionId, streamingTurnId, sessionMeta, _pendingAgentName, _pendingModelName, _pendingProviderName } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
@@ -152,6 +152,9 @@ export function MessageList() {
             parts: streamingMessageParts,
             timestamp: new Date().toISOString(),
             turnId: streamingTurnId ?? undefined,
+agentName: _pendingAgentName || sessionMeta?.agentName || undefined,
+modelName: _pendingModelName || sessionMeta?.modelName || undefined,
+providerName: _pendingProviderName || sessionMeta?.providerName || undefined,
           }}
           isStreaming
         />

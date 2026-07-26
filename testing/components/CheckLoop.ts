@@ -44,6 +44,7 @@ export class CheckLoop {
         } catch (err) {
           this.lastError = err instanceof Error ? err : new Error(String(err));
           this.end();
+          queueMicrotask(() => { throw this.lastError!; });
         } finally {
           this.running = false;
         }

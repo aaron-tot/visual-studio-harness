@@ -1,4 +1,4 @@
-const port = parseInt(process.argv[2] || "3001", 10);
+const port = parseInt(process.argv[2] || "3101", 10);
 
 async function killPort(port: number): Promise<void> {
   try {

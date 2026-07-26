@@ -74,14 +74,34 @@ export const DbConfigSchema = z.object({
 
 export const SystemPromptJoinersSchema = z.object({
   start: z.string().default(""),
-  afterGlobal: z.string().default("\n\n"),
-  afterAgentMd: z.string().default("\n\n"),
-  afterSkillMds: z.string().default("\n\n"),
-  afterProject: z.string().default("\n\n"),
-  afterRuntime: z.string().default("\n\n"),
-  afterTodoList: z.string().default("\n\n"),
-  afterExtras: z.string().default("\n\n"),
+  preGlobal: z.string().default("<global>"),
+  postGlobal: z.string().default("</global>"),
+  preAgent: z.string().default("<agent>"),
+  postAgent: z.string().default("</agent>"),
+  preSkills: z.string().default("<skills>"),
+  postSkills: z.string().default("</skills>"),
+  preProject: z.string().default("<project>"),
+  postProject: z.string().default("</project>"),
+  preRuntime: z.string().default("<runtime>"),
+  postRuntime: z.string().default("</runtime>"),
+  preTodoList: z.string().default("<todoList>"),
+  postTodoList: z.string().default("</todoList>"),
+  preWorkspaceManifest: z.string().default("<workspaceManifest>"),
+  postWorkspaceManifest: z.string().default("</workspaceManifest>"),
+  preExtras: z.string().default("<extras>"),
+  postExtras: z.string().default("</extras>"),
   end: z.string().default(""),
+});
+
+export const WorkspaceManifestSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  maxDepth: z.number().int().positive().default(3).optional(),
+  excludeDirs: z.array(z.string()).optional(),
+  excludeExtensions: z.array(z.string()).optional(),
+  includeGitignore: z.boolean().optional(),
+  agents: z.array(z.string()).optional(),
+  prefix: z.string().optional(),
+  postfix: z.string().optional(),
 });
 
 export const SnippetConfigSchema = z.object({
@@ -115,6 +135,7 @@ export const ConfigFileSchema = z.object({
   })).default({}),
   headless: z.boolean().default(false).optional(),
   snippets: z.array(SnippetConfigSchema).default([]),
+  workspaceManifest: WorkspaceManifestSettingsSchema.optional(),
   messagePanelFullWidth: z.boolean().default(false),
   messagePanelPinnedDefault: z.boolean().default(false),
   showSessionName: z.boolean().default(false),

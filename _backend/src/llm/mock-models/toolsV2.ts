@@ -31,6 +31,7 @@ export const actions: MockAction[] = [
   { type: "tool", toolName: "todoread", args: {} },
   { type: "text", prefix: "j", count: 500 },
   { type: "tool", toolName: "todowrite", args: { content: "implement feature X", status: "pending", priority: "high" } },
+  { type: "text", prefix: "k", count: 10 },
 ];
 
 export function stream(speed: number, signal?: AbortSignal, workspaceRoot?: string): AsyncGenerator<any> {

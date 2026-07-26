@@ -15,20 +15,24 @@ export function createQueryApi(
   repo: WorkspaceGraphRepository
 ) {
   return {
-    async findSymbol(name: string, kind?: string): Promise<SymbolMatch[]> {
+    async findSymbol(name?: string, kind?: string): Promise<SymbolMatch[]> {
       const conditions: any[] = [];
-      conditions.push(like(schema.symbols.name, `%${name}%`));
+      if (name) {
+        conditions.push(like(schema.symbols.name, `%${name}%`));
+      }
       if (kind) {
         const dbKind = kind === "type" ? "typeAlias" : kind;
         conditions.push(eq(schema.symbols.kind, dbKind as any));
       }
 
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
       const rows = await db
         .select()
         .from(schema.symbols)
         .innerJoin(schema.files, eq(schema.symbols.fileId, schema.files.id))
-        .where(and(...conditions))
-        .limit(100);
+        .where(whereClause)
+        .limit(5000);
 
       return rows.map((r: any) => ({
         symbol: {

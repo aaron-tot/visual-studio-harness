@@ -76,11 +76,16 @@ export function extractSymbols(sourceFile: SourceFile): ExtractedSymbol[] {
           const mName = member.getName();
           if (!mName) continue;
 
+          const mk = member.getKind();
           const memberKind: SymbolKind =
-            member.getKind() === SyntaxKind.MethodDeclaration ||
-            member.getKind() === SyntaxKind.PropertyDeclaration
+            mk === SyntaxKind.MethodDeclaration ||
+            mk === SyntaxKind.GetAccessor ||
+            mk === SyntaxKind.SetAccessor ||
+            mk === SyntaxKind.Constructor
               ? "method"
-              : "method";
+              : mk === SyntaxKind.PropertyDeclaration || mk === SyntaxKind.PropertySignature
+                ? "variable"
+                : "method";
 
           symbols.push({
             name: mName,

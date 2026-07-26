@@ -256,7 +256,7 @@ export function MessageRow({ message, isStreaming }: MessageRowProps) {
           />
         ))}
 
-        <span className="text-xs text-zinc-600 mt-0.5 px-1 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span data-testid="agent-footer-meta" className="text-xs text-zinc-600 mt-0.5 px-1 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
         {!isStreaming && (
           <CopyButton
             getPrimaryText={() => extractPrimaryText(message)}

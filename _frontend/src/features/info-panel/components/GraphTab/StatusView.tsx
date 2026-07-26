@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { getGraphStatus, triggerGraphReindex } from "../../../../lib/api";
 import type { GraphStatusResponse } from "../../../../lib/api";
 import { EmptyState, PanelButton } from "../ui";
+import { ViewToggle, RawPanel } from "./view-toggle";
+import type { ViewMode } from "./view-toggle";
 
 function relativeTime(ms: number): string {
   if (!ms) return "never";
@@ -10,16 +12,6 @@ function relativeTime(ms: number): string {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
-}
-
-function useCopyButton(timeout = 1500) {
-  const [copied, setCopied] = useState(false);
-  const copy = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), timeout);
-  }, [timeout]);
-  return { copied, copy };
 }
 
 function StateBadge({ state }: { state: GraphStatusResponse["state"] }) {
@@ -35,12 +27,23 @@ function StateBadge({ state }: { state: GraphStatusResponse["state"] }) {
   );
 }
 
+function formatAgentText(status: GraphStatusResponse): string {
+  return [
+    `Files: ${status.fileCount}`,
+    `Folders: ${status.folderCount}`,
+    `Symbols: ${status.symbolCount}`,
+    `Languages: ${status.languages.join(", ") || "none"}`,
+    `Last indexed: ${status.lastIndexedAt ? new Date(status.lastIndexedAt).toISOString() : "never"}`,
+    `DB path: ${status.dbPath || "not initialized"}`,
+  ].join("\n");
+}
+
 export function StatusView() {
   const [status, setStatus] = useState<GraphStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reindexing, setReindexing] = useState(false);
-  const { copied: dbCopied, copy: copyDb } = useCopyButton();
+  const [viewMode, setViewMode] = useState<ViewMode>("pretty");
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -54,9 +57,7 @@ export function StatusView() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
   useEffect(() => {
     if (status?.state !== "indexing") return;
@@ -74,38 +75,42 @@ export function StatusView() {
     }
   };
 
+  const rawText = useMemo(() => status ? formatAgentText(status) : "", [status]);
+
   if (loading) return <EmptyState>Loading graph status…</EmptyState>;
   if (error) return <EmptyState><span className="text-red-400">Error: {error}</span></EmptyState>;
   if (!status) return <EmptyState>No status data</EmptyState>;
 
   return (
-    <div className="px-3 py-2 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-zinc-300 font-medium">Graph Status</span>
-          <StateBadge state={status.state} />
+    <div className="flex flex-col flex-1 min-h-0">
+      <ViewToggle mode={viewMode} onChange={setViewMode} />
+      {viewMode === "pretty" ? (
+        <div className="px-3 py-2 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-zinc-300 font-medium">Graph Status</span>
+              <StateBadge state={status.state} />
+            </div>
+            <div className="flex gap-1">
+              <PanelButton onClick={handleReindex} disabled={reindexing}>
+                {reindexing ? "Indexing…" : "Reindex"}
+              </PanelButton>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <StatCard label="Files" value={status.fileCount} />
+            <StatCard label="Folders" value={status.folderCount} />
+            <StatCard label="Symbols" value={status.symbolCount} />
+          </div>
+          <div className="space-y-1.5">
+            <InfoRow label="Languages" value={status.languages.length ? status.languages.join(", ") : "none"} />
+            <InfoRow label="Last indexed" value={relativeTime(status.lastIndexedAt)} />
+            <InfoRow label="DB path" value={status.dbPath || "not initialized"} title={status.dbPath} />
+          </div>
         </div>
-        <div className="flex gap-1">
-          <PanelButton onClick={() => copyDb(status.dbPath)} disabled={!status.dbPath}>
-            {dbCopied ? "Copied!" : "Copy DB Path"}
-          </PanelButton>
-          <PanelButton onClick={handleReindex} disabled={reindexing}>
-            {reindexing ? "Indexing…" : "Reindex"}
-          </PanelButton>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        <StatCard label="Files" value={status.fileCount} />
-        <StatCard label="Folders" value={status.folderCount} />
-        <StatCard label="Symbols" value={status.symbolCount} />
-      </div>
-
-      <div className="space-y-1.5">
-        <InfoRow label="Languages" value={status.languages.length ? status.languages.join(", ") : "none"} />
-        <InfoRow label="Last indexed" value={relativeTime(status.lastIndexedAt)} />
-        <InfoRow label="DB path" value={status.dbPath || "not initialized"} title={status.dbPath} />
-      </div>
+      ) : (
+        <RawPanel text={rawText} />
+      )}
     </div>
   );
 }

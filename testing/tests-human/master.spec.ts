@@ -108,6 +108,30 @@ async function assertCompletedToolCacheFormat(page: Page, label: string): Promis
   ).toEqual([]);
 }
 
+async function assertAgentMetadata(page: Page): Promise<void> {
+  const msg = page.locator("[data-assistant-msg]").first();
+  if (!(await msg.isVisible().catch(() => false))) return;
+  await msg.hover();
+  await page.waitForTimeout(100);
+
+  const header = await page.locator("[data-testid='agent-header-name']").first().textContent().catch(() => null);
+  if (header?.trim() !== TEST_CONFIG.agent) {
+    throw new Error(`Header agent name: expected "${TEST_CONFIG.agent}", got "${header?.trim()}"`);
+  }
+
+  const footer = await page.locator("[data-testid='agent-footer-meta']").first().textContent().catch(() => null);
+  const footerText = footer?.trim() ?? "";
+  if (!footerText.includes(TEST_CONFIG.agent)) {
+    throw new Error(`Footer missing agent name "${TEST_CONFIG.agent}" in: ${footerText}`);
+  }
+  if (!footerText.includes(TEST_CONFIG.provider)) {
+    throw new Error(`Footer missing provider "${TEST_CONFIG.provider}" in: ${footerText}`);
+  }
+  if (!footerText.includes(TEST_CONFIG.model)) {
+    throw new Error(`Footer missing model "${TEST_CONFIG.model}" in: ${footerText}`);
+  }
+}
+
 /**
  * At the progressive-match boundary: large windows before/after
  * for both UI body and expected. Shows *why* match stops / regressed.
@@ -218,6 +242,12 @@ function timestampDir(): string {
   return "tests/" + ts + "_" + rand;
 }
 
+const TEST_CONFIG = {
+  agent: "Coding",
+  model: "toolsV2",
+  provider: "Test",
+};
+
 test("multi-session flick", async ({ page, settings, chat }) => {
   // Hard cap only; real fail path is two consecutive checks with no char growth.
   test.setTimeout(5 * 60 * 1000);
@@ -226,9 +256,10 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   // GROK_EDIT: same workspace for expected + both sessions (mirrors "mixed parts v2")
   const seedPath = timestampDir();
   const { loop, workspaceRoot } = await setupSession(page, settings, {
-    agent: "Default (no system prompt)",
-    model: "toolsV2",
+    agent: TEST_CONFIG.agent,
+    model: TEST_CONFIG.model,
     modelSpeed: 60,
+    thinking: "medium",
     useCustomWorkspace: true,
     seedWorkspacePath: seedPath,
     archiveSessions: true,
@@ -239,6 +270,11 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   const expected = getExpectedText("toolsV2", workspaceRoot).replace("b1 ", "\nb1 ");
   execSync(`rm -rf "${workspaceRoot}" && mv "${wsSnapshot}" "${workspaceRoot}"`, { stdio: "pipe" });
   console.log("Workspace + expected bound to: " + workspaceRoot);
+
+  // Register metadata check on the 50ms loop — throws on mismatch, caught by assertOk()
+  loop.register("agent_metadata", async () => {
+    await assertAgentMetadata(page);
+  }, true);
 
   await sendInitialMessage(page, chat, "1");
   await page.waitForTimeout(3000);

@@ -13,6 +13,7 @@ export interface SessionSetupFlags {
   agent: string;
   model: string;
   modelSpeed: number;
+  thinking?: string;
   useCustomWorkspace?: boolean;
   seedWorkspacePath?: string;
   archiveSessions?: boolean;
@@ -110,6 +111,18 @@ export async function setupSession(
     new Promise((_, reject) => setTimeout(() => reject(new Error("Agent selection timed out (>5s)")), 5000)),
   ]);
   console.log("Agent selected: " + flags.agent);
+
+  // Set thinking level if specified
+  if (flags.thinking) {
+    const thinkingPill = page.locator("[data-testid='temp-pill']").first();
+    await thinkingPill.click();
+    await page.waitForTimeout(300);
+    const thinkingOption = page.locator("[role='option'], button").filter({ hasText: flags.thinking }).first();
+    await thinkingOption.click();
+    await page.waitForTimeout(300);
+    await expect(thinkingPill).toContainText(flags.thinking);
+    console.log("Thinking set to: " + flags.thinking);
+  }
 
   // Open settings, set speed — look up the label from the model name
   const MODEL_LABELS: Record<string, string> = {

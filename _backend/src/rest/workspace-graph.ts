@@ -8,7 +8,7 @@ export function registerWorkspaceGraphRoutes(
   app.get("/api/workspace-graph/symbols", async (request) => {
     const graph = getGraph();
     if (!graph) return { error: "Workspace graph not initialized" };
-    const q = request.query as { name: string; kind?: string };
+    const q = request.query as { name?: string; kind?: string };
     return graph.query.findSymbol(q.name, q.kind);
   });
 

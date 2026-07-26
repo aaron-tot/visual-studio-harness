@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { getGraphFiles, getGraphImports, getGraphExports } from "../../../../lib/api";
 import type { GraphFileRecord, GraphImportRecord, GraphExportRecord } from "../../../../lib/api";
 import { EmptyState } from "../ui";
+import { ViewToggle, RawPanel } from "./view-toggle";
+import type { ViewMode } from "./view-toggle";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -9,23 +11,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-function CopyButton({ text, label }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      className={`text-[9px] px-1 py-0.5 rounded transition-colors shrink-0 ${
-        copied ? "bg-emerald-800/60 text-emerald-300" : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800"
-      }`}
-      onClick={(e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-    >
-      {copied ? "Copied!" : label ?? "Copy"}
-    </button>
+function formatAgentFiles(files: GraphFileRecord[]): string {
+  if (files.length === 0) return "No indexed files found";
+  const lines = files.map(
+    (f) => `${f.path} [${f.language}] ${f.size}B modified=${new Date(f.modifiedMs).toISOString()}`
   );
+  return `${files.length} files:\n${lines.join("\n")}`;
 }
 
 function FileDetail({ file, onClose }: { file: GraphFileRecord; onClose: () => void }) {
@@ -81,7 +72,7 @@ export function FilesView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<GraphFileRecord | null>(null);
-  const [exported, setExported] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("pretty");
 
   useEffect(() => {
     getGraphFiles()
@@ -89,48 +80,42 @@ export function FilesView() {
       .catch((e) => { setError(e instanceof Error ? e.message : "Failed"); setLoading(false); });
   }, []);
 
-  const handleExport = () => {
-    navigator.clipboard.writeText(JSON.stringify(files, null, 2));
-    setExported(true);
-    setTimeout(() => setExported(false), 1500);
-  };
+  const rawText = useMemo(() => formatAgentFiles(files), [files]);
 
   if (loading) return <EmptyState>Loading files…</EmptyState>;
   if (error) return <EmptyState><span className="text-red-400">Error: {error}</span></EmptyState>;
 
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-800/50">
-        <span className="text-[9px] text-zinc-500">{files.length} files indexed</span>
-        <button
-          className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
-            exported ? "bg-emerald-800/60 text-emerald-300" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
-          }`}
-          onClick={handleExport}
-        >
-          {exported ? "Copied!" : "Export JSON"}
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        {files.map((file) => (
-          <div key={file.id}>
-            <div
-              className={`flex items-center gap-2 px-3 py-1 cursor-default hover:bg-zinc-800/50 ${
-                selected?.id === file.id ? "bg-zinc-800/50" : ""
-              }`}
-              onClick={() => setSelected(selected?.id === file.id ? null : file)}
-            >
-              <span className="text-[10px]">{file.language === "typescript" ? "🔷" : "🟨"}</span>
-              <span className="text-[11px] text-zinc-300 font-mono truncate flex-1">{file.path}</span>
-              <span className="text-[9px] text-zinc-600 shrink-0">{formatBytes(file.size)}</span>
-              <CopyButton text={file.path} />
-            </div>
-            {selected?.id === file.id && (
-              <FileDetail file={file} onClose={() => setSelected(null)} />
-            )}
+    <div className="flex flex-col flex-1 min-h-0">
+      <ViewToggle mode={viewMode} onChange={setViewMode} />
+      {viewMode === "pretty" ? (
+        <>
+          <div className="flex items-center justify-end px-3 py-1 border-b border-zinc-800/50">
+            <span className="text-[9px] text-zinc-500">{files.length} files indexed</span>
           </div>
-        ))}
-      </div>
+          <div className="flex-1 overflow-y-auto">
+            {files.map((file) => (
+              <div key={file.id}>
+                <div
+                  className={`flex items-center gap-2 px-3 py-1 cursor-default hover:bg-zinc-800/50 ${
+                    selected?.id === file.id ? "bg-zinc-800/50" : ""
+                  }`}
+                  onClick={() => setSelected(selected?.id === file.id ? null : file)}
+                >
+                  <span className="text-[10px]">{file.language === "typescript" ? "\u{1F537}" : "\u{1F7E8}"}</span>
+                  <span className="text-[11px] text-zinc-300 font-mono truncate flex-1">{file.path}</span>
+                  <span className="text-[9px] text-zinc-600 shrink-0">{formatBytes(file.size)}</span>
+                </div>
+                {selected?.id === file.id && (
+                  <FileDetail file={file} onClose={() => setSelected(null)} />
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <RawPanel text={rawText} />
+      )}
     </div>
   );
 }

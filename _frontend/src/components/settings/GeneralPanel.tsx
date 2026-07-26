@@ -255,6 +255,25 @@ export function GeneralPanel() {
               </div>
             </div>
           </label>
+
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={config.workspaceGraph !== false}
+              onChange={(e) => patch({ workspaceGraph: e.target.checked })}
+              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+            />
+            <div>
+              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+                Workspace graph
+              </div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                Index workspace files, symbols, imports and exports into a local
+                SQLite database. Enables graph agent tools and manifest injection
+                into the system prompt. Requires restart to take effect.
+              </div>
+            </div>
+          </label>
         </div>
 
         <div className="border border-zinc-800 rounded-lg p-3 opacity-60 select-none">

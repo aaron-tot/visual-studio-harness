@@ -366,6 +366,18 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
+    if (selectedAgent) {
+      const agentConfig = config.agents?.[selectedAgent.id];
+      setCurrentConfig({
+        agentName: selectedAgent.id,
+        providerName: agentConfig?.providerName || config.defaultProvider || "",
+        modelName: agentConfig?.modelName || config.defaultModel || "",
+        thinkingEffort: agentConfig?.thinking?.effort || "off",
+      });
+    }
+  }, [selectedAgent?.id, config.defaultProvider, config.defaultModel, config.agents]);
+
+  useEffect(() => {
     const handler = (e: CustomEvent<{ content: string; position: "start" | "end" }>) => {
       const { content, position } = e.detail;
       if (position === "start") {

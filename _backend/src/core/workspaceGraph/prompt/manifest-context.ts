@@ -36,5 +36,8 @@ export async function buildSystemPromptWithManifest(
   const manifestContext = await buildWorkspaceManifestContext(input);
   if (!manifestContext) return baseSystemPrompt;
 
-  return `${baseSystemPrompt}\n\n## Workspace Manifest\n\n${manifestContext}`;
+  const prefix = input.config.prefix ?? "## Workspace Manifest\n\n";
+  const postfix = input.config.postfix ?? "";
+
+  return `${baseSystemPrompt}\n\n${prefix}${manifestContext}${postfix}`;
 }

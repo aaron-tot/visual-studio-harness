@@ -33,7 +33,7 @@ class WsClient {
 
   constructor() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const port = import.meta.env.DEV ? 3001 : window.location.port;
+    const port = import.meta.env.DEV ? 3101 : window.location.port;
     this.url = `${protocol}//${window.location.hostname}:${port}/chat`;
   }
 

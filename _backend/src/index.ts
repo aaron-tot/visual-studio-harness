@@ -21,7 +21,7 @@ import { registerPlansRoutes } from "./rest/plans";
 import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
 import { createWorkspaceGraphService } from "./core/workspaceGraph";
-import type { WorkspaceGraphService } from "./core/workspaceGraph/api/types";
+import { setWorkspaceGraphService } from "./core/workspaceGraph/service-singleton";
 import { getMcpManager } from "./features/mcp";
 import { resolveDataDir, getMode, getPort } from "./paths";
 import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
@@ -185,16 +185,14 @@ async function main() {
   registerMcpRoutes(app);
 
   // Workspace graph: create service lazily, register REST routes
-  let _graphService: WorkspaceGraphService | null = null;
-  const getGraph = () => _graphService;
-  registerWorkspaceGraphRoutes(app, getGraph);
+  registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphService());
 
   // Initialize workspace graph in background (non-blocking)
   // _backend/src -> _backend -> repoRoot
   const workspaceRoot = resolve(import.meta.dir, "../..");
   createWorkspaceGraphService({ workspaceRoot, enableWatcher: MODE === "dev" })
     .then(async (graph) => {
-      _graphService = graph;
+      setWorkspaceGraphService(graph);
       await graph.start();
       console.log(`[workspace-graph] ready (${workspaceRoot})`);
     })

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Edit3, RefreshCw, X } from "lucide-react";
 import { useConfigStore } from "../../stores/config";
-import type { SystemPromptJoiners } from "../../../../_shared/types";
+import type { SystemPromptJoiners, WorkspaceManifestSettings } from "../../../../_shared/types";
 
 const DEFAULT_JOINERS: SystemPromptJoiners = {
   start: "",
@@ -11,6 +11,7 @@ const DEFAULT_JOINERS: SystemPromptJoiners = {
   afterProject: "\n\n",
   afterRuntime: "\n\n",
   afterTodoList: "\n\n",
+  afterWorkspaceManifest: "\n\n",
   afterExtras: "\n\n",
   end: "",
 };
@@ -22,7 +23,8 @@ const SECTION_LABELS = [
   "4. Project agents.md",
   "5. Runtime info",
   "6. TODO List",
-  "7. Extras",
+  "7. Workspace Manifest",
+  "8. Extras",
 ];
 
 const JOINER_KEYS: (keyof SystemPromptJoiners)[] = [
@@ -33,6 +35,7 @@ const JOINER_KEYS: (keyof SystemPromptJoiners)[] = [
   "afterProject",
   "afterRuntime",
   "afterTodoList",
+  "afterWorkspaceManifest",
   "afterExtras",
   "end",
 ];
@@ -45,6 +48,7 @@ const JOINER_LABELS: Record<string, string> = {
   afterProject: "After Project",
   afterRuntime: "After Runtime",
   afterTodoList: "After TODO List",
+  afterWorkspaceManifest: "After Workspace Manifest",
   afterExtras: "After Extras",
   end: "End suffix",
 };
@@ -60,6 +64,15 @@ export function SystemPromptPanel() {
     await update({
       ...current,
       systemPromptJoiners: { ...(current.systemPromptJoiners ?? DEFAULT_JOINERS), ...partial },
+    });
+  };
+
+  const patchManifest = async (partial: Partial<WorkspaceManifestSettings>) => {
+    const current = useConfigStore.getState().config;
+    const currentManifest = current.workspaceManifest ?? { enabled: false };
+    await update({
+      ...current,
+      workspaceManifest: { ...currentManifest, ...partial },
     });
   };
 
@@ -132,7 +145,7 @@ export function SystemPromptPanel() {
         </button>
       </div>
 
-      <div className="flex-1 space-y-0">
+      <div className="flex-1 space-y-0 overflow-y-auto">
         {renderJoinerRow("start")}
 
         {SECTION_LABELS.map((label, i) => (
@@ -141,6 +154,12 @@ export function SystemPromptPanel() {
               <span className="text-xs text-zinc-300">{label}</span>
             </div>
             {renderJoinerRow(JOINER_KEYS[i + 1])}
+            {label === "7. Workspace Manifest" && (
+              <WorkspaceManifestSettings
+                settings={config.workspaceManifest}
+                onChange={patchManifest}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -198,6 +217,87 @@ export function SystemPromptPanel() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function WorkspaceManifestSettings({
+  settings,
+  onChange,
+}: {
+  settings?: WorkspaceManifestSettings;
+  onChange: (partial: Partial<WorkspaceManifestSettings>) => void;
+}) {
+  const enabled = settings?.enabled ?? false;
+  const [showDetails, setShowDetails] = useState(false);
+
+  return (
+    <div className="ml-2 mb-2 border-l-2 border-zinc-800 pl-3 space-y-2">
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onChange({ enabled: e.target.checked })}
+          className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+        />
+        <span className="text-xs text-zinc-300">Inject workspace manifest into system prompt</span>
+      </label>
+
+      {enabled && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowDetails(!showDetails)}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300"
+          >
+            {showDetails ? "Hide details" : "Show details"}
+          </button>
+
+          {showDetails && (
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-0.5">Max depth</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={settings?.maxDepth ?? 3}
+                  onChange={(e) => onChange({ maxDepth: parseInt(e.target.value, 10) || 3 })}
+                  className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-0.5">Prefix (before manifest)</label>
+                <input
+                  type="text"
+                  value={settings?.prefix ?? "## Workspace Manifest\n\n"}
+                  onChange={(e) => onChange({ prefix: e.target.value })}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-200"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-0.5">Postfix (after manifest)</label>
+                <input
+                  type="text"
+                  value={settings?.postfix ?? ""}
+                  onChange={(e) => onChange({ postfix: e.target.value })}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs font-mono text-zinc-200"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-0.5">Agent filter (comma-separated, empty = all)</label>
+                <input
+                  type="text"
+                  value={settings?.agents?.join(", ") ?? ""}
+                  onChange={(e) => onChange({ agents: e.target.value ? e.target.value.split(",").map((s) => s.trim()) : undefined })}
+                  placeholder="e.g. coding, planning"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

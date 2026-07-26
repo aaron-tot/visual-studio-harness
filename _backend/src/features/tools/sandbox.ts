@@ -1,5 +1,5 @@
 import { realpathSync, existsSync } from "node:fs";
-import { isAbsolute, join, normalize, resolve, sep } from "node:path";
+import { isAbsolute, join, normalize, resolve, sep, basename } from "node:path";
 
 export class SandboxError extends Error {
   constructor(message: string) {
@@ -13,12 +13,14 @@ export function getWorkspaceRoot(): string {
   if (env) return resolve(env);
 
   const cwd = resolve(process.cwd());
-  // `bun run --filter _backend` often sets cwd to _backend/
-  if (cwd.endsWith(`${sep}source${sep}backend`)) {
-    return resolve(cwd, "../.."); // project root (sibling of source/ + data/)
-  }
-  if (cwd.endsWith(`${sep}backend`)) {
+  const base = basename(cwd);
+  // `bun run --filter _backend` often sets cwd to _backend/; other setups may use backend/
+  if (base === "backend" || base === "_backend") {
     return resolve(cwd, "..");
+  }
+  // `bun run --filter source/backend` (monorepo with source/ nesting)
+  if (cwd.endsWith(`${sep}source${sep}backend`)) {
+    return resolve(cwd, "../..");
   }
   return cwd;
 }

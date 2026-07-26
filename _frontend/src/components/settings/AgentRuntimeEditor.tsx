@@ -383,7 +383,7 @@ export function AgentRuntimeEditor({
         {/* Attached agent MD pill */}
         {value.agentMd && (
           <div className="flex flex-wrap gap-1">
-            <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${fileErrors.has(value.agentMd.path ?? "") ? "bg-red-900/50 text-red-300 ring-1 ring-red-500/50" : "bg-zinc-800 text-zinc-300"}`}>
+            <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${fileErrors.has(value.agentMd.path ?? "") ? "bg-red-900/50 text-red-300 ring-1 ring-red-500/50" : "bg-zinc-800 text-zinc-300"}`} title={fileErrors.has(value.agentMd.path ?? "") ? `File not found at: ${value.agentMd.path}` : undefined}>
               {fileErrors.has(value.agentMd.path ?? "") && <AlertTriangle className="h-3 w-3 shrink-0 text-red-400" />}
               {value.agentMd.path ?? "Inline"}
               {value.agentMd.path && (
@@ -553,6 +553,7 @@ export function AgentRuntimeEditor({
                 <span
                   key={i}
                   className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${hasError ? "bg-red-900/50 text-red-300 ring-1 ring-red-500/50" : "bg-zinc-800 text-zinc-300"}`}
+                  title={hasError ? `File not found at: ${skillPath}` : undefined}
                 >
                   {hasError && <AlertTriangle className="h-3 w-3 shrink-0 text-red-400" />}
                   {skill.mode === "existing" ? skill.name ?? "Unnamed" : skill.path ?? "Custom"}

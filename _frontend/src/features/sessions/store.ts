@@ -151,17 +151,25 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   renameGroup: async (workspaceRoot, groupId, title) => {
     const cur = get().layouts[workspaceRoot] ?? [];
-    const next = cur.map((n) =>
-      n.id === groupId && n.kind === "group" ? { ...n, name: title } : n
-    );
-    await get().saveLayout(workspaceRoot, next);
+    function rename(nodes: LayoutNode[]): LayoutNode[] {
+      return nodes.map((n) => {
+        if (n.id === groupId && n.kind === "group") return { ...n, name: title };
+        if (n.children) return { ...n, children: rename(n.children) };
+        return n;
+      });
+    }
+    await get().saveLayout(workspaceRoot, rename(cur));
   },
   recolorGroup: async (workspaceRoot, groupId, color) => {
     const cur = get().layouts[workspaceRoot] ?? [];
-    const next = cur.map((n) =>
-      n.id === groupId && n.kind === "group" ? { ...n, color } : n
-    );
-    await get().saveLayout(workspaceRoot, next);
+    function recolor(nodes: LayoutNode[]): LayoutNode[] {
+      return nodes.map((n) => {
+        if (n.id === groupId && n.kind === "group") return { ...n, color };
+        if (n.children) return { ...n, children: recolor(n.children) };
+        return n;
+      });
+    }
+    await get().saveLayout(workspaceRoot, recolor(cur));
   },
   removeGroup: async (workspaceRoot, groupId) => {
     const cur = get().layouts[workspaceRoot] ?? [];

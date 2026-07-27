@@ -312,6 +312,16 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   // Pick an initial expected text for the progressive match helper
   const expected = expectedA;
 
+  // Track which workspace should be active (updated by checkSession)
+  let currentExpectedWorkspace = workspaceRootA;
+  loop.register("workspace_path", async () => {
+    const wp = page.locator("[data-testid='workspace-path']").first();
+    const text = await wp.textContent().catch(() => null);
+    if (text && !text.includes(currentExpectedWorkspace)) {
+      throw new Error(`workspace_path: expected ${JSON.stringify(currentExpectedWorkspace)}, got ${JSON.stringify(text)}`);
+    }
+  }, true);
+
   let expectedBefore = "";
 
   /** Open auto-hide sidebar without parking on archive buttons. */
@@ -328,6 +338,7 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     expected: string,
     expectedWorkspace: string,
   ): Promise<boolean> {
+    currentExpectedWorkspace = expectedWorkspace;
     // Click the title area (left), not the row center — archive/info sit on
     // the right and used to intercept hover-clicks in headed mode.
     await locator.locator("p").first().click({ position: { x: 4, y: 4 } });

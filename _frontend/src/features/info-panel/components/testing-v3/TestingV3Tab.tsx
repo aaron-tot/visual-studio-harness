@@ -149,18 +149,33 @@ function SessionActions({ id, isDragOverlay }: { id: string; isDragOverlay?: boo
   );
 }
 
-function GroupActions({ id, label, childCount, childSessionIds, onRemove, onUngroup }: { id: string; label: string; childCount: number; childSessionIds?: string[]; onRemove?: () => void; onUngroup?: () => void }) {
+function GroupActions({ id, label, initialColor, childCount, childSessionIds, onRenameGroup, onRecolorGroup, onRemove, onUngroup }: {
+  id: string;
+  label: string;
+  initialColor: GroupColor;
+  childCount: number;
+  childSessionIds?: string[];
+  onRenameGroup?: (groupId: string, title: string) => void;
+  onRecolorGroup?: (groupId: string, color: GroupColor) => void;
+  onRemove?: () => void;
+  onUngroup?: () => void;
+}) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(label);
-  const [color, setColor] = useState<GroupColor>("neutral");
+  const [color, setColor] = useState<GroupColor>(initialColor);
   const [confirmArchive, setConfirmArchive] = useState(false);
 
   const cls = groupColorClass[color];
 
   const commit = () => {
     const trimmed = value.trim();
-    if (trimmed) setValue(trimmed);
+    if (trimmed && trimmed !== label) {
+      setValue(trimmed);
+      onRenameGroup?.(id, trimmed);
+    } else {
+      setValue(label);
+    }
     setEditing(false);
   };
 
@@ -198,12 +213,13 @@ function GroupActions({ id, label, childCount, childSessionIds, onRemove, onUngr
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
             onBlur={commit}
             onKeyDown={(e) => {
               if (e.key === "Enter") commit();
               if (e.key === "Escape") { setValue(label); setEditing(false); }
             }}
-            className="flex-1 text-sm font-medium px-1 py-0.5 rounded outline-none text-zinc-200 bg-zinc-800"
+            className="flex-1 text-sm font-medium px-1 py-0.5 rounded outline-none text-zinc-200 bg-zinc-800 min-w-0"
             autoFocus
           />
         </div>
@@ -244,7 +260,7 @@ function GroupActions({ id, label, childCount, childSessionIds, onRemove, onUngr
               className={`w-4 h-4 rounded-full ${groupColorClass[c].dot} ${
                 color === c ? "ring-2 ring-offset-1 ring-offset-zinc-900 ring-zinc-300" : ""
               }`}
-              onClick={(e) => { e.stopPropagation(); setColor(c); setPaletteOpen(false); }}
+              onClick={(e) => { e.stopPropagation(); setColor(c); setPaletteOpen(false); onRecolorGroup?.(id, c); }}
             />
           ))}
         </div>

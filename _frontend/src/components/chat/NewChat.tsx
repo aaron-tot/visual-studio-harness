@@ -104,7 +104,7 @@ function WorkspaceSelect() {
 
   return (
     <div className="relative inline-block" ref={ref}>
-      <button type="button" onClick={openPicker} className={triggerPill}>{displayPath}</button>
+      <button type="button" onClick={openPicker} className={triggerPill} data-testid="workspace-select-btn">{displayPath}</button>
       {open && !browsing && (
         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-50 min-w-[280px] rounded-xl border border-zinc-700/50 bg-zinc-900/95 backdrop-blur-xl shadow-2xl shadow-black/40 py-1">
           <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-zinc-600 font-medium">Recent</div>

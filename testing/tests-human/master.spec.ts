@@ -278,7 +278,21 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   const expectedB = getExpectedText("toolsV2", workspaceRootB).replace("b1 ", "\nb1 ");
   console.log("[ses2] workspace=" + workspaceRootB);
 
-  // Change workspace via picker before creating session 2
+  // Click "New Chat" to clear session (unlocks workspace picker)
+  const newBtn = page.locator("[data-testid='new-chat'], button:has-text('New Chat'), a:has-text('New Chat'), [aria-label='New chat']").first();
+  if (await newBtn.isVisible().catch(() => false)) {
+    await newBtn.click();
+    await page.waitForTimeout(1500);
+    console.log("New session created");
+  } else {
+    console.log("No New Chat button — trying page header click");
+    await page.locator("header, nav, [data-testid='header']").first().click();
+    await page.waitForTimeout(500);
+  }
+
+  // Change workspace to B via the main-area workspace selector (same UI flow as setupSession)
+  await page.locator("[data-testid='workspace-select-btn']").first().click();
+  await page.waitForTimeout(300);
   await page.getByText("Browse folders").first().click();
   await page.waitForTimeout(300);
   await page.locator("input[placeholder='/path/to/folder']").fill(workspaceRootB);

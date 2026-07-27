@@ -95,7 +95,7 @@ export function WorkspacePicker({ menuPlacement = "up", className = "" }: Worksp
         title={workspaceRoot || "Select workspace"}
       >
         <FolderOpen size={12} className="shrink-0 text-zinc-500" />
-        <span className="truncate font-mono">
+        <span className="truncate font-mono" data-testid="workspace-path-btn">
           {workspaceRoot ? short(workspaceRoot) : "Select workspace folder…"}
         </span>
       </button>

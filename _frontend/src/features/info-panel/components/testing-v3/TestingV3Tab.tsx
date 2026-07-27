@@ -209,7 +209,7 @@ function GroupActions({ id, label, initialColor, childCount, childSessionIds, on
   return (
     <>
       {editing ? (
-        <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -219,7 +219,7 @@ function GroupActions({ id, label, initialColor, childCount, childSessionIds, on
               if (e.key === "Enter") commit();
               if (e.key === "Escape") { setValue(label); setEditing(false); }
             }}
-            className="flex-1 text-sm font-medium px-1 py-0.5 rounded outline-none text-zinc-200 bg-zinc-800 min-w-0"
+            className="flex-1 text-sm font-medium px-1 py-0.5 rounded outline-none text-zinc-200 bg-zinc-800 min-w-0 w-full"
             autoFocus
           />
         </div>

@@ -276,6 +276,8 @@ export function TestingV3Tab({ search }: { search?: string }) {
   const addGroupStore = useSessionStore((s) => s.addGroup);
   const removeGroupStore = useSessionStore((s) => s.removeGroup);
   const saveLayout = useSessionStore((s) => s.saveLayout);
+  const renameGroupStore = useSessionStore((s) => s.renameGroup);
+  const recolorGroupStore = useSessionStore((s) => s.recolorGroup);
   const [focusIdx, setFocusIdx] = useState(-1);
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const layoutsLoaded = useRef<Set<string>>(new Set());
@@ -372,12 +374,15 @@ export function TestingV3Tab({ search }: { search?: string }) {
 
   const renderActions = useCallback(
     (itemId: string, label: string, childCount?: number, _requestRemove?: () => void, isDragOverlay?: boolean, childSessionIds?: string[]) => {
-      // Find workspace owning this group
       let ws: string | undefined;
+      let groupColor: GroupColor = "neutral";
       for (const [w, tree] of Object.entries(layouts)) {
         function findGroup(nodes: LayoutNode[]): boolean {
           for (const n of nodes) {
-            if (n.id === itemId && n.kind === "group") return true;
+            if (n.id === itemId && n.kind === "group") {
+              groupColor = (n.color as GroupColor) ?? "neutral";
+              return true;
+            }
             if (n.children && findGroup(n.children)) return true;
           }
           return false;
@@ -389,11 +394,17 @@ export function TestingV3Tab({ search }: { search?: string }) {
           <GroupActions
             id={itemId}
             label={label}
+            initialColor={groupColor}
             childCount={childCount ?? 0}
             childSessionIds={childSessionIds}
+            onRenameGroup={(gid, title) => {
+              void renameGroupStore(ws!, gid, title).then(() => setLayoutTick((t) => t + 1));
+            }}
+            onRecolorGroup={(gid, c) => {
+              void recolorGroupStore(ws!, gid, c).then(() => setLayoutTick((t) => t + 1));
+            }}
             onRemove={() => removeGroup(ws!, itemId)}
             onUngroup={() => {
-              // Recursively collect all sessions in this group and sub-groups
               const tree = layouts[ws!];
               if (!tree) return;
               function collectSessionIds(nodes: LayoutNode[]): string[] {
@@ -426,7 +437,7 @@ export function TestingV3Tab({ search }: { search?: string }) {
       }
       return <SessionActions id={itemId} isDragOverlay={isDragOverlay} />;
     },
-    [layouts, isGroupId, removeGroup],
+    [layouts, isGroupId, removeGroup, renameGroupStore, recolorGroupStore],
   );
 
   return (

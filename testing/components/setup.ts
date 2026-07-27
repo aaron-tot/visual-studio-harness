@@ -31,7 +31,7 @@ function timestampDir(): string {
   return "tests/" + ts + "_" + rand;
 }
 
-function seedWorkspace(baseDir: string) {
+export function seedWorkspace(baseDir: string) {
   mkdirSync(join(baseDir, "src"), { recursive: true });
   mkdirSync(join(baseDir, "data"), { recursive: true });
   mkdirSync(join(baseDir, ".VISUAL STUDIO HARNESS", "skills"), { recursive: true });

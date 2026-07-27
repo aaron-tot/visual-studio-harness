@@ -1,7 +1,7 @@
 import { execSync } from "child_process";
 import type { Page } from "@playwright/test";
 import { test, expect } from "@testing/fixtures";
-import { setupSession, sendInitialMessage } from "@testing/components/setup";
+import { setupSession, sendInitialMessage, seedWorkspace } from "@testing/components/setup";
 import { getExpectedText } from "../../_backend/src/llm/mock-models";
 
 async function expandAllCollapsibles(page: Page): Promise<void> {
@@ -272,10 +272,15 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   await sendInitialMessage(page, chat, "1");
   await page.waitForTimeout(3000);
 
-  // Create workspace B as a copy of workspace A, then switch to it
+  // Create workspace B independently from the seed template
   const workspaceRootB = workspaceRootA + "_wsB";
-  execSync(`cp -r "${workspaceRootA}" "${workspaceRootB}"`, { stdio: "pipe" });
+  seedWorkspace(workspaceRootB);
+  // Snapshot/restore around expectedB generation since generateExpectedText
+  // executes tools against the filesystem (e.g. apply_patch creates patch.txt)
+  const wsSnapshotB = workspaceRootB + ".snap";
+  execSync(`cp -r "${workspaceRootB}" "${wsSnapshotB}"`, { stdio: "pipe" });
   const expectedB = getExpectedText("toolsV2", workspaceRootB).replace("b1 ", "\nb1 ");
+  execSync(`rm -rf "${workspaceRootB}" && mv "${wsSnapshotB}" "${workspaceRootB}"`, { stdio: "pipe" });
   console.log("[ses2] workspace=" + workspaceRootB);
 
   // Track which workspace should be active (updated during flicks)

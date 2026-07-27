@@ -267,7 +267,8 @@ wsClient.on("session_state", (data: any) => {
       if (hasIncomplete && lastAssistant) {
         const { streamingParts, streamingContent, partSeq } = partsFromSnapshot(lastAssistant.parts || []);
         const upTo = snapshotSeq ?? partSeq;
-        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, streaming: true, streamingContent, streamingParts, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
+        const wsRoot = data.meta?.workspaceRoot;
+        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
       } else {
         const upTo = snapshotSeq ?? maxSeqOf(msgs.flatMap((m: any) => m.parts || []));
         // If the store already has an active streaming turn (set by sendMessage),
@@ -275,10 +276,12 @@ wsClient.on("session_state", (data: any) => {
         // and should not interrupt an already-started turn.
         const cur = useChatStore.getState();
         const preserveStreaming = cur.streaming && cur.sessionId === data.sessionId;
+        const wsRoot = data.meta?.workspaceRoot;
         useChatStore.setState({
           messages: msgs,
           sessionId: data.sessionId,
           sessionMeta: data.meta ?? null,
+          workspaceRoot: wsRoot ?? cur.workspaceRoot,
           streaming: preserveStreaming ? true : false,
           streamingContent: preserveStreaming ? cur.streamingContent : "",
           streamingParts: preserveStreaming ? cur.streamingParts : [],

@@ -278,6 +278,9 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   const expectedB = getExpectedText("toolsV2", workspaceRootB).replace("b1 ", "\nb1 ");
   console.log("[ses2] workspace=" + workspaceRootB);
 
+  // Track which workspace should be active (updated during flicks)
+  let currentExpectedWorkspace = workspaceRootA;
+
   // Click "New Chat" to clear session (unlocks workspace picker)
   const newBtn = page.locator("[data-testid='new-chat'], button:has-text('New Chat'), a:has-text('New Chat'), [aria-label='New chat']").first();
   if (await newBtn.isVisible().catch(() => false)) {
@@ -301,6 +304,7 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   await page.getByText("Use this folder").first().click();
   await page.waitForTimeout(500);
 
+  currentExpectedWorkspace = workspaceRootB;
   await sendInitialMessage(page, chat, "2");
   await page.waitForTimeout(3000);
 
@@ -312,13 +316,16 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   // Pick an initial expected text for the progressive match helper
   const expected = expectedA;
 
-  // Track which workspace should be active (updated by checkSession)
-  let currentExpectedWorkspace = workspaceRootA;
+  const shortPath = (p: string) => (p.length <= 48 ? p : "…" + p.slice(-46));
+
   loop.register("workspace_path", async () => {
     const wp = page.locator("[data-testid='workspace-path']").first();
     const text = await wp.textContent().catch(() => null);
-    if (text && !text.includes(currentExpectedWorkspace)) {
-      throw new Error(`workspace_path: expected ${JSON.stringify(currentExpectedWorkspace)}, got ${JSON.stringify(text)}`);
+    if (!text) return;
+    const expectedShort = shortPath(currentExpectedWorkspace);
+    const actualShort = shortPath(text);
+    if (actualShort !== expectedShort) {
+      throw new Error(`workspace_path: expected ${JSON.stringify(expectedShort)}, got ${JSON.stringify(actualShort)} (raw: ${JSON.stringify(text)})`);
     }
   }, true);
 
@@ -338,7 +345,8 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     expected: string,
     expectedWorkspace: string,
   ): Promise<boolean> {
-    currentExpectedWorkspace = expectedWorkspace;
+    // Stop workspace_path check during transition to avoid race with WS/REST
+    loop.stop("workspace_path");
     // Click the title area (left), not the row center — archive/info sit on
     // the right and used to intercept hover-clicks in headed mode.
     await locator.locator("p").first().click({ position: { x: 4, y: 4 } });
@@ -353,10 +361,17 @@ test("multi-session flick", async ({ page, settings, chat }) => {
     });
     await page.waitForTimeout(300);
 
+    // Set expected workspace AFTER session loads — the WS/REST response has
+    // updated the store's workspaceRoot by now.
+    currentExpectedWorkspace = expectedWorkspace;
+    loop.start("workspace_path");
+
     // Verify the workspace path display matches this session
     const wpText = await page.locator("[data-testid='workspace-path']").first().textContent().catch(() => null);
-    if (wpText && !wpText.includes(expectedWorkspace) && !expectedWorkspace.includes(wpText)) {
-      throw new Error(`${label}: expected workspace path containing ${JSON.stringify(expectedWorkspace)}, got ${JSON.stringify(wpText)}`);
+    const expectedShort = shortPath(expectedWorkspace);
+    const actualShort = wpText ? shortPath(wpText) : null;
+    if (actualShort && actualShort !== expectedShort) {
+      throw new Error(`${label}: expected ${JSON.stringify(expectedShort)}, got ${JSON.stringify(actualShort)} (raw: ${JSON.stringify(wpText)})`);
     }
 
     const { before } = await page.evaluate((exp: string) => {

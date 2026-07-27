@@ -22,6 +22,7 @@ import {
   resetHydrateState,
   incrementEpoch,
   awaitingSessionState,
+  loadSessionEpoch,
 } from "./session-hydrate";
 
 // ── Streaming timeout safety net ──────────────────────────────────────────

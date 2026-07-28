@@ -4,6 +4,7 @@ import type { GraphStatusResponse } from "../../../../lib/api";
 import { EmptyState, PanelButton } from "../ui";
 import { ViewToggle, RawPanel } from "./view-toggle";
 import type { ViewMode } from "./view-toggle";
+import { useCurrentWorkspaceRoot } from "../../../../hooks/useCurrentWorkspaceRoot";
 
 function relativeTime(ms: number): string {
   if (!ms) return "never";
@@ -44,10 +45,11 @@ export function StatusView() {
   const [error, setError] = useState<string | null>(null);
   const [reindexing, setReindexing] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("pretty");
+  const workspaceRoot = useCurrentWorkspaceRoot();
 
   const fetchStatus = useCallback(async () => {
     try {
-      const s = await getGraphStatus();
+      const s = await getGraphStatus(workspaceRoot);
       setStatus(s);
       setError(null);
     } catch (e) {
@@ -55,7 +57,7 @@ export function StatusView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [workspaceRoot]);
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
@@ -68,7 +70,7 @@ export function StatusView() {
   const handleReindex = async () => {
     setReindexing(true);
     try {
-      await triggerGraphReindex();
+      await triggerGraphReindex(workspaceRoot);
       await fetchStatus();
     } finally {
       setReindexing(false);

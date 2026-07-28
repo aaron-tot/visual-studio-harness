@@ -94,8 +94,9 @@ export const SystemPromptJoinersSchema = z.object({
 });
 
 export const WorkspaceManifestSettingsSchema = z.object({
-  enabled: z.boolean().default(false),
+  enabled: z.boolean().default(true),
   maxDepth: z.number().int().positive().default(3).optional(),
+  includeFiles: z.boolean().optional(),
   excludeDirs: z.array(z.string()).optional(),
   excludeExtensions: z.array(z.string()).optional(),
   includeGitignore: z.boolean().optional(),
@@ -136,6 +137,7 @@ export const ConfigFileSchema = z.object({
   headless: z.boolean().default(false).optional(),
   snippets: z.array(SnippetConfigSchema).default([]),
   workspaceManifest: WorkspaceManifestSettingsSchema.optional(),
+  workspaceGraph: z.boolean().optional(),
   messagePanelFullWidth: z.boolean().default(false),
   messagePanelPinnedDefault: z.boolean().default(false),
   showSessionName: z.boolean().default(false),

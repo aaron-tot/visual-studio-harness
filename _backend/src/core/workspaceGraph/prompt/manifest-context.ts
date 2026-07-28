@@ -44,7 +44,7 @@ export async function buildWorkspaceManifestContext(
     `Excluded extensions: ${excludeExts}`,
   ].join("\n");
 
-  return `${meta}\n\n${manifest}`;
+  return `${meta}\n\n${manifest}\n\nNote: Manifest refreshes each turn. For files, symbols, functions, classes, imports/exports use graph tools.`;
 }
 
 export async function buildSystemPromptWithManifest(

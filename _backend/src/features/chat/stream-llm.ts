@@ -158,6 +158,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
         dbg("streamChat:awaiting-first-event", { attempt, provider: provider.displayName, model });
         for await (const event of result.fullStream) {
           if (turnEnded) break;
+          if (signal?.aborted) { aborted = true; break; }
           const et = (event as { type: string }).type;
           evtCounts[et] = (evtCounts[et] ?? 0) + 1;
           console.log(`[streamChat] Event: ${et}`, event.toolCallId || event.toolName || event.finishReason || "");

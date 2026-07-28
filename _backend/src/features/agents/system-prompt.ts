@@ -6,13 +6,13 @@ import { buildDefaultGlobalAgentsMarkdown } from "./agents.default";
 import { globalAgentsPath, legacyGlobalAgentsPath, seedsDir, seedSubdirForMode } from "./paths";
 import { readAgentsFile } from "./md-utils";
 
-export { AGENTS_MD_NAMES, DEFAULT_SYSTEM_PROMPT_JOINERS } from "./constants";
-export type { BuildSystemBlockInput } from "./constants";
+export { AGENTS_MD_NAMES } from "./constants";
+export { DEFAULT_SYSTEM_PROMPT_JOINERS, type BuildSystemBlockInput } from "../system-prompt/constants";
 export { globalAgentsPath, projectAgentsPath, loadSeedJoinersDefaults } from "./paths";
 export { listAgentsMdAtRoot, readAgentsFile, resolveAgentMd, resolveSkillMds } from "./md-utils";
 export { formatRuntimeInfo } from "./format";
 export { formatTodoList } from "./todo-list-format";
-export { buildSystemBlock } from "./build-block";
+export { buildSystemBlock } from "../system-prompt/builder";
 
 async function fileExists(path: string): Promise<boolean> {
   try { await import("node:fs/promises").then(fs => fs.access(path)); return true; } catch { return false; }

@@ -220,6 +220,18 @@ async function main() {
 
   app.get("/api/health", async () => ({ status: "ok", mode: MODE, dataDir: DATA_DIR }));
 
+  // App info: build timestamp (baked in at compile time) + install timestamp (written by installer)
+  app.get("/api/app-info", async () => {
+    const buildTimestamp: string | undefined = (process.env as Record<string, string | undefined>).BUILD_TIMESTAMP;
+    let installedAt: string | null = null;
+    try {
+      const raw = await readFile(join(DATA_DIR, "install-info.json"), "utf-8");
+      const parsed = JSON.parse(raw);
+      installedAt = parsed.installedAt ?? null;
+    } catch { /* file missing in dev or first run */ }
+    return { buildTimestamp: buildTimestamp ?? null, installedAt };
+  });
+
   // Prod binary serves embedded frontend; dev uses Vite on :3100
   if (MODE === "prod" || hasEmbeddedFrontend()) {
     if (hasEmbeddedFrontend()) {

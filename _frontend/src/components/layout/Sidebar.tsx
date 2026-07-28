@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { TestingV3Tab } from "../../features/info-panel/components/testing-v3/TestingV3Tab";
 import { useProximityPanel } from "../../hooks/useProximityPanel";
 import { ProximityRail } from "./ProximityRail";
+import { getAppInfo, type AppInfo } from "../../lib/api";
 
 interface SidebarProps {
   search: string;
@@ -23,10 +24,25 @@ function loadSidebarWidth(): number {
   return DEFAULT_W;
 }
 
+function formatDateTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      year: "numeric", month: "short", day: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return iso; }
+}
+
 export function Sidebar({ search }: SidebarProps) {
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   const [resizing, setResizing] = useState(false);
   const resizingRef = useRef(false);
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+
+  useEffect(() => {
+    getAppInfo().then(setAppInfo).catch(() => {});
+  }, []);
 
   const panel = useProximityPanel({
     side: "left",
@@ -84,8 +100,22 @@ export function Sidebar({ search }: SidebarProps) {
         pinTitle={{ pinned: "Unpin sidebar", unpinned: "Pin sidebar open" }}
       >
         <TestingV3Tab search={search} />
-        <div className="mt-auto px-3 py-2 text-[10px] text-zinc-600 select-none">
+        <div className="mt-auto px-3 py-2 text-[10px] text-zinc-600 select-none relative group/version">
           0.0.1-alpha (Pre-Release)
+          <div className="hidden group-hover/version:block absolute bottom-full left-0 mb-1 z-50 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[10px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
+            {import.meta.env.DEV ? (
+              <div>Dev</div>
+            ) : appInfo?.installedAt ? (
+              <>
+                {appInfo?.buildTimestamp && (
+                  <div>Packed: {formatDateTime(appInfo.buildTimestamp)}</div>
+                )}
+                <div>Installed: {formatDateTime(appInfo.installedAt)}</div>
+              </>
+            ) : (
+              <div>Prod (Unpackaged)</div>
+            )}
+          </div>
         </div>
       </ProximityRail>
       <div

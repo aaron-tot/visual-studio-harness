@@ -176,7 +176,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const numTurnId = parseInt(turnId, 10);
     if (isNaN(numTurnId)) return reply.code(400).send({ error: "invalid turn id" });
     const raw = getTurnRawCaptureByNumber(id, numTurnId, dataDir);
-    if (!raw) return reply.code(404).send({ error: "raw capture not found" });
+    if (!raw) return { rawRequest: null, rawResponse: null };
     return raw;
   });
 

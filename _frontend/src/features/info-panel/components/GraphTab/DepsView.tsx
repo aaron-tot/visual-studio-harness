@@ -4,6 +4,7 @@ import type { GraphFileRecord, GraphImportRecord, GraphExportRecord } from "../.
 import { EmptyState, PanelInput } from "../ui";
 import { ViewToggle, RawPanel } from "./view-toggle";
 import type { ViewMode } from "./view-toggle";
+import { useCurrentWorkspaceRoot } from "../../../../hooks/useCurrentWorkspaceRoot";
 
 function formatAgentDeps(imports: GraphImportRecord[], exports: GraphExportRecord[], filePath: string): string {
   const parts: string[] = [`File: ${filePath}`];
@@ -34,10 +35,11 @@ export function DepsView() {
   const [exports, setExports] = useState<GraphExportRecord[]>([]);
   const [loadingDeps, setLoadingDeps] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("pretty");
+  const workspaceRoot = useCurrentWorkspaceRoot();
 
   useEffect(() => {
-    getGraphFiles().then(setFiles).catch(() => {});
-  }, []);
+    getGraphFiles(undefined, workspaceRoot).then(setFiles).catch(() => {});
+  }, [workspaceRoot]);
 
   const filtered = useMemo(() => {
     if (!search) return files.slice(0, 50);
@@ -48,10 +50,10 @@ export function DepsView() {
   useEffect(() => {
     if (!selectedFile) { setImports([]); setExports([]); return; }
     setLoadingDeps(true);
-    Promise.all([getGraphImports(selectedFile), getGraphExports(selectedFile)])
+    Promise.all([getGraphImports(selectedFile, workspaceRoot), getGraphExports(selectedFile, workspaceRoot)])
       .then(([imp, exp]) => { setImports(imp); setExports(exp); })
       .finally(() => setLoadingDeps(false));
-  }, [selectedFile]);
+  }, [selectedFile, workspaceRoot]);
 
   const rawText = useMemo(
     () => selectedFile ? formatAgentDeps(imports, exports, selectedFile) : "Select a file to view dependencies",

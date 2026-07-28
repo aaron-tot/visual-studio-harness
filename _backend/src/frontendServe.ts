@@ -29,7 +29,7 @@ export function hasEmbeddedFrontend(): boolean {
 export function registerEmbeddedFrontend(app: FastifyInstance): void {
   app.setNotFoundHandler((req, reply) => {
     // Let API/WS 404s stay as 404
-    if (req.url.startsWith("/api") || req.url.startsWith("/chat")) {
+    if (req.url.startsWith("/api") || req.url === "/chat") {
       return reply.code(404).send({ error: "Not found" });
     }
 

@@ -57,6 +57,7 @@ function clearStreamTimeout(): void {
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   streaming: false,
+  stopping: false,
   streamingContent: "",
   streamingParts: [],
   lastSeq: 0,
@@ -117,6 +118,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sessionId: id,
       messages: [],
       streaming: false,
+      stopping: false,
       streamingContent: "",
       streamingParts: [],
       streamingTurnId: null,
@@ -155,6 +157,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       messages: [...messages, userMsg],
       streaming: true,
+      stopping: false,
       streamingContent: "",
       streamingParts: [],
       streamingTurnId: null,
@@ -189,6 +192,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       messages: [],
       streaming: false,
+      stopping: false,
       streamingContent: "",
       streamingParts: [],
       streamingTurnId: null,
@@ -206,27 +210,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   stopStreaming: () => {
     clearStreamTimeout();
     const state = get();
-    const { sessionId, messages, streamingParts } = state;
+    const { sessionId, stopping } = state;
+    if (stopping) return; // already stopping
     if (sessionId) {
       wsClient.send({ type: "cancel", sessionId });
     }
-    const msgs = [...messages];
-    if (streamingParts.length > 0) {
-      const sorted = sortParts(streamingParts);
-      const content = textContentFromParts(sorted);
-      const last = msgs[msgs.length - 1];
-      if (last?.role === "assistant") {
-        msgs[msgs.length - 1] = {
-          ...last,
-          content: last.content + content,
-          parts: last.parts ? sortParts([...last.parts, ...sorted]) : sorted,
-        };
-      } else {
-        msgs.push({ role: "assistant", content, parts: sorted, timestamp: new Date().toISOString() });
-      }
-    }
-    msgs.push({ role: "user", content: "<system> Stream stopped by user </system>", timestamp: new Date().toISOString() });
-    set({ messages: msgs, streaming: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0 });
+    set({ stopping: true });
   },
 
   appendToken: (token, seq) => {
@@ -271,7 +260,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     clearStreamTimeout();
     return set((state) => {
       const hasContinue = state._pendingContinueMessage;
-      chatDebug("store", "doneStreaming", { turnId, hadContinue: !!hasContinue, nextStreaming: !!hasContinue });
+      const wasStopped = state.stopping;
+      chatDebug("store", "doneStreaming", { turnId, hadContinue: !!hasContinue, nextStreaming: !!hasContinue, wasStopped });
       const msgs = [...state.messages];
       const last = msgs[msgs.length - 1];
       const parts = state.streamingParts.length > 0 ? sortParts(state.streamingParts) : undefined;
@@ -284,6 +274,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       } else {
         msgs.push({ role: "assistant", content, timestamp: new Date().toISOString(), parts, modelName: effectiveModelName, providerName: effectiveProviderName, agentName: effectiveAgentName, durationMs, turnId, success: true as any });
       }
+      if (wasStopped) {
+        msgs.push({ role: "user", content: "<system> Stream stopped by user </system>", timestamp: new Date().toISOString() });
+      }
       if (turnId != null) {
         const userIdx = msgs.length - 2;
         if (userIdx >= 0 && msgs[userIdx].role === "user") msgs[userIdx] = { ...msgs[userIdx], turnId };
@@ -295,7 +288,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         updatedMessages = [...msgs, { role: "user" as const, content: hasContinue.content, timestamp: new Date().toISOString() }];
         nextAgentName = hasContinue.agentName;
       }
-      return { messages: updatedMessages, streaming: !!hasContinue, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null };
+      return { messages: updatedMessages, streaming: !!hasContinue, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null };
     });
   },
 
@@ -330,7 +323,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (userIdx >= 0 && msgs[userIdx].role === "user") msgs[userIdx] = { ...msgs[userIdx], turnId: meta.turnId };
       }
       if (state.sessionId) void get().loadTurns(state.sessionId);
-      return { messages: msgs, streaming: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null };
+      return { messages: msgs, streaming: false, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null };
     });
   },
 

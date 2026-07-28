@@ -3,6 +3,7 @@ import type { Message, MessagePartType, PermissionDecision, SessionMeta, Session
 export interface ChatState {
   messages: Message[];
   streaming: boolean;
+  stopping: boolean;
   streamingContent: string;
   streamingParts: MessagePartType[];
   lastSeq: number;

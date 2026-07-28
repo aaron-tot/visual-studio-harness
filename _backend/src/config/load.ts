@@ -42,6 +42,7 @@ export async function initConfigWatcher(
         slotWaitTimeoutSec: 300,
       },
       headless: false,
+      workspaceManifest: { enabled: true },
       testModels: {
         model1000: { tokensPerSecond: 250 },
         "model-mixed": { tokensPerSecond: 250 },

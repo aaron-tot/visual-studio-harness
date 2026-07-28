@@ -4,6 +4,7 @@ import type { GraphFileRecord, GraphImportRecord, GraphExportRecord } from "../.
 import { EmptyState } from "../ui";
 import { ViewToggle, RawPanel } from "./view-toggle";
 import type { ViewMode } from "./view-toggle";
+import { useCurrentWorkspaceRoot } from "../../../../hooks/useCurrentWorkspaceRoot";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -19,17 +20,17 @@ function formatAgentFiles(files: GraphFileRecord[]): string {
   return `${files.length} files:\n${lines.join("\n")}`;
 }
 
-function FileDetail({ file, onClose }: { file: GraphFileRecord; onClose: () => void }) {
+function FileDetail({ file, onClose, workspaceRoot }: { file: GraphFileRecord; onClose: () => void; workspaceRoot?: string }) {
   const [imports, setImports] = useState<GraphImportRecord[]>([]);
   const [exports, setExports] = useState<GraphExportRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getGraphImports(file.path), getGraphExports(file.path)])
+    Promise.all([getGraphImports(file.path, workspaceRoot), getGraphExports(file.path, workspaceRoot)])
       .then(([imp, exp]) => { setImports(imp); setExports(exp); })
       .finally(() => setLoading(false));
-  }, [file.path]);
+  }, [file.path, workspaceRoot]);
 
   return (
     <div className="border-t border-zinc-800/50 px-3 py-2 space-y-2 bg-zinc-900/30">
@@ -73,12 +74,13 @@ export function FilesView() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<GraphFileRecord | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("pretty");
+  const workspaceRoot = useCurrentWorkspaceRoot();
 
   useEffect(() => {
-    getGraphFiles()
+    getGraphFiles(undefined, workspaceRoot)
       .then((r) => { setFiles(r); setLoading(false); })
       .catch((e) => { setError(e instanceof Error ? e.message : "Failed"); setLoading(false); });
-  }, []);
+  }, [workspaceRoot]);
 
   const rawText = useMemo(() => formatAgentFiles(files), [files]);
 
@@ -107,7 +109,7 @@ export function FilesView() {
                   <span className="text-[9px] text-zinc-600 shrink-0">{formatBytes(file.size)}</span>
                 </div>
                 {selected?.id === file.id && (
-                  <FileDetail file={file} onClose={() => setSelected(null)} />
+                  <FileDetail file={file} onClose={() => setSelected(null)} workspaceRoot={workspaceRoot} />
                 )}
               </div>
             ))}

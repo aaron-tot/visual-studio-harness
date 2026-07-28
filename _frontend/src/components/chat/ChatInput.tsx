@@ -17,7 +17,8 @@ export function ChatInput({
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const { sendMessage, streaming, stopStreaming } = useChatStore();
+  const { sendMessage, streaming, stopping, stopStreaming } = useChatStore();
+  const turnActive = streaming || stopping;
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -76,14 +77,19 @@ export function ChatInput({
           rows={1}
           className={inputClass}
         />
-        {streaming ? (
+        {turnActive ? (
           <button
             type="button"
             onClick={stopStreaming}
-            className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm flex items-center gap-1.5 transition-colors shrink-0"
+            disabled={stopping}
+            className={`px-3 py-2 rounded-lg text-white text-sm flex items-center gap-1.5 transition-colors shrink-0 ${
+              stopping
+                ? "bg-red-600/40 cursor-not-allowed animate-pulse"
+                : "bg-red-600 hover:bg-red-500"
+            }`}
           >
             <Square size={14} fill="currentColor" />
-            Stop
+            {stopping ? "Stopping…" : "Stop"}
           </button>
         ) : (
           <button

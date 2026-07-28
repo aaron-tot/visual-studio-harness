@@ -59,6 +59,7 @@ export function cancelSession(sessionId: string, dataDir?: string): void {
   clearPendingContinue(sessionId);
   const ac = sessionAborts.get(sessionId);
   if (ac) { ac.abort(); sessionAborts.delete(sessionId); }
+  else { console.warn("[cancelSession] no AbortController found for session", sessionId); }
   killBashSession(sessionId);
   cancelPermissionsForSession(sessionId);
   emitSessionAbort(sessionId, "user_cancel", dataDir);

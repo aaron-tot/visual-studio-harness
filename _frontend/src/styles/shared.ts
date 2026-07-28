@@ -79,6 +79,10 @@ export const sendButton =
 export const stopButton =
   "shrink-0 mb-[7px] p-2 rounded-xl bg-red-600/60 hover:bg-red-500 text-white transition-all active:scale-95";
 
+/** Stop button while waiting for backend acknowledgement */
+export const stopButtonStopping =
+  "shrink-0 mb-[7px] p-2 rounded-xl bg-red-600/30 text-white/60 cursor-not-allowed animate-pulse transition-all";
+
 /** Send button (PromptInput / InputActions style) */
 export const sendButtonSolid =
   "px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-white " +

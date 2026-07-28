@@ -3,6 +3,7 @@ import { getGraphManifest } from "../../../../lib/api";
 import { EmptyState } from "../ui";
 import { ViewToggle, RawPanel } from "./view-toggle";
 import type { ViewMode } from "./view-toggle";
+import { useCurrentWorkspaceRoot } from "../../../../hooks/useCurrentWorkspaceRoot";
 
 interface TreeNode {
   name: string;
@@ -109,12 +110,13 @@ export function TreeView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("pretty");
+  const workspaceRoot = useCurrentWorkspaceRoot();
 
   useEffect(() => {
-    getGraphManifest()
+    getGraphManifest(undefined, undefined, workspaceRoot)
       .then((r) => { setManifest(r.manifest); setLoading(false); })
       .catch((e) => { setError(e instanceof Error ? e.message : "Failed"); setLoading(false); });
-  }, []);
+  }, [workspaceRoot]);
 
   const tree = useMemo(() => manifest ? parseManifestTree(manifest) : [], [manifest]);
 

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { ConfigFile } from "../../../_shared/types";
 import { loadConfig, saveConfig } from "../storage/config";
+import { migrateConfig } from "../config/migrate";
 import { broadcastConfig } from "../ws/configPush";
 import { serverOriginFromBaseUrl } from "../llm/slots";
 
@@ -13,7 +14,7 @@ export function registerConfigRoutes(
   // Always re-read from disk so external edits work even if fs.watch fails (EMFILE, etc.)
   app.get("/api/config", async () => {
     try {
-      const fromDisk = await loadConfig(dataDir);
+      const fromDisk = migrateConfig(await loadConfig(dataDir));
       setConfig(fromDisk);
       return fromDisk;
     } catch {
@@ -22,7 +23,7 @@ export function registerConfigRoutes(
   });
 
   app.put("/api/config", async (request, reply) => {
-    const config = request.body as ConfigFile;
+    const config = migrateConfig(request.body as ConfigFile);
     await saveConfig(dataDir, config);
     setConfig(config);
     broadcastConfig(config);
@@ -34,7 +35,7 @@ export function registerConfigRoutes(
     // Prefer fresh disk config (after Save & Connect) over in-memory snapshot
     let provider = getConfig().providers[parseInt(index, 10)];
     try {
-      const fromDisk = await loadConfig(dataDir);
+      const fromDisk = migrateConfig(await loadConfig(dataDir));
       setConfig(fromDisk);
       provider = fromDisk.providers[parseInt(index, 10)];
     } catch {

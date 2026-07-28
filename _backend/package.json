@@ -3,7 +3,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "nodemon --watch src -e ts --signal SIGTERM --exec 'MODE=dev bun run src/index.ts'",
+    "dev": "nodemon --watch src --watch ../_shared -e ts --signal SIGTERM --exec 'MODE=dev bun run src/index.ts'",
     "build": "bun run ../scripts/build-prod.ts",
     "start": "bun run ../scripts/run-prod.ts",
     "test": "bun test src"

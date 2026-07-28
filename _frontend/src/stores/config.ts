@@ -26,7 +26,7 @@ async function mergeAgentFiles(config: ConfigFile): Promise<ConfigFile> {
 
 export const useConfigStore = create<ConfigState>((set) => ({
   config: { providers: [] },
-  loading: false,
+  loading: true,
   fetch: async () => {
     set({ loading: true });
     try {

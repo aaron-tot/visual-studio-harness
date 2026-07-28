@@ -9,12 +9,24 @@ const btnClass =
 export function LastMessageButton() {
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
+  const [initialized, setInitialized] = useState(false);
   const [userMsgIndex, setUserMsgIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const messages = useChatStore((s) => s.messages);
   const fullWidth = useConfigStore((s) => s.config.messagePanelFullWidth ?? false);
   const pinnedDefault = useConfigStore((s) => s.config.messagePanelPinnedDefault ?? false);
+  const configLoading = useConfigStore((s) => s.loading);
+
+  // Apply pinned default once config has loaded (avoids race with async fetchConfig)
+  useEffect(() => {
+    if (initialized || configLoading) return;
+    setInitialized(true);
+    if (pinnedDefault) {
+      setPinned(true);
+      setOpen(true);
+    }
+  }, [pinnedDefault, configLoading, initialized]);
 
   const userMessages = useMemo(() => {
     return messages.filter((m) => m.role === "user");

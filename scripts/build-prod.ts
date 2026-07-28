@@ -119,6 +119,17 @@ async function main() {
   const seedFlag = process.argv.find(a => a.startsWith("--seed="));
   const seedData = seedFlag ? seedFlag.split("=")[1] : "{}";
 
+  // Clean stale tsc output directories and caches that can shadow source files
+  await rm(join(ROOT, "_shared", "dist"), { recursive: true, force: true });
+  await rm(join(ROOT, "_frontend", "dist"), { recursive: true, force: true });
+  await rm(join(ROOT, "_frontend", "tailwind.config.js"), { force: true });
+  await rm(join(ROOT, "_frontend", "tailwind.config.js.map"), { force: true });
+  await rm(join(ROOT, "_frontend", "tailwind.config.d.ts"), { force: true });
+  await rm(join(ROOT, "_frontend", "tailwind.config.d.ts.map"), { force: true });
+  await rm(join(ROOT, "tsconfig.tsbuildinfo"), { force: true });
+  await rm(join(ROOT, "_backend", "tsconfig.tsbuildinfo"), { force: true });
+  await rm(join(ROOT, "_frontend", "tsconfig.tsbuildinfo"), { force: true });
+
   if (buildType === "installer") {
     console.log("=== Installer build — building base binary first ===");
     await run(["bun", "run", "scripts/build-prod.ts", `--target=${target}`], ROOT);
@@ -182,6 +193,8 @@ async function main() {
       "process.env.MODE=\"prod\"",
       "--define",
       `process.env.BUILD_TYPE="${buildType}"`,
+      "--define",
+      `process.env.BUILD_TIMESTAMP="${new Date().toISOString()}"`,
     ],
     ROOT
   );

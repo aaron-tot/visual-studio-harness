@@ -1,5 +1,7 @@
 node_modules/
 dist/
+_shared/dist/
+_frontend/dist/
 data/
 test-results/
 testing/test-results/

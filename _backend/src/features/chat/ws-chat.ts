@@ -69,14 +69,16 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
   const sessionAborts = getSessionAborts();
 
   console.log("tmpDebug: handleChatMessage ENTERED", { sessionId: msg.sessionId, contentLen: msg.content?.length, agentName: msg.agentName, providerName: msg.providerName, modelName: msg.modelName });
+  let socketClosed = false;
   const onClose = () => {
-    abortController.abort();
+    socketClosed = true;
     if (sessionId) cancelPermissionsForSession(sessionId);
   };
   socket.on("close", onClose);
 
   let sessionId = msg.sessionId && msg.sessionId !== "new" ? msg.sessionId : "";
-  if (sessionId) sessionAborts.set(sessionId, abortController);
+  const lookupKey = msg.sessionId || ""; // Use the exact sessionId the cancel will carry
+  if (sessionId || lookupKey) sessionAborts.set(lookupKey, abortController);
   let streamingTurnId: number | undefined;
   const getSid = () => sessionId;
   const getTurnId = () => streamingTurnId;
@@ -109,6 +111,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
     }, {
       source: "ws", signal: abortController.signal,
       onSessionReady: ({ sessionId: id, created, meta, turnId }) => {
+        if (id !== lookupKey) sessionAborts.delete(lookupKey);
         sessionId = id; sessionAborts.set(id, abortController);
         streamingTurnId = turnId;
         announceStreamStart();
@@ -165,7 +168,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       emitDoneOnly(socket, result.sessionId, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs);
     }
 
-    if (!wasUserCancelled(sessionId) && config.autoContinueOnToolEnd) {
+    if (!socketClosed && !wasUserCancelled(sessionId) && config.autoContinueOnToolEnd) {
       result = await runAutoContinue({
         sessionId,
         initialResult: result,
@@ -181,7 +184,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       });
     }
 
-    if (!wasUserCancelled(sessionId) && config.autoContinueOnThinkingEnd) {
+    if (!socketClosed && !wasUserCancelled(sessionId) && config.autoContinueOnThinkingEnd) {
       result = await runAutoContinue({
         sessionId,
         initialResult: result,
@@ -198,7 +201,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
     }
 
     const continued = consumePendingContinue(sessionId);
-    if (continued && !wasUserCancelled(sessionId)) await runContinuationTurn({ dataDir, config, sessionId, content: continued.content, agentName: continued.agentName, streamHandlers: handlers, sessionAborts, cancelSession, socket });
+    if (continued && !socketClosed && !wasUserCancelled(sessionId)) await runContinuationTurn({ dataDir, config, sessionId, content: continued.content, agentName: continued.agentName, streamHandlers: handlers, sessionAborts, cancelSession, socket });
   } catch (err: unknown) {
     streamSuccess = false;
     const effectiveSessionId = sessionId || msg.sessionId || "new";
@@ -218,5 +221,6 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
     announceStreamEnd(streamSuccess);
     socket.removeListener("close", onClose);
     if (sessionId) sessionAborts.delete(sessionId);
+    if (lookupKey && lookupKey !== sessionId) sessionAborts.delete(lookupKey);
   }
 }

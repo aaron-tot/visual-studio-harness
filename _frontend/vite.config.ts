@@ -31,21 +31,12 @@ export default defineConfig({
       },
     }),
   ],
-  build: {
-    // Intermediate only — scripts/build-prod.ts embeds this into the binary.
-    // Final runtime data lives at project-root data/prod/ (sibling of source/).
-    outDir: "../../data/prod/.build/frontend",
-    emptyOutDir: true,
-    rollupOptions: {
-      // Restrict build to the app entry only. dnd-demo.html is a standalone
-      // Playwright component-test harness and must not ship in production.
-      input: {
-        main: "index.html",
-      },
-    },
-  },
   server: {
     port: 3100,
+    watch: {
+      // Watch _shared directory for changes since it's outside the frontend root
+      additionalPaths: ["../_shared"],
+    },
     proxy: {
       "/api": "http://localhost:3101",
       "/chat": {
@@ -53,8 +44,6 @@ export default defineConfig({
         ws: true,
         filter: (pathname, req) => req.headers.upgrade === "websocket",
         bypass: (req) => {
-          // Only proxy WebSocket upgrades — HTTP requests (e.g. /chat-icon.png)
-          // must NOT be forwarded to the backend.
           if (req.headers.upgrade !== "websocket") {
             return req.url;
           }
@@ -62,6 +51,4 @@ export default defineConfig({
       },
     },
   },
-  // ensure /api/fs and /api/workspaces hit backend in dev
-
 });

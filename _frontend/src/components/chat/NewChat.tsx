@@ -38,6 +38,7 @@ import {
   chatTextarea,
   sendButton,
   stopButton,
+  stopButtonStopping,
   dotGrid,
   dotGridStyle,
 } from "../../styles/shared";
@@ -312,6 +313,8 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   const config = useConfigStore((s) => s.config);
   const messages = useChatStore((s) => s.messages);
   const streaming = useChatStore((s) => s.streaming);
+  const stopping = useChatStore((s) => s.stopping);
+  const turnActive = streaming || stopping;
   const sessionId = useChatStore((s) => s.sessionId);
   const sessionMeta = useChatStore((s) => s.sessionMeta);
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
@@ -555,8 +558,8 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
           onKeyDown={handleKeyDown}
           placeholder="Type a message..." rows={1} className={chatTextarea} />
       </div>
-      {streaming ? (
-        <button data-testid="stop" type="button" onClick={stopStreaming} className={stopButton}><Square size={14} fill="currentColor" /></button>
+      {turnActive ? (
+        <button data-testid="stop" type="button" onClick={stopStreaming} disabled={stopping} className={stopping ? stopButtonStopping : stopButton}><Square size={14} fill="currentColor" /></button>
       ) : inSession && !input.trim() ? (
         <button data-testid="continue" type="button" onClick={handleContinue}
           className="shrink-0 mb-[7px] p-2 rounded-xl bg-transparent hover:bg-white/10 text-emerald-500 hover:text-emerald-300 transition-all duration-200 hover:scale-105 active:scale-95"

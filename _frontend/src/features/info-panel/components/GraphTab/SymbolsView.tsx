@@ -4,6 +4,7 @@ import type { GraphSymbolMatch } from "../../../../lib/api";
 import { EmptyState, PanelInput } from "../ui";
 import { ViewToggle, RawPanel } from "./view-toggle";
 import type { ViewMode } from "./view-toggle";
+import { useCurrentWorkspaceRoot } from "../../../../hooks/useCurrentWorkspaceRoot";
 
 const KIND_ICONS: Record<string, string> = {
   function: "\u{0192}",
@@ -46,12 +47,13 @@ export function SymbolsView() {
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [expanded, setExpanded] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("pretty");
+  const workspaceRoot = useCurrentWorkspaceRoot();
 
   useEffect(() => {
-    getGraphSymbols()
+    getGraphSymbols(undefined, undefined, workspaceRoot)
       .then((r) => { setSymbols(r); setLoading(false); })
       .catch((e) => { setError(e instanceof Error ? e.message : "Failed"); setLoading(false); });
-  }, []);
+  }, [workspaceRoot]);
 
   const filtered = useMemo(() => {
     let result = symbols;

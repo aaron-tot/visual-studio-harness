@@ -258,6 +258,10 @@ async function doInstall() {
   await writeFile(join(desktopDir, "visual-studio-harness.desktop"), desktopEntry, "utf-8");
   await Bun.$`chmod +x ${join(desktopDir, "visual-studio-harness.desktop")}`;
 
+  // Write install-info.json with the installed datetime
+  const installInfo = { installedAt: new Date().toISOString() };
+  await writeFile(join(installPath, "install-info.json"), JSON.stringify(installInfo, null, 2) + "\n", "utf-8");
+
   write(`  \x1B[32m✓\x1B[0m Installed to: ${installPath}\n`);
 }
 

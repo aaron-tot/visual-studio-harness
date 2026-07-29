@@ -32,6 +32,7 @@ import {
 import { emitErrorAndDone, emitDoneOnly, classifyError } from "./error-delivery";
 import { getSessionAborts, cancelSession, consumePendingContinue, wasUserCancelled, clearUserCancelled } from "./session-abort";
 import { chatDebug } from "./debug";
+import { logMemory } from "../../utils/memory";
 
 const toolContinueAttempts = new Map<string, number[]>();
 const thinkingContinueAttempts = new Map<string, number[]>();
@@ -103,7 +104,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
   }
 
   try {
-    console.log("tmpDebug: calling runTurn ...", { contentLen: msg.content?.length });
+    logMemory("before LLM turn");
     let result = await runTurn(dataDir, config, {
       content: msg.content, sessionId: msg.sessionId, workspaceRoot: msg.workspaceRoot,
       agentName: msg.agentName ?? undefined, providerName: msg.providerName,
@@ -218,6 +219,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       emitDoneOnly(socket, effectiveSessionId, streamingTurnId);
     }
   } finally {
+    logMemory("after LLM turn");
     announceStreamEnd(streamSuccess);
     socket.removeListener("close", onClose);
     if (sessionId) sessionAborts.delete(sessionId);

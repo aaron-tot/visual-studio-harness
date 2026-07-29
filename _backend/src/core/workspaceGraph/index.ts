@@ -1,3 +1,4 @@
+import { logMemory } from "../../utils/memory";
 import type { WorkspaceGraphServiceInput } from "./types";
 import type { WorkspaceGraphService } from "./api/types";
 import { NotInitializedError } from "./errors";
@@ -95,6 +96,7 @@ export async function createWorkspaceGraphService(
       console.log(
         `[workspace-graph] startup index: ${report.createdCount} created, ${report.modifiedCount} modified, ${report.deletedCount} deleted, ${report.skippedCount} skipped`
       );
+      logMemory("after startup reindex");
 
       if (input.enableWatcher !== false) {
         _watcher = await startWorkspaceWatcher({
@@ -163,4 +165,5 @@ async function processWatcherBatch(
   if (report.reindexedPaths.length > 0) {
     console.log(`[workspace-graph] watcher batch: ${report.reindexedPaths.length} file(s) updated`);
   }
+  logMemory("after watcher reindex");
 }

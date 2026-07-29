@@ -100,6 +100,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   };
 
   const DEBUG_CHAT_MESSAGES = process.env.VISUAL_STUDIO_HARNESS_DEBUG_CHAT === "1";
+  const DEBUG_STREAM_EVENTS = false; // Set true for per-event verbose logging
 
   function flushReasoning() {
     if (reasoningBuffer) { parts.push({ type: "reasoning" as const, content: reasoningBuffer }); reasoningBuffer = ""; }
@@ -155,16 +156,17 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
         let firstEventLogged = false;
         let firstTokenLogged = false;
         let firstToolLogged = false;
-        dbg("streamChat:awaiting-first-event", { attempt, provider: provider.displayName, model });
         for await (const event of result.fullStream) {
           if (turnEnded) break;
           if (signal?.aborted) { aborted = true; break; }
           const et = (event as { type: string }).type;
           evtCounts[et] = (evtCounts[et] ?? 0) + 1;
-          console.log(`[streamChat] Event: ${et}`, event.toolCallId || event.toolName || event.finishReason || "");
-          if (!firstEventLogged) { dbg("streamChat:first-event", { type: et }); firstEventLogged = true; }
-          if (!firstTokenLogged && (et === "text-delta" || et === "reasoning-delta")) { dbg("streamChat:first-token", { type: et }); firstTokenLogged = true; }
-          if (!firstToolLogged && et === "tool-call") { dbg("streamChat:tool-call", { toolName: (event as { toolName?: string }).toolName }); firstToolLogged = true; }
+          if (DEBUG_STREAM_EVENTS) {
+            console.log(`[streamChat] Event: ${et}`, event.toolCallId || event.toolName || event.finishReason || "");
+            if (!firstEventLogged) { dbg("streamChat:first-event", { type: et }); firstEventLogged = true; }
+            if (!firstTokenLogged && (et === "text-delta" || et === "reasoning-delta")) { dbg("streamChat:first-token", { type: et }); firstTokenLogged = true; }
+            if (!firstToolLogged && et === "tool-call") { dbg("streamChat:tool-call", { toolName: (event as { toolName?: string }).toolName }); firstToolLogged = true; }
+          }
           if (event.type === "start-step") {
             if (textBuffer) { parts.push({ type: "text" as const, content: textBuffer }); textBuffer = ""; }
             flushReasoning();

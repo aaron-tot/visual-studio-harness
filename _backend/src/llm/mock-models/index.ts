@@ -32,11 +32,14 @@ async function* wrapWithStepEvents(
   inner: AsyncGenerator<any>,
   signal?: AbortSignal,
 ): AsyncGenerator<any> {
+  const DEBUG_STREAM_EVENTS = false; // Set true for per-event verbose logging
   yield { type: "start-step", stepNumber: 0, request: {}, warnings: [] };
   let eventCount = 0;
   for await (const event of inner) {
     eventCount++;
-    console.log(`[wrapWithStepEvents] Event #${eventCount}:`, event.type, event.toolCallId || event.toolName || "");
+    if (DEBUG_STREAM_EVENTS) {
+      console.log(`[wrapWithStepEvents] Event #${eventCount}:`, event.type, event.toolCallId || event.toolName || "");
+    }
     if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     yield event;
   }

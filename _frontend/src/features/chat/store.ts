@@ -139,7 +139,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
         set({ sessionMeta: session.meta, workspaceRoot: ws });
       }
-      void get().loadTurns(id);
     } catch {
     }
   },

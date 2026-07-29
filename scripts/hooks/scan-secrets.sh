@@ -54,6 +54,11 @@ patterns=(
 
   # RSA / SSH / DSA private keys (inline)
   '(-{5}BEGIN (RSA|OPENSSH|DSA|EC) PRIVATE KEY-{5})'
+
+  # Generic password/secret/token assignments (value >= 8 chars)
+  '(password\s*[:=]\s*["'"'"']?[A-Za-z0-9!@#$%^&*()_+\-=\[\]{}|;:,.<>?]{8,})'
+  '(secret\s*[:=]\s*["'"'"']?[A-Za-z0-9!@#$%^&*()_+\-=\[\]{}|;:,.<>?]{8,})'
+  '(token\s*[:=]\s*["'"'"']?[A-Za-z0-9!@#$%^&*()_+\-=\[\]{}|;:,.<>?]{12,})'
 )
 
 # Accept files from args (pre-commit) or git diff (standalone)

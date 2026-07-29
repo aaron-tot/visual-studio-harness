@@ -73,7 +73,10 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
   let socketClosed = false;
   const onClose = () => {
     socketClosed = true;
-    if (sessionId) cancelPermissionsForSession(sessionId);
+    if (sessionId) {
+      cancelPermissionsForSession(sessionId);
+      clearPendingContinue(sessionId);
+    }
   };
   socket.on("close", onClose);
 
@@ -226,6 +229,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       sessionAborts.delete(sessionId);
       toolContinueAttempts.delete(sessionId);
       thinkingContinueAttempts.delete(sessionId);
+      clearPendingContinue(sessionId);
     }
     if (lookupKey && lookupKey !== sessionId) sessionAborts.delete(lookupKey);
   }

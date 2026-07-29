@@ -362,6 +362,11 @@ export async function runSubagentTurn(
         },
         isError: true,
       };
+    } finally {
+      if (childSessionId && childSessionId !== "new") {
+        subagentToolContinueAttempts.delete(childSessionId);
+        subagentThinkingContinueAttempts.delete(childSessionId);
+      }
     }
   });
 }

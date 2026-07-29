@@ -11,7 +11,7 @@
  * (data-testid="chat-error") — never only inside the card body.
  */
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Brain } from "lucide-react";
 import type { Message } from "../../../_shared/types";
 import type { MessagePartType } from "../../../_shared/types";
@@ -120,7 +120,7 @@ function renderPart(
   );
 }
 
-export function MessageRow({ message, isStreaming }: MessageRowProps) {
+function MessageRowInner({ message, isStreaming }: MessageRowProps) {
   const isUser = message.role === "user";
   const agentName = message.agentName || "Default (no system prompt)";
   const sessionMeta = useChatStore((s) => s.sessionMeta);
@@ -301,3 +301,11 @@ export function MessageRow({ message, isStreaming }: MessageRowProps) {
     </div>
   );
 }
+
+export const MessageRow = memo(MessageRowInner, (prev, next) => {
+  // Bail out (skip re-render) if all props are the same by value.
+  // During streaming only the last message changes reference; memo-izing
+  // stable historical messages avoids cascading re-renders on every token.
+  if (prev.isStreaming !== next.isStreaming) return false;
+  return prev.message === next.message;
+});

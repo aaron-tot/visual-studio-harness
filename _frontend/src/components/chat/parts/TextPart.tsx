@@ -9,7 +9,7 @@
  * text to avoid re-parsing markdown on every delta (another source of hitch).
  */
 
-import { useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 import { cn } from "../../../lib/utils";
 import { Markdown } from "../markdown/Markdown";
 
@@ -19,11 +19,11 @@ interface TextPartProps {
   className?: string;
 }
 
-export function TextPart({
+const TextPartInner = ({
   content,
   isStreaming,
   className,
-}: TextPartProps) {
+}: TextPartProps) => {
   const CURSOR_DELAY_MS = 1000;
 
   // Cursor delay: only show after 1s of no new tokens
@@ -87,4 +87,6 @@ export function TextPart({
       )}
     </div>
   );
-}
+};
+
+export const TextPart = memo(TextPartInner);

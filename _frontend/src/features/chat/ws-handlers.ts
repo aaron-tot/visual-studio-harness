@@ -17,6 +17,17 @@ import {
 import { consolidateTextParts, textContentFromParts, maxSeqOf, partsFromSnapshot } from "./parts-util";
 import { touchStreamTimeout } from "./store";
 
+// ── rAF batching for streaming deltas ─────────────────────────────────────
+// Coalesces per-token Zustand set() calls into one React render per animation
+// frame (~60fps), dramatically reducing re-render load for fast token streams.
+let _tokenRafId: number | null = null;
+let _pendingToken = "";
+let _pendingSeq = 0;
+
+let _reasonRafId: number | null = null;
+let _pendingReasoning = "";
+let _pendingReasonSeq = 0;
+
 wsClient.on("token", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) {
@@ -28,7 +39,18 @@ wsClient.on("token", (data: any) => {
     bufferDelta({ kind: "token", sessionId: data.sessionId, content: data.content, seq: data.seq });
     return;
   }
-  useChatStore.getState().appendToken(data.content, data.seq);
+  _pendingToken += data.content;
+  _pendingSeq = data.seq ?? _pendingSeq;
+  if (_tokenRafId === null) {
+    _tokenRafId = requestAnimationFrame(() => {
+      _tokenRafId = null;
+      const t = _pendingToken;
+      const s = _pendingSeq;
+      _pendingToken = "";
+      _pendingSeq = 0;
+      useChatStore.getState().appendToken(t, s);
+    });
+  }
 });
 
 wsClient.on("reasoning", (data: any) => {
@@ -42,7 +64,18 @@ wsClient.on("reasoning", (data: any) => {
     bufferDelta({ kind: "reasoning", sessionId: data.sessionId, content: data.content, seq: data.seq });
     return;
   }
-  useChatStore.getState().appendReasoning(data.content, data.seq);
+  _pendingReasoning += data.content;
+  _pendingReasonSeq = data.seq ?? _pendingReasonSeq;
+  if (_reasonRafId === null) {
+    _reasonRafId = requestAnimationFrame(() => {
+      _reasonRafId = null;
+      const r = _pendingReasoning;
+      const s = _pendingReasonSeq;
+      _pendingReasoning = "";
+      _pendingReasonSeq = 0;
+      useChatStore.getState().appendReasoning(r, s);
+    });
+  }
 });
 
 wsClient.on("done", (data: any) => {

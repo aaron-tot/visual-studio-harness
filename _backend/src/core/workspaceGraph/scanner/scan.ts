@@ -1,7 +1,7 @@
 import { readdir, stat, readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { isIgnored, isSourceFile, getLanguage } from "./ignore";
-import { computeFileHash } from "./hash";
+import { computeSourceHash } from "./hash";
 import type { ScannedFile, ScanResult, ScanInput } from "../types";
 
 export async function scanWorkspace(input: ScanInput): Promise<ScanResult> {
@@ -86,7 +86,7 @@ async function collectFiles(
 
     try {
       const sourceText = await readFile(fullPath, "utf-8");
-      const fileHash = await computeFileHash(fullPath);
+      const fileHash = computeSourceHash(sourceText);
       const dot = entry.lastIndexOf(".");
       const ext = dot > 0 ? entry.slice(dot) : "unknown";
 

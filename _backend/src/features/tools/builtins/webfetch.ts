@@ -2,8 +2,6 @@ import { z } from "zod";
 import type { ToolDef, ToolFieldDef } from "../types";
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
-const DEFAULT_TIMEOUT_MS = 30_000;
-const MAX_TIMEOUT_MS = 120_000;
 
 const FormatSchema = z.enum(["markdown", "text", "html"]);
 
@@ -31,10 +29,9 @@ export const webfetchTool: ToolDef = {
     timeout: z
       .number()
       .int()
-      .min(1)
-      .max(120)
+      .positive()
       .optional()
-      .describe("Timeout in seconds (default 30, max 120)"),
+      .describe("Timeout in seconds (default and max configurable in settings)"),
   }),
   execute: async (args, ctx) => {
     let url = (args.url || "").trim();
@@ -57,10 +54,12 @@ export const webfetchTool: ToolDef = {
     }
 
     const format = args.format ?? "markdown";
-    const timeoutMs = Math.min(
-      (args.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000,
-      MAX_TIMEOUT_MS
-    );
+    const wfCfg = ctx.toolSettings?.webFetch ?? {};
+    const min = wfCfg.timeoutMinSec ?? 1;
+    const max = wfCfg.timeoutMaxSec ?? 120;
+    const def = wfCfg.timeoutDefaultSec ?? 30;
+    const timeoutSec = Math.max(min, Math.min(max, args.timeout ?? def));
+    const timeoutMs = timeoutSec * 1000;
 
     let accept =
       "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";

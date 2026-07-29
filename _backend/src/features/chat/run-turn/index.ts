@@ -228,6 +228,7 @@ export async function runTurn(
     const tools = registry
       ? await registry.toFilteredAiSdkTools((callId) => ({
           sessionId, turnId: traceTurnId, workspaceRoot, dataDir,
+          toolSettings: config.toolSettings,
           abortSignal: abortSignal ?? new AbortController().signal,
           callId, hookCtx,
           graphService,

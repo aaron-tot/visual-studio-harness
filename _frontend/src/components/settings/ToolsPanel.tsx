@@ -16,6 +16,7 @@ import {
 } from "../../lib/api";
 import { PermModeSelect } from "./PermModeSelect";
 import { SubagentSettingsCard } from "./SubagentSettingsCard";
+import { BashToolSettingsCard } from "./BashToolSettingsCard";
 
 type PermLayer = "global" | "workspace" | "session";
 
@@ -329,6 +330,15 @@ export function ToolsPanel({ sessionId }: Props) {
                       label="Subagent Settings"
                     >
                       <SubagentSettingsCard />
+                    </Collapsible>
+                  )}
+                  {tool.name === "bash" && (
+                    <Collapsible
+                      open={openSettings[tool.name]}
+                      onToggle={() => toggleSettings(tool.name)}
+                      label="Timeout Settings"
+                    >
+                      <BashToolSettingsCard />
                     </Collapsible>
                   )}
                 </div>

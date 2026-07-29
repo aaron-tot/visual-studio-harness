@@ -62,6 +62,23 @@ export interface SubagentToolSettings {
   slotWaitTimeoutSec?: number;
 }
 
+export interface BashToolSettings {
+  timeoutMinMs?: number;
+  timeoutMaxMs?: number;
+  timeoutDefaultMs?: number;
+}
+
+export interface WebfetchToolSettings {
+  timeoutMinSec?: number;
+  timeoutMaxSec?: number;
+  timeoutDefaultSec?: number;
+}
+
+export interface ToolSettings {
+  bash?: BashToolSettings;
+  webFetch?: WebfetchToolSettings;
+}
+
 export interface SystemPromptJoiners {
   start: string;
   preGlobal: string;
@@ -119,6 +136,7 @@ export interface ConfigFile {
   providers: ProviderConfig[];
   agents?: Record<string, AgentSettings>;
   subagent?: SubagentToolSettings;
+  toolSettings?: ToolSettings;
   systemPromptJoiners?: SystemPromptJoiners;
   defaultAgent?: string;
   defaultProvider?: string;

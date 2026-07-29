@@ -27,10 +27,9 @@ export const bashTool: ToolDef = {
     timeout_ms: z
       .number()
       .int()
-      .min(100)
-      .max(120_000)
+      .positive()
       .optional()
-      .describe("Timeout in ms (default 30000, max 120000)"),
+      .describe("Timeout in ms (default and max configurable in settings)"),
     description: z
       .string()
       .optional()
@@ -51,7 +50,11 @@ export const bashTool: ToolDef = {
       ? await resolveAccessiblePath(ctx, args.cwd)
       : ctx.workspaceRoot;
 
-    const timeoutMs = args.timeout_ms ?? 30_000;
+    const bashCfg = ctx.toolSettings?.bash ?? {};
+    const min = bashCfg.timeoutMinMs ?? 100;
+    const max = bashCfg.timeoutMaxMs ?? 300_000;
+    const def = bashCfg.timeoutDefaultMs ?? 30_000;
+    const timeoutMs = Math.max(min, Math.min(max, args.timeout_ms ?? def));
     const { output, exitCode } = await runInPersistentBash({
       sessionId: ctx.sessionId,
       cwd,

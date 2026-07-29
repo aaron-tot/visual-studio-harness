@@ -57,6 +57,24 @@ export const SubagentToolSettingsSchema = z.object({
   slotWaitTimeoutSec: z.number().int().min(0).optional(),
 });
 
+/** Per-tool timeout/limit settings injected into tool context at runtime. */
+export const BashToolSettingsSchema = z.object({
+  timeoutMinMs: z.number().int().positive().default(100).optional(),
+  timeoutMaxMs: z.number().int().positive().default(300_000).optional(),
+  timeoutDefaultMs: z.number().int().positive().default(30_000).optional(),
+});
+
+export const WebfetchToolSettingsSchema = z.object({
+  timeoutMinSec: z.number().int().positive().default(1).optional(),
+  timeoutMaxSec: z.number().int().positive().default(120).optional(),
+  timeoutDefaultSec: z.number().int().positive().default(30).optional(),
+});
+
+export const ToolSettingsSchema = z.object({
+  bash: BashToolSettingsSchema.optional(),
+  webFetch: WebfetchToolSettingsSchema.optional(),
+});
+
 export const McpServerConfigSchema = z.object({
   name: z.string().min(1, "Server name is required"),
   enabled: z.boolean().default(true),
@@ -114,6 +132,7 @@ export const ConfigFileSchema = z.object({
   providers: z.array(ProviderConfigSchema),
   agents: z.record(AgentSettingsSchema).default({}),
   subagent: SubagentToolSettingsSchema.optional(),
+  toolSettings: ToolSettingsSchema.optional(),
   db: DbConfigSchema.optional(),
   mcpServers: z.array(McpServerConfigSchema).default([]).optional(),
   systemPromptJoiners: SystemPromptJoinersSchema.optional(),

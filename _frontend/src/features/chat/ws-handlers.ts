@@ -223,7 +223,10 @@ wsClient.on("session_created", (data: any) => {
     }
     useChatStore.setState(patch);
     useSessionViewStore.setState({ currentSessionId: data.session.id });
-    import("../../stores/sessions").then(({ useSessionStore }) => { useSessionStore.getState().fetch(); });
+    import("../../stores/sessions").then(({ useSessionStore }) => {
+      useSessionStore.getState().fetch();
+      useSessionStore.setState({ activeId: data.session.id });
+    });
   }
 });
 

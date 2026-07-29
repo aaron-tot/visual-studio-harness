@@ -6,27 +6,34 @@ import * as schema from "./schema";
 
 export type WorkspaceGraphDb = ReturnType<typeof drizzle<typeof schema>>;
 
-const dbs = new Map<string, WorkspaceGraphDb>();
+interface DbEntry {
+  db: WorkspaceGraphDb;
+  sqlite: Database;
+}
+
+const dbs = new Map<string, DbEntry>();
 
 export function openWorkspaceGraphDb(dbPath: string): WorkspaceGraphDb {
-  let db = dbs.get(dbPath);
-  if (!db) {
+  let entry = dbs.get(dbPath);
+  if (!entry) {
     mkdirSync(dirname(dbPath), { recursive: true });
     const sqlite = new Database(dbPath);
     sqlite.run("PRAGMA journal_mode = WAL");
     sqlite.run("PRAGMA synchronous = NORMAL");
     sqlite.run("PRAGMA foreign_keys = ON");
     ensureWorkspaceGraphSchema(sqlite);
-    db = drizzle(sqlite, { schema });
-    dbs.set(dbPath, db);
+    const db = drizzle(sqlite, { schema });
+    entry = { db, sqlite };
+    dbs.set(dbPath, entry);
   }
-  return db;
+  return entry.db;
 }
 
 export function closeWorkspaceGraphDb(dbPath: string): void {
-  const db = dbs.get(dbPath);
-  if (db) {
+  const entry = dbs.get(dbPath);
+  if (entry) {
     dbs.delete(dbPath);
+    entry.sqlite.close();
   }
 }
 

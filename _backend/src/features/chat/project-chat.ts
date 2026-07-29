@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
 import { turns, turnContext, steps, stepParts, promptSnapshots, toolsSnapshots, sessions } from "../../db/schema";
 import type { Message, MessagePartType } from "../../../../_shared/types";
@@ -19,6 +19,27 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
     .orderBy(turns.turnNumber)
     .all();
 
+  if (turnRows.length === 0) return [];
+
+  // Single batch fetch: all stepParts for all turns in one query
+  const turnIds = turnRows.map((t) => t.id);
+  const allParts = db
+    .select()
+    .from(stepParts)
+    .where(inArray(stepParts.turnId, turnIds))
+    .orderBy(stepParts.seq)
+    .all();
+
+  const partsByTurnId = new Map<number, typeof allParts>();
+  for (const p of allParts) {
+    const list = partsByTurnId.get(p.turnId);
+    if (list) {
+      list.push(p);
+    } else {
+      partsByTurnId.set(p.turnId, [p]);
+    }
+  }
+
   const out: Message[] = [];
   for (const t of turnRows) {
     out.push({
@@ -30,12 +51,7 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
       agentName: t.agentName ?? undefined,
     });
 
-    const parts = db
-      .select()
-      .from(stepParts)
-      .where(eq(stepParts.turnId, t.id))
-      .orderBy(stepParts.seq)
-      .all();
+    const parts = partsByTurnId.get(t.id) ?? [];
 
     const textParts = parts.filter((p) => p.type === "text");
     const text = textParts
@@ -142,13 +158,40 @@ export function buildModelMessagesFromContext(
   dataDir?: string,
 ): Message[] {
   const db = dbFor(dataDir);
+  if (contextTurnIds.length === 0) {
+    const content = systemBlock.trim();
+    return content ? [{ role: "system", content, timestamp: new Date().toISOString() }] : [];
+  }
+
+  // Batch fetch all turns
+  const turnRows = db
+    .select()
+    .from(turns)
+    .where(inArray(turns.id, contextTurnIds))
+    .all();
+  const turnById = new Map(turnRows.map((t) => [t.id, t]));
+
+  // Batch fetch all text stepParts for these turns
+  const allTextParts = db
+    .select({ turnId: stepParts.turnId, data: stepParts.data, seq: stepParts.seq })
+    .from(stepParts)
+    .where(and(inArray(stepParts.turnId, contextTurnIds), eq(stepParts.type, "text")))
+    .orderBy(stepParts.seq)
+    .all();
+
+  const partsByTurnId = new Map<number, typeof allTextParts>();
+  for (const p of allTextParts) {
+    const list = partsByTurnId.get(p.turnId);
+    if (list) {
+      list.push(p);
+    } else {
+      partsByTurnId.set(p.turnId, [p]);
+    }
+  }
+
   const history: Message[] = [];
   for (const ctxId of contextTurnIds) {
-    const t = db
-      .select()
-      .from(turns)
-      .where(eq(turns.id, ctxId))
-      .get();
+    const t = turnById.get(ctxId);
     if (!t) continue;
 
     history.push({
@@ -158,12 +201,7 @@ export function buildModelMessagesFromContext(
       turnId: t.turnNumber,
     });
 
-    const textParts = db
-      .select({ data: stepParts.data })
-      .from(stepParts)
-      .where(and(eq(stepParts.turnId, ctxId), eq(stepParts.type, "text")))
-      .orderBy(stepParts.seq)
-      .all();
+    const textParts = partsByTurnId.get(ctxId) ?? [];
     const assistantText = textParts
       .map((p) => {
         try {

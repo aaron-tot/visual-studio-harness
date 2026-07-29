@@ -394,8 +394,9 @@ export function createSpecViaApi(body: {
   scope?: string;
   workspaceRoot?: string;
   sessionId?: string;
+  /** Optional full/partial document body. Fields here override the default empty template. */
+  content?: Record<string, unknown>;
 }) {
-  // Backend accepts goal; send both for compatibility.
   const goal = body.goal ?? body.endGoal ?? "";
   return fetchJson<{ ok: boolean; path: string; planDir: string; version: number }>(`${BASE}/plans/create-spec`, {
     method: "POST",
@@ -407,6 +408,7 @@ export function createSpecViaApi(body: {
       workspaceRoot: body.workspaceRoot,
       sessionId: body.sessionId,
       createdBy: "user",
+      content: body.content,
     }),
   });
 }
@@ -419,6 +421,8 @@ export function createPlanViaApi(body: {
   scope?: string;
   workspaceRoot?: string;
   sessionId?: string;
+  /** Optional full/partial document body. Fields here override the default empty template. */
+  content?: Record<string, unknown>;
 }) {
   const endGoal = body.endGoal ?? body.goal ?? "";
   return fetchJson<{ ok: boolean; path: string; planDir: string; version: number }>(`${BASE}/plans/create-plan`, {
@@ -432,6 +436,7 @@ export function createPlanViaApi(body: {
       workspaceRoot: body.workspaceRoot,
       sessionId: body.sessionId,
       createdBy: "user",
+      content: body.content,
     }),
   });
 }
@@ -611,4 +616,11 @@ export function updateDocViaApi(body: {
 
 export function getAppInfo() {
   return fetchJson<AppInfo>(`${BASE}/app-info`);
+}
+
+export function runMasterTest() {
+  return fetchJson<{ ok: boolean; pid?: number; error?: string }>(
+    `${BASE}/run-master-test`,
+    { method: "POST" }
+  );
 }

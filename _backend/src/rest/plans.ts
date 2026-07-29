@@ -79,6 +79,8 @@ export interface CreateSpecParams {
   workspaceRoot?: string;
   sessionId?: string;
   createdBy: CreatedBy;
+  /** Optional full/partial document body. Fields here override the default empty template. */
+  content?: Record<string, unknown>;
 }
 
 export async function createSpecDocument(params: CreateSpecParams): Promise<{ path: string; planDir: string; version: number }> {
@@ -98,6 +100,9 @@ export async function createSpecDocument(params: CreateSpecParams): Promise<{ pa
   const fp = join(pd, `specV${version}.json`);
 
   const now = new Date().toISOString();
+  const c = params.content || {};
+  // Allow content.goal or top-level goal; top-level wins
+  const goal = params.goal || (typeof c.goal === "string" ? c.goal : "");
   const doc: SpecDocument = {
     meta: {
       id: params.name,
@@ -114,12 +119,12 @@ export async function createSpecDocument(params: CreateSpecParams): Promise<{ pa
         session: params.sessionId || "",
       },
     },
-    goal: params.goal || "",
-    requirements: [],
-    constraints: [],
-    assumptions: [],
-    acceptanceCriteria: [],
-    parts: [],
+    goal,
+    requirements: Array.isArray(c.requirements) ? (c.requirements as string[]) : [],
+    constraints: Array.isArray(c.constraints) ? (c.constraints as string[]) : [],
+    assumptions: Array.isArray(c.assumptions) ? (c.assumptions as string[]) : [],
+    acceptanceCriteria: Array.isArray(c.acceptanceCriteria) ? (c.acceptanceCriteria as string[]) : [],
+    parts: Array.isArray(c.parts) ? (c.parts as SpecPlanPart[]) : [],
   };
 
   await mkdir(pd, { recursive: true });
@@ -136,6 +141,8 @@ export interface CreatePlanParams {
   sessionId?: string;
   createdBy: CreatedBy;
   specReference?: string;
+  /** Optional full/partial document body. Fields here override the default empty template. */
+  content?: Record<string, unknown>;
 }
 
 export async function createPlanDocument(params: CreatePlanParams): Promise<{ path: string; planDir: string; version: number }> {
@@ -155,11 +162,14 @@ export async function createPlanDocument(params: CreatePlanParams): Promise<{ pa
   const fp = join(pd, `planV${version}.json`);
 
   const now = new Date().toISOString();
+  const c = params.content || {};
+  // Allow content.endGoal or top-level endGoal; top-level wins
+  const endGoal = params.endGoal || (typeof c.endGoal === "string" ? c.endGoal : "");
   const doc: PlanDocument = {
     meta: {
       id: params.name,
       version,
-      mainSpec: params.specReference || "",
+      mainSpec: params.specReference || (typeof c.mainSpec === "string" ? c.mainSpec : ""),
       relatedSpecs: [],
       title: params.name,
       createdAt: now,
@@ -167,15 +177,15 @@ export async function createPlanDocument(params: CreatePlanParams): Promise<{ pa
       completedAt: null,
       createdBy: params.createdBy,
       status: "draft",
-      tags: [],
+      tags: Array.isArray(c.tags) ? (c.tags as string[]) : [],
       createdMeta: {
         datetime: now,
         workspace: params.workspaceRoot || "",
         session: params.sessionId || "",
       },
     },
-    endGoal: params.endGoal,
-    parts: [],
+    endGoal,
+    parts: Array.isArray(c.parts) ? (c.parts as SpecPlanPart[]) : [],
   };
 
   await mkdir(pd, { recursive: true });
@@ -223,10 +233,10 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
     return listDesigns(dataDir, scope, q.workspaceRoot, q.sessionId);
   });
 
-  app.post<{ Body: { name: string; goal?: string; endGoal?: string; scope?: string; workspaceRoot?: string; sessionId?: string; createdBy?: string } }>(
+  app.post<{ Body: { name: string; goal?: string; endGoal?: string; scope?: string; workspaceRoot?: string; sessionId?: string; createdBy?: string; content?: Record<string, unknown> } }>(
     "/api/plans/create-spec",
     async (request, reply) => {
-      const { name, goal, endGoal, scope, workspaceRoot, sessionId, createdBy } = request.body;
+      const { name, goal, endGoal, scope, workspaceRoot, sessionId, createdBy, content } = request.body;
       if (!name?.trim()) {
         return reply.code(400).send({ error: "name is required" });
       }
@@ -246,6 +256,7 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
         workspaceRoot,
         sessionId,
         createdBy: (createdBy === "agent" ? "agent" : "user") as CreatedBy,
+        content,
       });
       return { ok: true, ...result };
     }
@@ -279,10 +290,10 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
     }
   );
 
-  app.post<{ Body: { name: string; endGoal?: string; goal?: string; specReference?: string; scope?: string; workspaceRoot?: string; sessionId?: string; createdBy?: string } }>(
+  app.post<{ Body: { name: string; endGoal?: string; goal?: string; specReference?: string; scope?: string; workspaceRoot?: string; sessionId?: string; createdBy?: string; content?: Record<string, unknown> } }>(
     "/api/plans/create-plan",
     async (request, reply) => {
-      const { name, endGoal, goal, specReference, scope, workspaceRoot, sessionId, createdBy } = request.body;
+      const { name, endGoal, goal, specReference, scope, workspaceRoot, sessionId, createdBy, content } = request.body;
       if (!name?.trim()) {
         return reply.code(400).send({ error: "name is required" });
       }
@@ -302,6 +313,7 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
         sessionId,
         createdBy: (createdBy === "agent" ? "agent" : "user") as CreatedBy,
         specReference,
+        content,
       });
       return { ok: true, ...result };
     }

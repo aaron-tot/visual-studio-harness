@@ -18,12 +18,21 @@ export const designCreateTool: ToolDef = {
     type: z.enum(["spec", "plan"]).describe("Document type: 'spec' for specifications (what), 'plan' for implementation plans (how)"),
     goal: z.string().optional().describe("For specs: the goal statement. For plans: the end-goal. Omit to leave empty."),
     specReference: z.string().optional().describe("For plans only: name of the spec this plan implements"),
+    content: z.record(z.unknown()).optional().describe(
+      "Optional full or partial document body. Fields here override the default empty template. " +
+      "Keys for specs: goal, requirements (string[]), constraints (string[]), assumptions (string[]), acceptanceCriteria (string[]), parts (SpecPlanPart[]). " +
+      "Keys for plans: endGoal, tags (string[]), parts (SpecPlanPart[]). " +
+      "The 'meta' key is ignored and auto-generated. " +
+      "Parts support recursive nesting: { id, name, type, description, status, dependencies, parts }. " +
+      "Omit to get a bare skeleton (default behavior)."
+    ),
   }),
   execute: async (args, ctx) => {
     if (args.type === "spec") {
       const result = await createSpecDocument({
         name: args.name, goal: args.goal || "", dataDir: ctx.dataDir,
         workspaceRoot: ctx.workspaceRoot, sessionId: ctx.sessionId, createdBy: "agent",
+        content: args.content,
       });
       return { title: "Spec created", output: `Created spec v${result.version} for design "${args.name}" at ${result.path}`,
         metadata: { action: "created", type: "spec", name: args.name, version: result.version, path: result.path } };
@@ -31,6 +40,7 @@ export const designCreateTool: ToolDef = {
       const result = await createPlanDocument({
         name: args.name, endGoal: args.goal || "", dataDir: ctx.dataDir,
         workspaceRoot: ctx.workspaceRoot, sessionId: ctx.sessionId, createdBy: "agent", specReference: args.specReference,
+        content: args.content,
       });
       return { title: "Plan created", output: `Created plan v${result.version} for design "${args.name}" at ${result.path}`,
         metadata: { action: "created", type: "plan", name: args.name, version: result.version, path: result.path } };

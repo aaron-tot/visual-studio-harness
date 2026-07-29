@@ -233,6 +233,22 @@ async function main() {
     return { buildTimestamp: buildTimestamp ?? null, installedAt };
   });
 
+  // Dev-only: run master e2e test in headed mode
+  app.post("/api/run-master-test", async () => {
+    if (MODE !== "dev") {
+      return { ok: false, error: "Only available in dev mode" };
+    }
+    const repoDir = resolve(import.meta.dir, "..", "..");
+    const proc = Bun.spawn([
+      "bash", "-c",
+      "source ~/.nvm/nvm.sh && npx playwright test testing/tests-human/master.spec.ts --config testing/playwright.config.ts --headed 2>&1"
+    ], {
+      cwd: repoDir,
+      stdio: ["ignore", "inherit", "inherit"],
+    });
+    return { ok: true, pid: proc.pid };
+  });
+
   // Prod binary serves embedded frontend; dev uses Vite on :3100
   if (MODE === "prod" || hasEmbeddedFrontend()) {
     if (hasEmbeddedFrontend()) {

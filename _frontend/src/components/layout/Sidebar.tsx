@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { TestingV3Tab } from "../../features/info-panel/components/testing-v3/TestingV3Tab";
 import { useProximityPanel } from "../../hooks/useProximityPanel";
 import { ProximityRail } from "./ProximityRail";
-import { getAppInfo, type AppInfo } from "../../lib/api";
+import { getAppInfo, runMasterTest, type AppInfo } from "../../lib/api";
 
 interface SidebarProps {
   search: string;
@@ -100,8 +100,20 @@ export function Sidebar({ search }: SidebarProps) {
         pinTitle={{ pinned: "Unpin sidebar", unpinned: "Pin sidebar open" }}
       >
         <TestingV3Tab search={search} />
-        <div className="mt-auto px-3 py-2 text-[10px] text-zinc-600 select-none relative group/version">
-          0.0.1-alpha (Pre-Release)
+        <div className="mt-auto px-3 py-2 text-[10px] text-zinc-600 select-none relative group/version flex items-center gap-1.5">
+          <span>0.0.1-alpha (Pre-Release)</span>
+          {import.meta.env.DEV && (
+            <button
+              onClick={() => { runMasterTest().catch(() => {}); }}
+              title="Run master e2e test (headed)"
+              className="inline-flex items-center justify-center size-3.5 rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              <svg viewBox="0 0 16 16" fill="none" className="size-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 2.5v11l10-5.5L3 2.5Z" fill="currentColor" stroke="none" />
+                <path d="M3 2.5v11l10-5.5L3 2.5Z" />
+              </svg>
+            </button>
+          )}
           <div className="hidden group-hover/version:block absolute bottom-full left-0 mb-1 z-50 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[10px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
             {import.meta.env.DEV ? (
               <div>Dev</div>

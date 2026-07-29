@@ -276,20 +276,25 @@ wsClient.on("session_state", (data: any) => {
         touchStreamTimeout();
       } else {
         const upTo = snapshotSeq ?? maxSeqOf(msgs.flatMap((m: any) => m.parts || []));
-        // If the store already has an active streaming turn (set by sendMessage),
-        // preserve it — the session_state is historical context for a new session
-        // and should not interrupt an already-started turn.
+        // Use the backend's authoritative `streaming` field to determine if
+        // there is an active streaming turn. The backend sends:
+        //   - `null` when no active turn exists (e.g. after crash+restart
+        //     where orphaned turns were aborted)
+        //   - a string (possibly empty) when a turn is actively streaming
+        // This replaces the old `preserveStreaming` logic that relied on the
+        // stale `cur.streaming` flag, which could remain `true` after a
+        // backend restart, causing the stop button to persist indefinitely.
         const cur = useChatStore.getState();
-        const preserveStreaming = cur.streaming && cur.sessionId === data.sessionId;
+        const isStreaming = data.streaming != null;
         const wsRoot = data.meta?.workspaceRoot;
         useChatStore.setState({
           messages: msgs,
           sessionId: data.sessionId,
           sessionMeta: data.meta ?? null,
           workspaceRoot: wsRoot ?? cur.workspaceRoot,
-          streaming: preserveStreaming ? true : false,
-          streamingContent: preserveStreaming ? cur.streamingContent : "",
-          streamingParts: preserveStreaming ? cur.streamingParts : [],
+          streaming: isStreaming,
+          streamingContent: isStreaming ? data.streaming : "",
+          streamingParts: isStreaming ? cur.streamingParts : [],
           lastSeq: upTo,
           _partSeq: upTo,
           _reasonIdx: 0,

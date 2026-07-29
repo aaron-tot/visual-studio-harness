@@ -222,7 +222,11 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
     logMemory("after LLM turn");
     announceStreamEnd(streamSuccess);
     socket.removeListener("close", onClose);
-    if (sessionId) sessionAborts.delete(sessionId);
+    if (sessionId) {
+      sessionAborts.delete(sessionId);
+      toolContinueAttempts.delete(sessionId);
+      thinkingContinueAttempts.delete(sessionId);
+    }
     if (lookupKey && lookupKey !== sessionId) sessionAborts.delete(lookupKey);
   }
 }

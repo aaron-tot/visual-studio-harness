@@ -1,6 +1,9 @@
+import { useCallback, useState } from "react";
 import { Archive, ChevronDown, ChevronRight, Copy, Folder, Trash2 } from "lucide-react";
 import type { PlanEntry } from "../../../../lib/api";
-import type { DocMode, InjectSub } from "../../types";
+import { updateDocViaApi } from "../../../../lib/api";
+import type { DocMode, DesignLocation, InjectSub } from "../../types";
+import { scopeApiParams } from "../../lib/scope-params";
 import { countPartsProgress } from "../../lib/plan-status";
 import { PanelButton } from "../ui";
 import { PlanActions } from "./PlanActions";
@@ -28,6 +31,9 @@ interface PlanCardProps {
   onResult: (msg: string) => void;
   onDelete: () => void;
   onArchive: () => void;
+  /** Location for API calls on this design */
+  location: DesignLocation;
+  onRefresh: () => void;
 }
 
 export function PlanCard({
@@ -50,7 +56,44 @@ export function PlanCard({
   onResult,
   onDelete,
   onArchive,
+  location,
+  onRefresh,
 }: PlanCardProps) {
+  const [editingDoc, setEditingDoc] = useState<{ type: "spec" | "plan"; version: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const handleEdit = useCallback((type: "spec" | "plan", version: number) => {
+    setEditingDoc({ type, version });
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingDoc(null);
+  }, []);
+
+  const handleSave = useCallback(
+    async (fields: Record<string, unknown>) => {
+      if (!editingDoc) return;
+      setSaving(true);
+      try {
+        await updateDocViaApi({
+          name: plan.name,
+          docType: editingDoc.type,
+          version: editingDoc.version,
+          fields,
+          ...scopeApiParams(location),
+        });
+        onResult(`${editingDoc.type === "spec" ? "Spec" : "Plan"} v${editingDoc.version} saved`);
+        setEditingDoc(null);
+        onRefresh();
+      } catch (err) {
+        onResult(`Error: ${err instanceof Error ? err.message : "save failed"}`);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [editingDoc, plan.name, location, onResult, onRefresh]
+  );
+
   const abandoned = !!plan.meta?.abandoned;
   const progress = countPartsProgress(plan);
 
@@ -108,7 +151,7 @@ export function PlanCard({
           className="text-[10px] px-1 rounded text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"
           disabled={busy}
           onClick={(e) => { e.stopPropagation(); onArchive(); }}
-          title="Archive idea"
+          title="Archive design"
         >
           <Archive size={12} />
         </button>
@@ -117,7 +160,7 @@ export function PlanCard({
           className="text-[10px] px-1 rounded text-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"
           disabled={busy}
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          title="Delete idea permanently"
+          title="Delete design permanently"
         >
           <Trash2 size={12} />
         </button>
@@ -156,6 +199,11 @@ export function PlanCard({
               label="Spec"
               version={plan.specs.length}
               doc={plan.specs[plan.specs.length - 1]}
+              editing={editingDoc?.type === "spec" && editingDoc?.version === plan.specs.length}
+              onEdit={() => handleEdit("spec", plan.specs.length)}
+              onSave={handleSave}
+              onCancel={handleCancelEdit}
+              saving={saving}
             />
           )}
           {plan.plans.length > 0 && (
@@ -163,6 +211,11 @@ export function PlanCard({
               label="Plan"
               version={plan.plans.length}
               doc={plan.plans[plan.plans.length - 1]}
+              editing={editingDoc?.type === "plan" && editingDoc?.version === plan.plans.length}
+              onEdit={() => handleEdit("plan", plan.plans.length)}
+              onSave={handleSave}
+              onCancel={handleCancelEdit}
+              saving={saving}
             />
           )}
 
@@ -206,7 +259,7 @@ export function PlanCard({
                 className="text-[9px] text-zinc-700 hover:text-zinc-400 transition-colors pt-1"
                 onClick={onStartAbandon}
               >
-                Abandon idea…
+                Abandon design…
               </button>
             )
           )}

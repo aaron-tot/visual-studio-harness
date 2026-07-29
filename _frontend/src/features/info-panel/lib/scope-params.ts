@@ -42,11 +42,11 @@ export function saveTargetHint(
 ): string | null {
   if (scope === "global") return "Saves to global designs";
   if (scope === "project") {
-    if (!workspaceRoot?.trim()) return "Set a workspace to save project ideas";
+    if (!workspaceRoot?.trim()) return "Set a workspace to save project designs";
     return `Saves to current workspace`;
   }
   if (scope === "session") {
-    if (!sessionId) return "Open a session to save session ideas";
+    if (!sessionId) return "Open a session to save session designs";
     return "Saves to current session";
   }
   return null;

@@ -223,10 +223,10 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
     return listDesigns(dataDir, scope, q.workspaceRoot, q.sessionId);
   });
 
-  app.post<{ Body: { name: string; goal?: string; endGoal?: string; scope?: string; workspaceRoot?: string; sessionId?: string } }>(
+  app.post<{ Body: { name: string; goal?: string; endGoal?: string; scope?: string; workspaceRoot?: string; sessionId?: string; createdBy?: string } }>(
     "/api/plans/create-spec",
     async (request, reply) => {
-      const { name, goal, endGoal, scope, workspaceRoot, sessionId } = request.body;
+      const { name, goal, endGoal, scope, workspaceRoot, sessionId, createdBy } = request.body;
       if (!name?.trim()) {
         return reply.code(400).send({ error: "name is required" });
       }
@@ -245,7 +245,7 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
         scope: sc,
         workspaceRoot,
         sessionId,
-        createdBy: "user",
+        createdBy: (createdBy === "agent" ? "agent" : "user") as CreatedBy,
       });
       return { ok: true, ...result };
     }
@@ -279,10 +279,10 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
     }
   );
 
-  app.post<{ Body: { name: string; endGoal?: string; goal?: string; specReference?: string; scope?: string; workspaceRoot?: string; sessionId?: string } }>(
+  app.post<{ Body: { name: string; endGoal?: string; goal?: string; specReference?: string; scope?: string; workspaceRoot?: string; sessionId?: string; createdBy?: string } }>(
     "/api/plans/create-plan",
     async (request, reply) => {
-      const { name, endGoal, goal, specReference, scope, workspaceRoot, sessionId } = request.body;
+      const { name, endGoal, goal, specReference, scope, workspaceRoot, sessionId, createdBy } = request.body;
       if (!name?.trim()) {
         return reply.code(400).send({ error: "name is required" });
       }
@@ -300,7 +300,7 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
         scope: sc,
         workspaceRoot,
         sessionId,
-        createdBy: "user",
+        createdBy: (createdBy === "agent" ? "agent" : "user") as CreatedBy,
         specReference,
       });
       return { ok: true, ...result };
@@ -354,12 +354,56 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
       if (!existsSync(pd)) {
         return reply.code(404).send({ error: "design not found" });
       }
-      const archivedBase = join(designsDir, `${name}.archived`);
-      if (existsSync(archivedBase)) {
-        await rm(archivedBase, { recursive: true, force: true });
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").replace(/T/, "_").slice(0, 19);
+      const archivedPath = join(designsDir, `${name}.archived.${ts}`);
+      await rename(pd, archivedPath);
+      return { ok: true, archivedPath };
+    }
+  );
+
+  app.post<{
+    Body: {
+      name: string;
+      docType: "spec" | "plan";
+      version: number;
+      fields: Record<string, unknown>;
+      scope?: string;
+      workspaceRoot?: string;
+      sessionId?: string;
+    };
+  }>(
+    "/api/plans/update-doc",
+    async (request, reply) => {
+      const { name, docType, version, fields, scope, workspaceRoot, sessionId } = request.body;
+      if (!name?.trim() || !docType || !version || !fields) {
+        return reply.code(400).send({ error: "name, docType, version, and fields are required" });
       }
-      await rename(pd, archivedBase);
-      return { ok: true };
+      const sc = (scope as DesignsScope) || "global";
+      const designsDir = resolveDesignsDir(dataDir, sc, workspaceRoot, sessionId);
+      if (!designsDir) {
+        return reply.code(400).send({
+          error: sc === "project"
+            ? "workspaceRoot is required for project scope"
+            : "sessionId is required for session scope",
+        });
+      }
+      const pd = join(designsDir, name);
+      const filename = docType === "spec" ? `specV${version}.json` : `planV${version}.json`;
+      const fp = join(pd, filename);
+      if (!existsSync(fp)) {
+        return reply.code(404).send({ error: `${docType} v${version} not found` });
+      }
+      const raw = await readFile(fp, "utf-8");
+      const doc = JSON.parse(raw);
+      doc.meta.updatedAt = new Date().toISOString();
+      doc.meta.updatedBy = "user";
+      // Merge allowed fields into the document root (not meta)
+      for (const [key, value] of Object.entries(fields)) {
+        if (key === "meta") continue; // never overwrite meta via partial update
+        doc[key] = value;
+      }
+      await writeFile(fp, JSON.stringify(doc, null, 2) + "\n");
+      return { ok: true, path: fp, version };
     }
   );
 }

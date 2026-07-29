@@ -278,6 +278,7 @@ export function TestingV3Tab({ search }: { search?: string }) {
   const saveLayout = useSessionStore((s) => s.saveLayout);
   const renameGroupStore = useSessionStore((s) => s.renameGroup);
   const recolorGroupStore = useSessionStore((s) => s.recolorGroup);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [focusIdx, setFocusIdx] = useState(-1);
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const layoutsLoaded = useRef<Set<string>>(new Set());
@@ -289,6 +290,8 @@ export function TestingV3Tab({ search }: { search?: string }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Only handle when focus is within the sessions list container
+      if (!containerRef.current?.contains(document.activeElement)) return;
       const items = useSessionStore.getState().sessions
         .filter((s) => !search || s.title.toLowerCase().includes(search.toLowerCase()));
       if (e.key === "ArrowDown") {
@@ -441,7 +444,7 @@ export function TestingV3Tab({ search }: { search?: string }) {
   );
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+    <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <div className="px-3 py-1.5 text-[9px] text-zinc-600 border-b border-zinc-800/50">
         <div>Sessions</div>
         <div className="text-zinc-700">drag sessions under a group</div>

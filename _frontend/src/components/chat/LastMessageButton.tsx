@@ -75,11 +75,17 @@ export function LastMessageButton() {
   return (
     <div
       ref={containerRef}
-      className={`absolute top-3 z-20 flex flex-col items-end ${fullWidth && open ? "left-3 right-3" : "right-3"}`}
+      className={`absolute top-0 z-20 flex flex-col items-end ${fullWidth && open ? "left-3 right-3" : "right-3"}`}
     >
-      <div className="flex items-center gap-1">
-        {open && (
-          <>
+      {open && currentUserMessage ? (
+        <div
+          data-testid="message-panel"
+          className={`${fullWidth ? "w-full" : "w-80"} max-h-48 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl p-3 flex items-start`}
+        >
+          <p className="text-xs text-zinc-400 whitespace-pre-wrap break-words flex-1 min-w-0">
+            {currentUserMessage}
+          </p>
+          <div className="flex items-center gap-1 ml-2 shrink-0">
             <span className="text-[10px] text-zinc-500 whitespace-nowrap px-1">
               {userMsgIndex + 1}/{total}{isCurrent ? " current" : ""}
             </span>
@@ -108,30 +114,28 @@ export function LastMessageButton() {
               className={btnClass}
               title={pinned ? "Unpin" : "Pin open"}
             >
-              {pinned ? <Pin size={12} /> : <PinOff size={12} />}
+              {pinned ? <PinOff size={12} /> : <Pin size={12} />}
             </button>
-          </>
-        )}
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setPinned(false); setUserMsgIndex(0); }}
+              className={btnClass}
+              title="Close"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      ) : (
         <button
           type="button"
           data-testid="message-panel-toggle"
-          onClick={() => { setOpen(!open); if (!open) setUserMsgIndex(total - 1); else { setPinned(false); setUserMsgIndex(0); } }}
+          onClick={() => { setOpen(true); setUserMsgIndex(total - 1); }}
           className={btnClass}
-          title={open ? "Close" : "Show last message"}
+          title="Show last message"
         >
-          {open ? <X size={14} /> : <MessageSquare size={14} />}
+          <MessageSquare size={14} />
         </button>
-      </div>
-
-      {open && currentUserMessage && (
-        <div
-          data-testid="message-panel"
-          className={`mt-1.5 ${fullWidth ? "w-full" : "w-80"} max-h-48 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl p-3`}
-        >
-          <p className="text-xs text-zinc-400 whitespace-pre-wrap break-words">
-            {currentUserMessage}
-          </p>
-        </div>
       )}
     </div>
   );

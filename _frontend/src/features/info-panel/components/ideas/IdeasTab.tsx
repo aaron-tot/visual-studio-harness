@@ -114,7 +114,7 @@ export function IdeasTab({ active }: IdeasTabProps) {
         <div className="px-3 pt-3 pb-2 border-b border-zinc-800 space-y-1.5">
           <PanelSectionTitle>
             <ChevronDown size={12} />
-            Plans & Ideas
+Designs
           </PanelSectionTitle>
           <ScopeSwitcher
             scope={scope}
@@ -138,8 +138,8 @@ export function IdeasTab({ active }: IdeasTabProps) {
           ) : (
             <div className="text-[10px] text-amber-600/90">
               {scope === "project"
-                ? "Set a workspace in the chat toolbar to create project ideas."
-                : "Open or start a session to create session ideas."}
+                ? "Set a workspace in the chat toolbar to create project designs."
+                : "Open or start a session to create session designs."}
             </div>
           )}
           <ResultBanner result={mutations.result} />

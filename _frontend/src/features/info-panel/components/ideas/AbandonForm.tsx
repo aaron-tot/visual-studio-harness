@@ -24,14 +24,14 @@ export function AbandonForm({
       className="space-y-1.5 pt-1 border-t border-zinc-800"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="text-[10px] text-amber-600 font-medium">Abandon idea</div>
+      <div className="text-[10px] text-amber-600 font-medium">Abandon design</div>
       <PanelInput
         placeholder="Reason (required)"
         value={reason}
         onChange={(e) => onReasonChange(e.target.value)}
       />
       <PanelInput
-        placeholder="Successor idea (optional)"
+        placeholder="Successor design (optional)"
         value={successor}
         onChange={(e) => onSuccessorChange(e.target.value)}
       />

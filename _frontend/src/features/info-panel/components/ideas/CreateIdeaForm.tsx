@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { PanelButton, PanelInput } from "../ui";
 import type { DocMode } from "../../types";
 
@@ -22,15 +23,30 @@ export function CreateIdeaForm({
 }: CreateIdeaFormProps) {
   return (
     <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-      <PanelInput
-        placeholder="Idea name"
-        value={createName}
-        onChange={(e) => onNameChange(e.target.value)}
-      />
+      <div className="relative">
+        <PanelInput
+          placeholder="Design name"
+          value={createName}
+          onChange={(e) => onNameChange(e.target.value)}
+        />
+        {createName.trim() && (
+          <button
+            type="button"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400"
+            onClick={() => {
+              onNameChange("");
+              onEndGoalChange("");
+            }}
+            title="Clear form"
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
       {createName.trim() && (
         <>
           {nameConflict && (
-            <div className="text-[10px] text-amber-500">Idea name already exists</div>
+            <div className="text-[10px] text-amber-500">Design name already exists</div>
           )}
           <PanelInput
             placeholder="End goal (optional for now)"

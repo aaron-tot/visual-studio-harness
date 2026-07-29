@@ -406,6 +406,7 @@ export function createSpecViaApi(body: {
       scope: body.scope,
       workspaceRoot: body.workspaceRoot,
       sessionId: body.sessionId,
+      createdBy: "user",
     }),
   });
 }
@@ -430,6 +431,7 @@ export function createPlanViaApi(body: {
       scope: body.scope,
       workspaceRoot: body.workspaceRoot,
       sessionId: body.sessionId,
+      createdBy: "user",
     }),
   });
 }
@@ -590,6 +592,21 @@ export function getGraphExports(filePath: string, workspaceRoot?: string) {
 export interface AppInfo {
   buildTimestamp: string | null;
   installedAt: string | null;
+}
+
+export function updateDocViaApi(body: {
+  name: string;
+  docType: "spec" | "plan";
+  version: number;
+  fields: Record<string, unknown>;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string; version: number }>(`${BASE}/plans/update-doc`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function getAppInfo() {

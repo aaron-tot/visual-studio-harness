@@ -107,8 +107,8 @@ export function InfoPanel() {
             <TabButton active={tab === "usage"} onClick={() => setTab("usage")}>
               Usage
             </TabButton>
-            <TabButton active={tab === "ideas"} onClick={() => setTab("ideas")}>
-              Ideas
+            <TabButton active={tab === "designs"} onClick={() => setTab("designs")}>
+              Designs
             </TabButton>
             <TabButton active={tab === "resources"} onClick={() => setTab("resources")}>
               Resources
@@ -124,7 +124,7 @@ export function InfoPanel() {
       >
         {tab === "usage" ? (
           <UsageV2Tab />
-        ) : tab === "ideas" ? (
+        ) : tab === "designs" ? (
           <IdeasTab active={panel.isOpen} />
         ) : tab === "graph" ? (
           <GraphTab />

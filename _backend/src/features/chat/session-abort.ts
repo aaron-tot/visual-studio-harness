@@ -54,13 +54,15 @@ function emitSessionAbort(sessionId: string, reason: SessionAbortPayload["reason
   void bus.emit("session.abort", ctx, { sessionId, reason });
 }
 
-export function cancelSession(sessionId: string, dataDir?: string): void {
+export function cancelSession(sessionId: string, dataDir?: string): boolean {
   markUserCancelled(sessionId);
   clearPendingContinue(sessionId);
   const ac = sessionAborts.get(sessionId);
+  const hadAc = !!ac;
   if (ac) { ac.abort(); sessionAborts.delete(sessionId); }
   else { console.warn("[cancelSession] no AbortController found for session", sessionId); }
   killBashSession(sessionId);
   cancelPermissionsForSession(sessionId);
   emitSessionAbort(sessionId, "user_cancel", dataDir);
+  return hadAc;
 }

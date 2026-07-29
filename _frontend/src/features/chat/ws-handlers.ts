@@ -14,6 +14,7 @@ import {
   pendingDeltas,
 } from "./session-hydrate";
 import { consolidateTextParts, textContentFromParts, maxSeqOf, partsFromSnapshot } from "./parts-util";
+import { touchStreamTimeout } from "./store";
 
 wsClient.on("token", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
@@ -272,6 +273,7 @@ wsClient.on("session_state", (data: any) => {
         const upTo = snapshotSeq ?? partSeq;
         const wsRoot = data.meta?.workspaceRoot;
         useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
+        touchStreamTimeout();
       } else {
         const upTo = snapshotSeq ?? maxSeqOf(msgs.flatMap((m: any) => m.parts || []));
         // If the store already has an active streaming turn (set by sendMessage),
@@ -338,7 +340,7 @@ wsClient.onDisconnect(() => {
   disconnectNoticeTimer = setTimeout(() => {
     disconnectNoticeTimer = null;
     if (wsClient.connected) return;
-    const { streaming, messages } = useChatStore.getState();
+    const { streaming, messages, sessionId } = useChatStore.getState();
     if (streaming) {
       useChatStore.setState({
         messages: [...messages, { role: "assistant", content: "Connection lost. Backend may have stopped.", timestamp: new Date().toISOString() } as any],
@@ -348,6 +350,13 @@ wsClient.onDisconnect(() => {
         streamingTurnId: null,
         lastSeq: 0,
         _reasonIdx: 0,
+      });
+    }
+    // Also clear the session-store streaming flag so the sidebar green dot
+    // disappears even if session_stream_end was never received (crash).
+    if (sessionId) {
+      import("../../stores/sessions").then(({ useSessionStore }) => {
+        useSessionStore.getState().setStreaming(sessionId, false);
       });
     }
   }, 8000);

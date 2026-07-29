@@ -587,6 +587,27 @@ export function getActiveTraceTurn(sessionId: string, dataDir?: string): TraceTu
   return row as unknown as TraceTurn;
 }
 
+/**
+ * Abort all turns with `status = "streaming"` across all sessions.
+ * Called at backend startup to clean up orphaned turns from a prior crash.
+ * Returns the number of turns aborted.
+ */
+export function abortOrphanedStreamingTurns(dataDir?: string): number {
+  const db = dbFor(dataDir);
+  const orphaned = db
+    .select({ id: turns.id })
+    .from(turns)
+    .where(eq(turns.status, "streaming"))
+    .all();
+  for (const t of orphaned) {
+    abortTurnTrace(t.id, dataDir);
+  }
+  if (orphaned.length > 0) {
+    console.log(`[startup] aborted ${orphaned.length} orphaned streaming turn(s) from prior crash`);
+  }
+  return orphaned.length;
+}
+
 export function sessionHasTurns(sessionId: string, dataDir?: string): boolean {
   const db = dbFor(dataDir);
   const row = db

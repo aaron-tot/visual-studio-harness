@@ -29,6 +29,7 @@ import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
 import { createHooksSystem, setHooksSystem } from "./features/hooks";
 import { ensureGlobal } from "./features/tools/perms/store";
 import { migrateToSqlite } from "./storage/migrate";
+import { abortOrphanedStreamingTurns } from "./features/chat/db-trace";
 
 import { ensureGlobalAgentsFile } from "./agent/system-prompt";
 import type { ConfigFile } from "../../_shared/types";
@@ -246,7 +247,10 @@ async function main() {
     console.log("SQLite migration:", migrationResult);
   }
 
-
+  // Abort any turns left in "streaming" status from a prior crash.
+  // This ensures session_state rehydration does not restore orphaned streaming
+  // state on the frontend (which would cause a stuck stop button).
+  abortOrphanedStreamingTurns(DATA_DIR);
 
   try {
     await app.listen({ port: PORT, host: "0.0.0.0" });

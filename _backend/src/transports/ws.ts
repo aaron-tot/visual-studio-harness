@@ -189,7 +189,14 @@ export function registerWsHandler(
             });
           }
         } else if (msg.type === "cancel") {
-          if (msg.sessionId) cancelSession(msg.sessionId, getDataDir());
+          if (msg.sessionId) {
+            const hadAc = cancelSession(msg.sessionId, getDataDir());
+            // No active streaming task — send synthetic done so the frontend
+            // un-sticks its "Thinking/stopping" state (e.g. after backend crash).
+            if (!hadAc && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: "done", sessionId: msg.sessionId }));
+            }
+          }
         } else if (msg.type === "request_session_state") {
           if (msg.sessionId) {
             setActiveSession(socket, msg.sessionId);

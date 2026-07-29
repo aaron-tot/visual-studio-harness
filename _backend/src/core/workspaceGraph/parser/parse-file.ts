@@ -1,3 +1,4 @@
+import { Project } from "ts-morph";
 import { getParserProject } from "./project";
 import { extractSymbols } from "./symbols";
 import { extractImports, extractExports } from "./imports-exports";
@@ -12,10 +13,11 @@ export interface ParsedFileGraph {
 
 export async function parseWorkspaceFile(
   file: ScannedFile,
-  fileId: number
+  fileId: number,
+  project?: Project
 ): Promise<ParsedFileGraph> {
-  const project = getParserProject();
-  const sourceFile = project.createSourceFile(file.path, file.sourceText, {
+  const p = project ?? getParserProject();
+  const sourceFile = p.createSourceFile(file.path, file.sourceText, {
     overwrite: true,
   });
 
@@ -51,7 +53,7 @@ export async function parseWorkspaceFile(
     fileId,
   }));
 
-  project.removeSourceFile(sourceFile);
+  p.removeSourceFile(sourceFile);
 
   return { symbols, imports, exports };
 }

@@ -1,3 +1,4 @@
+import { logMemory } from "../../utils/memory";
 import type { WorkspaceGraphServiceInput } from "./types";
 import type { WorkspaceGraphService } from "./api/types";
 import { NotInitializedError } from "./errors";
@@ -95,6 +96,7 @@ export async function createWorkspaceGraphService(
       console.log(
         `[workspace-graph] startup index: ${report.createdCount} created, ${report.modifiedCount} modified, ${report.deletedCount} deleted, ${report.skippedCount} skipped`
       );
+      logMemory("after startup reindex");
 
       if (input.enableWatcher !== false) {
         _watcher = await startWorkspaceWatcher({
@@ -154,13 +156,22 @@ async function processWatcherBatch(
   dbPath: string,
   events: WorkspaceFsEvent[]
 ): Promise<void> {
+  // Filter to file-level events only (skip dir events — folders derived from files)
+  const changedPaths = events
+    .filter((e) => e.type === "add" || e.type === "change" || e.type === "unlink")
+    .map((e) => e.path);
+
+  if (changedPaths.length === 0) return;
+
   const report = await reindexWorkspace({
     workspaceRoot,
     dbPath,
     mode: "startup",
+    changedPaths,
   });
 
   if (report.reindexedPaths.length > 0) {
     console.log(`[workspace-graph] watcher batch: ${report.reindexedPaths.length} file(s) updated`);
   }
+  logMemory("after watcher reindex");
 }

@@ -59,6 +59,7 @@ function createSession(sessionId: string, cwd: string): Session {
       }
       clearTimeout(w.timer);
       session.waiters.splice(i, 1);
+      session.buffer = "";
       w.resolve({ stdout, exitCode });
     }
   };

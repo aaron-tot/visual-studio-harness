@@ -28,10 +28,23 @@ export function createDebounceQueue(
     }, debounceMs);
   }
 
+  const MAX_BUFFER = 10_000;
+
   return {
     push(event) {
       if (closed) return;
       buffer.push(event);
+      if (buffer.length >= MAX_BUFFER) {
+        // Buffer exceeded cap — flush immediately to prevent unbounded growth
+        if (timer) clearTimeout(timer);
+        timer = null;
+        const batch = buffer;
+        buffer = [];
+        onFlush(batch).catch((err) => {
+          console.error("[workspace-graph] watcher batch error (overflow flush):", err);
+        });
+        return;
+      }
       scheduleFlush();
     },
 

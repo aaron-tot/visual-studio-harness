@@ -164,8 +164,8 @@ export function DesignGroupList({
 
   const filteredTotal = filteredGroups.reduce((s, g) => s + g.designs.length, 0);
 
-  // Search bar — always visible
-  const showSearch = total > 5 || !!searchQuery;
+  // Search bar — always visible (no threshold)
+  const showSearch = true;
 
   // Flat global list
   if (flat) {

@@ -548,7 +548,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
     </div>
   );
 
-  
+
 
   const inputRow = (
       <div className="flex items-end gap-2">

@@ -36,7 +36,7 @@ export function SessionTodoPanel({
   // Hydrate the store from the agent's tool (disk) when the session changes
   useEffect(() => {
     if (!id) return;
-    
+
     const loadTodos = async () => {
       try {
         const items = await fetchSessionTodos(id);

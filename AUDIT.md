@@ -219,21 +219,21 @@ This is the operation that was running concurrently with the LLM fetch in the cr
 Time    Event                                              Memory Delta
 ────    ─────                                              ────────────
 T+0     App starts, reindexWorkspace()                    +~10-20 MB (ts-morph ASTs)
-T+0     workspaceGraph watcher starts                     
-T+0     SQLite db opened                                   
-T+~1m   User sends first message → LLM call               
+T+0     workspaceGraph watcher starts  
+T+0     SQLite db opened  
+T+~1m   User sends first message → LLM call  
         buildModelMessagesFromContext() reads prior turns  +~2-5 MB (messages)
-        streamChat() with streaming                       
+        streamChat() with streaming  
         createVerboseFetch() captures response             +~100-500 KB
-T+~5m   Watcher fires (file change)                       
+T+~5m   Watcher fires (file change)  
         reindexWorkspace() → scan + parse all files        +~10-20 MB (more leaked ASTs)
-T+~10m  Multiple auto-continue turns                       
+T+~10m  Multiple auto-continue turns  
         maps accumulate entries, more messages             +~5-10 MB
 T+~15m  Watcher fires again                                +~10-20 MB
         ... repeats ...
 T+~28m  1.59 GB RSS (Peak was 1.28 GB — still climbing)
-        One more watcher batch triggered during LLM call   
-        ts-morph internal pointer into freed page          
+        One more watcher batch triggered during LLM call  
+        ts-morph internal pointer into freed page  
         → SIGBUS at 0x7F0BFE407000                         💥 CRASH
 ```
 

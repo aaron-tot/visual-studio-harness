@@ -89,7 +89,7 @@ export const agentChangeTool: ToolDef = {
           metadata: { switched: false },
         };
       case "stop":
-        
+
         return {
           title: "Turn stopped",
           output: "User chose to stop the turn.",

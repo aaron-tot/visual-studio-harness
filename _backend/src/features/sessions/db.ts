@@ -246,5 +246,3 @@ export function setSessionLayout(
     })
     .run();
 }
-
-

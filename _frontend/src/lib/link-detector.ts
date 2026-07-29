@@ -1,14 +1,14 @@
 /**
  * Link detector utility.
- * 
+ *
  * Detects URLs, file paths, and folder paths in plain text.
  * Returns an array of link segments that can be rendered as clickable elements.
- * 
+ *
  * Order of priority (checked in order):
  * 1. URLs (http://, https://, ftp://, etc.)
  * 2. File paths (/absolute/path, C:\Windows\path, ./relative/path)
  * 3. Folders (/absolute/path, C:\Windows\path\)
- * 
+ *
  * Falls back to plain text when no links are found.
  */
 

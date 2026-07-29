@@ -261,5 +261,3 @@ export function MdManager({ sessionId }: MdManagerProps) {
     </div>
   );
 }
-
-

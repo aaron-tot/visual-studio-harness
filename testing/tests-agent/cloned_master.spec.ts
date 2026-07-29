@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // GROK_EDIT_ clone of testing/tests-human/master.spec.ts
-// Original file is intentionally untouched. 
+// Original file is intentionally untouched.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { execSync } from "child_process";

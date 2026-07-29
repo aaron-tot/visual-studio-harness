@@ -109,4 +109,3 @@ async function openTarget(target: string): Promise<void> {
     await execFileP("cmd", ["/c", "start", "", target]);
   }
 }
-

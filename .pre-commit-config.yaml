@@ -1,0 +1,63 @@
+# Pre-commit hooks for Visual Studio Harness
+# Install: pre-commit install
+# Manual run on all files: pre-commit run --all-files
+repos:
+  # --- General secret scanning (detect-secrets) ---
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args:
+          - --exclude-files
+          - '(node_modules/|\.git/|dist/|_backend/dist/|_frontend/dist/|_shared/dist/|\.vsh/|\.turbo/|test-results/|coverage/|\.secrets\.baseline|bun\.lock|.*\.lock)'
+        # exclude-files is a pipe-delimited regex
+        exclude: >
+          (?x)^(
+            node_modules/|
+            \.git/|
+            dist/|
+            _backend/dist/|
+            _frontend/dist/|
+            _shared/dist/|
+            \.vsh/|
+            \.turbo/|
+            test-results/|
+            coverage/|
+            \.secrets\.baseline|
+            bun\.lock|
+            .*\.lock|
+            scripts/hooks/
+          )
+
+  # --- Trailing whitespace (cleanliness) ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+
+  # --- Project-specific key/secret patterns (local) ---
+  - repo: local
+    hooks:
+      - id: no-hardcoded-api-keys
+        name: No hardcoded API keys or secrets
+        description: Scans for hardcoded API keys, tokens, passwords
+        entry: bash
+        args: [scripts/hooks/scan-secrets.sh]
+        language: system
+        types: [text]
+        exclude: ^(scripts/hooks/|\.pre-commit-config\.yaml)
+
+      - id: no-env-value-hardcode
+        name: No hardcoded env variable values
+        description: Blocks hardcoded values for env vars like EXA_API_KEY, PARALLEL_API_KEY
+        entry: bash
+        args: [scripts/hooks/scan-env-values.sh]
+        language: system
+        types: [text]
+        exclude: ^(scripts/hooks/|\.pre-commit-config\.yaml)

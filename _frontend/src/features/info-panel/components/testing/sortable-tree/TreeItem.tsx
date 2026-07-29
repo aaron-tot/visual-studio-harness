@@ -76,6 +76,7 @@ export const TreeItem = forwardRef<HTMLLIElement, TreeItemProps>(
             'tree-item',
             'flex items-center relative',
             'box-border select-none',
+            'outline-none',
             // default variant
             (!variant || variant === 'default') && 'py-2.5 px-2.5 bg-zinc-900 border border-zinc-800 text-zinc-200',
             // session variant

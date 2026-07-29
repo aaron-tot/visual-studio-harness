@@ -22,7 +22,7 @@ function workspaceLabel(root: string): string {
   return root ? root.split("/").filter(Boolean).pop() || root : "No workspace";
 }
 
-function SessionActions({ id, isDragOverlay }: { id: string; isDragOverlay?: boolean }) {
+function SessionActions({ id, isDragOverlay, onSessionClick }: { id: string; isDragOverlay?: boolean; onSessionClick?: (id: string) => void }) {
   const activeId = useSessionStore((s) => s.activeId);
   const setActive = useSessionStore((s) => s.setActive);
   const archive = useSessionStore((s) => s.archive);
@@ -81,7 +81,7 @@ function SessionActions({ id, isDragOverlay }: { id: string; isDragOverlay?: boo
         <>
           <div
             className="flex-1 min-w-0"
-            onClick={(e) => { e.stopPropagation(); setActive(id); }}
+            onClick={(e) => { e.stopPropagation(); setActive(id); onSessionClick?.(id); }}
             onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}
           >
             <p className={`text-sm truncate ${active ? "text-zinc-300" : "text-zinc-400"}`}>
@@ -271,7 +271,7 @@ function GroupActions({ id, label, initialColor, childCount, childSessionIds, on
 
 
 export function TestingV3Tab({ search }: { search?: string }) {
-  const { sessions, loading, fetch: loadSessions, layouts } = useSessionStore();
+  const { sessions, loading, fetch: loadSessions, layouts, activeId } = useSessionStore();
   const setActive = useSessionStore((s) => s.setActive);
   const addGroupStore = useSessionStore((s) => s.addGroup);
   const removeGroupStore = useSessionStore((s) => s.removeGroup);
@@ -287,30 +287,6 @@ export function TestingV3Tab({ search }: { search?: string }) {
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
   useEffect(() => { setFocusIdx(-1); }, [search]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // Only handle when focus is within the sessions list container
-      if (!containerRef.current?.contains(document.activeElement)) return;
-      const items = useSessionStore.getState().sessions
-        .filter((s) => !search || s.title.toLowerCase().includes(search.toLowerCase()));
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        const next = Math.min(focusIdx + 1, items.length - 1);
-        setFocusIdx(next);
-        if (items[next]) setActive(items[next].id);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        const prev = Math.max(focusIdx - 1, 0);
-        setFocusIdx(prev);
-        if (items[prev]) setActive(items[prev].id);
-      } else if (e.key === "Escape") {
-        setFocusIdx(-1);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [search, focusIdx, setActive]);
 
   const filteredSessions = useMemo(
     () => search
@@ -340,6 +316,52 @@ export function TestingV3Tab({ search }: { search?: string }) {
     withWs.sort((a, b) => a.root.localeCompare(b.root));
     return [...(noWs ? [noWs] : []), ...withWs];
   }, [filteredSessions, layouts, layoutTick]);
+
+  /** Flat list of session IDs in visual tree order (depth-first, section by section). */
+  const visualSessionIds = useMemo(() => {
+    const ids: string[] = [];
+    function walk(nodes: LayoutNode[]) {
+      for (const n of nodes) {
+        if (n.kind === "session") {
+          ids.push(n.id);
+        } else if (n.kind === "group" && n.children) {
+          walk(n.children);
+        }
+      }
+    }
+    for (const section of sections) {
+      walk(section.tree);
+    }
+    return ids;
+  }, [sections]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Only handle when focus is within the sessions list container
+      if (!containerRef.current?.contains(document.activeElement)) return;
+      const ids = visualSessionIds;
+      if (ids.length === 0) return;
+      // When no focus index, start from the currently active session
+      const baseIdx = focusIdx === -1
+        ? Math.max(0, ids.indexOf(activeId ?? ""))
+        : focusIdx;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = Math.min(baseIdx + 1, ids.length - 1);
+        setFocusIdx(next);
+        if (ids[next]) setActive(ids[next]);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prev = Math.max(baseIdx - 1, 0);
+        setFocusIdx(prev);
+        if (ids[prev]) setActive(ids[prev]);
+      } else if (e.key === "Escape") {
+        setFocusIdx(-1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visualSessionIds, focusIdx, activeId, setActive]);
 
   const persistTree = useCallback((workspace: string, items: TreeItems) => {
     // Only persist after backend layout has loaded (avoids mount-save race)
@@ -438,9 +460,9 @@ export function TestingV3Tab({ search }: { search?: string }) {
           />
         );
       }
-      return <SessionActions id={itemId} isDragOverlay={isDragOverlay} />;
+      return <SessionActions id={itemId} isDragOverlay={isDragOverlay} onSessionClick={() => setFocusIdx(-1)} />;
     },
-    [layouts, isGroupId, removeGroup, renameGroupStore, recolorGroupStore],
+    [layouts, isGroupId, removeGroup, renameGroupStore, recolorGroupStore, setFocusIdx],
   );
 
   return (

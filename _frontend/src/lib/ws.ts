@@ -89,6 +89,8 @@ class WsClient {
     };
 
     this.ws.onclose = () => {
+      // Guard: if onerror already scheduled a reconnect, don't double-schedule
+      if (this.reconnectTimer) return;
       for (const h of this.closeHandlers) h();
       if (this.ws) {
         this.ws = null;
@@ -97,6 +99,8 @@ class WsClient {
     };
 
     this.ws.onerror = () => {
+      // Guard: if onclose already fired (or vice versa), only schedule once
+      if (this.reconnectTimer) return;
       for (const h of this.closeHandlers) h();
       this.cleanup();
       this.reconnectTimer = setTimeout(() => this.connect(), 3000);

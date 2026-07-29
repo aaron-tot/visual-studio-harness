@@ -21,7 +21,6 @@ import {
   beginAwaitSessionState,
   resetHydrateState,
   incrementEpoch,
-  awaitingSessionState,
   loadSessionEpoch,
 } from "./session-hydrate";
 
@@ -147,7 +146,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   sendMessage: (content, config: SessionConfig) => {
     const { sessionId, messages, workspaceRoot } = get();
-    console.log("tmpDebug: store.sendMessage called", { sessionId, contentLen: content?.length, config });
     // We are starting a live, client-initiated turn. Any in-flight
     // "awaiting session state" rehydration buffer (from a prior load or
     // reconnect) must be cleared so this turn's token/done events are
@@ -169,7 +167,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       _pendingModelName: config.modelName,
       _pendingProviderName: config.providerName,
     });
-    console.log("STORE_SEND_MESSAGE streaming=true", { sessionId, contentLen: content?.length, awaitingSessionState });
     chatDebug("store", "sendMessage -> streaming=true", { sessionId, agentName: config.agentName });
     touchStreamTimeout();
     const wsMsg = {
@@ -294,7 +291,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   failStreaming: (error, meta) => {
     clearStreamTimeout();
-    console.log("STORE_FAIL_STREAMING", { error, meta, streaming: get().streaming, messagesCount: get().messages.length });
     return set((state) => {
       const errText = (error || "Unknown error").trim() || "Unknown error";
       const raw = meta?.rawError?.trim();

@@ -29,7 +29,7 @@ export function parseCapturedBody(rawText: string): Record<string, unknown> {
 }
 
 export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promise<void>; getResponse: () => Record<string, unknown> | undefined } {
-  const MAX_CAPTURE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+  const MAX_CAPTURE_SIZE_BYTES = 500 * 1024; // 500 KB (reduced from 10 MB to lower memory per turn)
   let rawResponse: Record<string, unknown> | undefined;
   let resolveCapture!: () => void;
   let settled = false;
@@ -45,7 +45,7 @@ export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promis
 
     const finishCapture = () => {
       if (captureOversized) {
-        rawResponse = { object: "chat.completion", _capture: "truncated (exceeded 10 MB)" } as Record<string, unknown>;
+        rawResponse = { object: "chat.completion", _capture: "truncated (exceeded 500 KB)" } as Record<string, unknown>;
         resolveCapture();
         return;
       }

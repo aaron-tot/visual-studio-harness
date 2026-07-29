@@ -50,7 +50,11 @@ export function resolveSubagentConfig(
 }
 
 export function cancelSubagentConfigRequests(): void {
-  for (const [id, p] of pending) {
+  // Collect keys first to avoid Map mutation during iteration
+  const keys = Array.from(pending.keys());
+  for (const id of keys) {
+    const p = pending.get(id);
+    if (!p) continue;
     clearTimeout(p.timer);
     p.resolve({ action: "cancel" });
     pending.delete(id);

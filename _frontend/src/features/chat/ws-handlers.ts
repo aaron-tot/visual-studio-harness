@@ -1,6 +1,7 @@
 import { wsClient } from "../../lib/ws";
 import { useChatStore } from "./store";
 import { useSessionViewStore } from "../../stores/sessionView";
+import { useSessionStore } from "../../stores/sessions";
 import { chatDebug } from "./debug";
 import {
   pendingPermToolNames,
@@ -94,25 +95,16 @@ wsClient.on("error", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   const store = useChatStore.getState();
   const errSid = data.sessionId as string | undefined;
-  console.log("WS_ERROR_RECEIVED", { errSid, currentId, storeSessionId: store.sessionId, error: data?.error, category: data?.category, awaitingSessionState, streaming: store.streaming });
   if (errSid && errSid !== "new") {
-    if (currentId && errSid !== currentId) {
-      console.log("WS_ERROR_SESSION_MISMATCH", { reason: "currentId mismatch", currentId, errSid });
-      return;
-    }
-    if (!currentId && store.sessionId && errSid !== store.sessionId) {
-      console.log("WS_ERROR_SESSION_MISMATCH", { reason: "store.sessionId mismatch", storeSessionId: store.sessionId, errSid });
-      return;
-    }
+    if (currentId && errSid !== currentId) return;
+    if (!currentId && store.sessionId && errSid !== store.sessionId) return;
   }
   if (awaitingSessionState) {
-    console.log("WS_ERROR_BUFFERED", { error: data?.error, turnId: data.turnId });
     chatDebug("error", "buffered (awaiting session state)", { error: data?.error, turnId: data.turnId });
     bufferDelta({ kind: "error", sessionId: errSid || store.sessionId || "new", error: data?.error || "Unknown error", rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, status: data.status });
     return;
   }
   chatDebug("error", "applied" + (!store.streaming ? " (streaming was false)" : ""), { error: data?.error, turnId: data.turnId, category: data?.category });
-  console.log("WS_ERROR_APPLYING", { error: data?.error, category: data?.category, streaming: store.streaming });
   console.error("chat error", data?.error, data?.rawError);
   store.failStreaming(data?.error || "Unknown error", { modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, status: data.status, category: data?.category });
 });
@@ -224,10 +216,8 @@ wsClient.on("session_created", (data: any) => {
     }
     useChatStore.setState(patch);
     useSessionViewStore.setState({ currentSessionId: data.session.id });
-    import("../../stores/sessions").then(({ useSessionStore }) => {
-      useSessionStore.getState().fetch();
-      useSessionStore.setState({ activeId: data.session.id });
-    });
+    useSessionStore.getState().fetch();
+    useSessionStore.setState({ activeId: data.session.id });
   }
 });
 
@@ -315,27 +305,23 @@ wsClient.on("session_updated", (data: any) => {
     if (data.session.id === useChatStore.getState().sessionId) {
       useChatStore.getState().updateSessionMeta(data.session);
     }
-    import("../../stores/sessions").then(({ useSessionStore }) => { useSessionStore.getState().upsertSession(data.session); });
+    useSessionStore.getState().upsertSession(data.session);
   }
 });
 
 wsClient.on("session_stream_start", (data: any) => {
-  import("../../stores/sessions").then(({ useSessionStore }) => {
-    useSessionStore.getState().setStreaming(data.sessionId, true);
-  });
+  useSessionStore.getState().setStreaming(data.sessionId, true);
 });
 
 wsClient.on("session_stream_end", (data: any) => {
   const viewed = useSessionViewStore.getState().currentSessionId === data.sessionId;
-  import("../../stores/sessions").then(({ useSessionStore }) => {
-    const store = useSessionStore.getState();
-    store.setStreaming(data.sessionId, false);
-    if (viewed) {
-      store.clearDoneNotification(data.sessionId);
-    } else if (data.success !== false) {
-      store.setDoneNotification(data.sessionId, true);
-    }
-  });
+  const store = useSessionStore.getState();
+  store.setStreaming(data.sessionId, false);
+  if (viewed) {
+    store.clearDoneNotification(data.sessionId);
+  } else if (data.success !== false) {
+    store.setDoneNotification(data.sessionId, true);
+  }
 });
 
 let disconnectNoticeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -360,9 +346,7 @@ wsClient.onDisconnect(() => {
     // Also clear the session-store streaming flag so the sidebar green dot
     // disappears even if session_stream_end was never received (crash).
     if (sessionId) {
-      import("../../stores/sessions").then(({ useSessionStore }) => {
-        useSessionStore.getState().setStreaming(sessionId, false);
-      });
+      useSessionStore.getState().setStreaming(sessionId, false);
     }
   }, 8000);
 });

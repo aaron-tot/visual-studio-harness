@@ -69,7 +69,6 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
   const abortController = new AbortController();
   const sessionAborts = getSessionAborts();
 
-  console.log("tmpDebug: handleChatMessage ENTERED", { sessionId: msg.sessionId, contentLen: msg.content?.length, agentName: msg.agentName, providerName: msg.providerName, modelName: msg.modelName });
   let socketClosed = false;
   const onClose = () => {
     socketClosed = true;
@@ -129,7 +128,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       askPermission: async (toolName, args, callId) => {
         sendToSession(sessionId, { type: "permission_request", sessionId, toolCallId: callId, toolName, args });
         sendToSession(sessionId, { type: "tool_update", sessionId, toolCallId: callId, status: "awaiting_permission" });
-        const ok = await waitForPermission(callId);
+        const ok = await waitForPermission(callId, undefined, sessionId);
         sendToSession(sessionId, { type: "tool_update", sessionId, toolCallId: callId, status: ok ? "running" : "error" });
         return ok;
       },
@@ -209,7 +208,11 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
   } catch (err: unknown) {
     streamSuccess = false;
     const effectiveSessionId = sessionId || msg.sessionId || "new";
-    console.log("tmpDebug: catch block", { effectiveSessionId, err: err instanceof Error ? err.message : String(err), isAbort: isAbortError(err) });
+    // Ensure cleanup even on early-exit paths (before onSessionReady)
+    if (sessionId) {
+      toolContinueAttempts.delete(sessionId);
+      thinkingContinueAttempts.delete(sessionId);
+    }
     if (!isAbortError(err)) {
       const info = classifyError(err, {
         provider: msg.providerName,
@@ -225,12 +228,15 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
     logMemory("after LLM turn");
     announceStreamEnd(streamSuccess);
     socket.removeListener("close", onClose);
+    const cleanKey = sessionId || (lookupKey || "");
+    if (cleanKey) {
+      sessionAborts.delete(cleanKey);
+      toolContinueAttempts.delete(cleanKey);
+      thinkingContinueAttempts.delete(cleanKey);
+    }
     if (sessionId) {
-      sessionAborts.delete(sessionId);
-      toolContinueAttempts.delete(sessionId);
-      thinkingContinueAttempts.delete(sessionId);
       clearPendingContinue(sessionId);
     }
-    if (lookupKey && lookupKey !== sessionId) sessionAborts.delete(lookupKey);
+    if (lookupKey && lookupKey !== sessionId && lookupKey !== cleanKey) sessionAborts.delete(lookupKey);
   }
 }

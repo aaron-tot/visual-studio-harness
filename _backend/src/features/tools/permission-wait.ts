@@ -1,6 +1,8 @@
 type Pending = {
   resolve: (approved: boolean) => void;
   timer: ReturnType<typeof setTimeout>;
+  /** SessionId that owns this permission request, for scoped cancellation. */
+  owningSessionId: string;
 };
 
 /** toolCallId -> waiter */
@@ -10,9 +12,10 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 
 export function waitForPermission(
   toolCallId: string,
-  timeoutMs = DEFAULT_TIMEOUT_MS
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  /** Optional sessionId for scoped cancellation. Defaults to "" (global scope). */
+  owningSessionId?: string
 ): Promise<boolean> {
-  // If already resolved somehow, deny
   return new Promise((resolve) => {
     const existing = pending.get(toolCallId);
     if (existing) {
@@ -23,7 +26,7 @@ export function waitForPermission(
       pending.delete(toolCallId);
       resolve(false);
     }, timeoutMs);
-    pending.set(toolCallId, { resolve, timer });
+    pending.set(toolCallId, { resolve, timer, owningSessionId: owningSessionId ?? "" });
   });
 }
 
@@ -36,9 +39,14 @@ export function resolvePermission(toolCallId: string, approved: boolean): boolea
   return true;
 }
 
-export function cancelPermissionsForSession(_sessionId: string): void {
-  // V1: deny all pending (toolCallIds are unique; session filter optional later)
-  for (const [id, p] of pending) {
+export function cancelPermissionsForSession(sessionId: string): void {
+  // Collect keys first to avoid Map mutation during iteration
+  const keys = Array.from(pending.keys());
+  for (const id of keys) {
+    const p = pending.get(id);
+    if (!p) continue;
+    // Only cancel permissions owned by this session
+    if (p.owningSessionId && p.owningSessionId !== sessionId) continue;
     clearTimeout(p.timer);
     p.resolve(false);
     pending.delete(id);

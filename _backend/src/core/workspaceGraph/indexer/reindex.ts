@@ -2,7 +2,7 @@ import { scanWorkspace } from "../scanner/scan";
 import { parseWorkspaceFile } from "../parser/parse-file";
 import { openWorkspaceGraphDb } from "../storage/db";
 import { createWorkspaceGraphRepository, type WorkspaceGraphRepository } from "../storage/repository";
-import { getParserProject, resetParserProject } from "../parser/project";
+import { createScopedProject, resetParserProject } from "../parser/project";
 import { applyFileUpdate } from "./apply-file-update";
 import type { ScanInput, FolderRow } from "../types";
 
@@ -45,17 +45,18 @@ export async function reindexWorkspace(input: ReindexInput): Promise<ReindexRepo
     };
   }
 
-  const project = getParserProject();
+  // Use scoped project so compiled ASTs are freed when reindexWorkspace() returns
+  const project = createScopedProject();
   const reindexedPaths: string[] = [];
 
   for (const file of scanResult.created) {
-    const parsed = await parseWorkspaceFile(file, 0);
+    const parsed = await parseWorkspaceFile(file, 0, project);
     await applyFileUpdate(repo, file, parsed);
     reindexedPaths.push(file.path);
   }
 
   for (const file of scanResult.modified) {
-    const parsed = await parseWorkspaceFile(file, 0);
+    const parsed = await parseWorkspaceFile(file, 0, project);
     await applyFileUpdate(repo, file, parsed);
     reindexedPaths.push(file.path);
   }
@@ -81,6 +82,9 @@ export async function reindexWorkspace(input: ReindexInput): Promise<ReindexRepo
     }));
     await repo.upsertFolders(folderRows);
   }
+
+  // Reset singleton so the next getParserProject() call creates a fresh Project
+  resetParserProject();
 
   return {
     reindexedPaths,

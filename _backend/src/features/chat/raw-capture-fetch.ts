@@ -29,9 +29,12 @@ export function parseCapturedBody(rawText: string): Record<string, unknown> {
 }
 
 export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promise<void>; getResponse: () => Record<string, unknown> | undefined } {
+  const MAX_CAPTURE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
   let rawResponse: Record<string, unknown> | undefined;
   let resolveCapture!: () => void;
   let settled = false;
+  let captureSizeBytes = 0;
+  let captureOversized = false;
   const captureDone = new Promise<void>((r) => { resolveCapture = () => { if (!settled) { settled = true; r(); } }; });
 
   const verboseFetch: typeof fetch = async (input, init) => {
@@ -41,6 +44,11 @@ export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promis
     const chunks: Uint8Array[] = [];
 
     const finishCapture = () => {
+      if (captureOversized) {
+        rawResponse = { object: "chat.completion", _capture: "truncated (exceeded 10 MB)" } as Record<string, unknown>;
+        resolveCapture();
+        return;
+      }
       try {
         const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
         const combined = new Uint8Array(totalLen);
@@ -52,7 +60,14 @@ export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promis
 
     const capture = new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
-        if (chunk?.byteLength) chunks.push(chunk);
+        if (chunk?.byteLength) {
+          captureSizeBytes += chunk.byteLength;
+          if (!captureOversized && captureSizeBytes <= MAX_CAPTURE_SIZE_BYTES) {
+            chunks.push(chunk);
+          } else {
+            captureOversized = true;
+          }
+        }
         controller.enqueue(chunk);
       },
       flush() { finishCapture(); },

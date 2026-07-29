@@ -156,10 +156,18 @@ async function processWatcherBatch(
   dbPath: string,
   events: WorkspaceFsEvent[]
 ): Promise<void> {
+  // Filter to file-level events only (skip dir events — folders derived from files)
+  const changedPaths = events
+    .filter((e) => e.type === "add" || e.type === "change" || e.type === "unlink")
+    .map((e) => e.path);
+
+  if (changedPaths.length === 0) return;
+
   const report = await reindexWorkspace({
     workspaceRoot,
     dbPath,
     mode: "startup",
+    changedPaths,
   });
 
   if (report.reindexedPaths.length > 0) {

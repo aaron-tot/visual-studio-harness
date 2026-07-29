@@ -30,7 +30,7 @@ import {
   runContinuationTurn,
 } from "./auto-continue";
 import { emitErrorAndDone, emitDoneOnly, classifyError } from "./error-delivery";
-import { getSessionAborts, cancelSession, consumePendingContinue, wasUserCancelled, clearUserCancelled } from "./session-abort";
+import { getSessionAborts, cancelSession, consumePendingContinue, clearPendingContinue, wasUserCancelled, clearUserCancelled } from "./session-abort";
 import { chatDebug } from "./debug";
 import { logMemory } from "../../utils/memory";
 

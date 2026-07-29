@@ -169,9 +169,9 @@ export function DesignGroupList({
 
   // Flat global list
   if (flat) {
-    if (total === 0) return <EmptyState>No plans yet</EmptyState>;
+    if (total === 0) return <EmptyState>No designs yet</EmptyState>;
     const group = filteredGroups[0];
-    if (!group) return <EmptyState>No plans yet</EmptyState>;
+    if (!group) return <EmptyState>No designs yet</EmptyState>;
     return (
       <div className="flex-1 py-1">
         {showSearch && (
@@ -219,7 +219,6 @@ export function DesignGroupList({
           onResult={onResult}
           onRefresh={onRefresh}
           indent={false}
-          onRefresh={onRefresh}
         />
       )}
       </div>

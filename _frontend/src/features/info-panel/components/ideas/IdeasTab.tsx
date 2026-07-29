@@ -181,6 +181,7 @@ Designs
           isInjected={isInjected}
           onToggleInject={toggleInject}
           onResult={mutations.setResult}
+          onRefresh={refresh}
         />
       </div>
 

@@ -32,3 +32,6 @@ Tools (V1):
 - Host deps (Fedora): `sudo dnf install ripgrep fd-find` (glob falls back to rg --files if fd missing)
 - Env: `visual-studio-harness_WORKSPACE`, `visual-studio-harness_TOOLS_ENABLED=0`, `visual-studio-harness_TOOLS_TRUSTED=1` (auto-allow write/edit/bash/task)
 - Skills dirs: `.visual-studio-harness/skills/`, `source/skills/`, `data/{mode}/skills/`
+
+
+!IMPORTANT! Do NOT stop/restart the front or back. they are both hot reload and dont require manual restarting.

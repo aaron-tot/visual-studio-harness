@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { Archive, Info, CheckCircle2, Trash2, Palette, AlertTriangle, Plus, MessageSquarePlus, Check, X } from "lucide-react";
+import { Archive, Info, CheckCircle2, Star, Trash2, Palette, AlertTriangle, Plus, MessageSquarePlus, Check, X } from "lucide-react";
 import { SortableTree } from "../testing/sortable-tree";
 import { useSessionStore } from "../../../sessions/store";
 import { useChatStore } from "../../../chat/store";
@@ -27,6 +27,7 @@ function SessionActions({ id, isDragOverlay, onSessionClick }: { id: string; isD
   const setActive = useSessionStore((s) => s.setActive);
   const archive = useSessionStore((s) => s.archive);
   const rename = useSessionStore((s) => s.rename);
+  const toggleStar = useSessionStore((s) => s.toggleStar);
   const streamingSessions = useSessionStore((s) => s.streamingSessions);
   const doneNotifications = useSessionStore((s) => s.doneNotifications);
   const sessions = useSessionStore((s) => s.sessions);
@@ -105,7 +106,21 @@ function SessionActions({ id, isDragOverlay, onSessionClick }: { id: string; isD
             </span>
           )}
           {!isDragOverlay && (
-            <div className="flex items-center gap-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all">
+            <div className={`flex items-center gap-0.5 transition-all ${
+              meta?.starred
+                ? "opacity-100 pointer-events-auto"
+                : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+            }`}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); void toggleStar(id); }}
+                className={`p-1 rounded transition-all ${
+                  meta?.starred ? "text-yellow-400" : "text-zinc-500 hover:text-zinc-300"
+                }`}
+                title={meta?.starred ? "Unstar" : "Star"}
+              >
+                <Star size={14} fill={meta?.starred ? "currentColor" : "none"} />
+              </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}

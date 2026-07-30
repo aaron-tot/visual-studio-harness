@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { useChatStore } from "../../../../stores/chat";
 import { useSessionViewStore } from "../../../../stores/sessionView";
 import type { DesignLocation, PlanScope } from "../../types";
 import { useAudits } from "../../hooks/useAudits";
 import { useAuditMutations } from "../../hooks/useAuditMutations";
-import { PanelSectionTitle, ResultBanner } from "../ui";
-import { ScopeSwitcher } from "../ideas/ScopeSwitcher";
+import { ResultBanner } from "../ui";
 import { AuditGroupList } from "./AuditGroupList";
 import { AuditPromptsList } from "./AuditPromptsList";
 
 interface AuditsTabProps {
   active: boolean;
+  scope: PlanScope;
 }
 
 function createLocation(
@@ -24,8 +23,7 @@ function createLocation(
   return { scope: "global" };
 }
 
-export function AuditsTab({ active }: AuditsTabProps) {
-  const [scope, setScope] = useState<PlanScope>("global");
+export function AuditsTab({ active, scope }: AuditsTabProps) {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [expandedAudit, setExpandedAudit] = useState<string | null>(null);
 
@@ -60,16 +58,6 @@ export function AuditsTab({ active }: AuditsTabProps) {
     <>
       <div className="flex-[7] flex flex-col min-h-0 overflow-y-auto">
         <div className="px-3 pt-3 pb-2 border-b border-zinc-800 space-y-1.5">
-          <PanelSectionTitle>
-            <ChevronDown size={12} />
-            Audits
-          </PanelSectionTitle>
-          <ScopeSwitcher
-            scope={scope}
-            onChange={(s) => {
-              setScope(s);
-            }}
-          />
           <ResultBanner result={mutations.result} />
         </div>
 

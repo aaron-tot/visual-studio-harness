@@ -831,6 +831,82 @@ export function deleteAuditPromptViaApi(body: { id: string }) {
   });
 }
 
+// ── Research ──────────────────────────────────────────────────────
+
+import type { ResearchDoc as _ResearchDoc } from "../../_shared/types/research";
+
+export type { _ResearchDoc as ResearchDoc };
+export type ResearchDoc = _ResearchDoc;
+
+export interface ResearchEntry {
+  name: string;
+  path: string;
+  document: ResearchDoc;
+}
+
+export function listResearch(opts?: {
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  const params = new URLSearchParams();
+  if (opts?.scope) params.set("scope", opts.scope);
+  if (opts?.workspaceRoot) params.set("workspaceRoot", opts.workspaceRoot);
+  if (opts?.sessionId) params.set("sessionId", opts.sessionId);
+  const qs = params.toString();
+  return fetchJson<ResearchEntry[]>(`${BASE}/research${qs ? `?${qs}` : ""}`);
+}
+
+export function createResearchViaApi(body: {
+  name: string;
+  document: ResearchDoc;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(`${BASE}/research/create`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function readResearchViaApi(body: {
+  name: string;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ name: string; path: string; document: ResearchDoc }>(
+    `${BASE}/research/read`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function updateResearchViaApi(body: {
+  name: string;
+  document: ResearchDoc;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(`${BASE}/research/edit`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteResearchViaApi(body: {
+  name: string;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean }>(`${BASE}/research/delete`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export function runMasterTest() {
   return fetchJson<{ ok: boolean; pid?: number; error?: string }>(
     `${BASE}/run-master-test`,

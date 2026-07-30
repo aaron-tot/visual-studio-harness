@@ -20,6 +20,7 @@ import { registerAgentsRoutes } from "./rest/agents";
 import { registerPlansRoutes } from "./rest/plans";
 import { registerNotesRoutes } from "./rest/notes";
 import { registerAuditsRoutes } from "./rest/audits";
+import { registerResearchRoutes } from "./rest/research";
 import { registerAuditPromptsRoutes } from "./rest/audit-prompts";
 import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
@@ -190,6 +191,7 @@ async function main() {
   registerNotesRoutes(app, DATA_DIR);
   registerAuditsRoutes(app, DATA_DIR);
   registerAuditPromptsRoutes(app, DATA_DIR);
+  registerResearchRoutes(app, DATA_DIR);
   registerMcpRoutes(app);
 
   // Workspace graph: create manager, register REST routes (per-workspace lookup via query param)

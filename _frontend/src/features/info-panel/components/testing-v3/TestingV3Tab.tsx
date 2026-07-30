@@ -106,21 +106,20 @@ function SessionActions({ id, isDragOverlay, onSessionClick }: { id: string; isD
             </span>
           )}
           {!isDragOverlay && (
-            <div className={`flex items-center gap-0.5 transition-all ${
-              meta?.starred
-                ? "opacity-100 pointer-events-auto"
-                : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-            }`}>
+            <>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); void toggleStar(id); }}
                 className={`p-1 rounded transition-all ${
-                  meta?.starred ? "text-yellow-400" : "text-zinc-500 hover:text-zinc-300"
+                  meta?.starred
+                    ? "text-yellow-400 opacity-100"
+                    : "text-zinc-500 hover:text-zinc-300 opacity-0 group-hover:opacity-100"
                 }`}
                 title={meta?.starred ? "Unstar" : "Star"}
               >
                 <Star size={14} fill={meta?.starred ? "currentColor" : "none"} />
               </button>
+              <div className="flex items-center gap-0.5 transition-all opacity-0 group-hover:opacity-100">
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}
@@ -137,7 +136,8 @@ function SessionActions({ id, isDragOverlay, onSessionClick }: { id: string; isD
                 <Archive size={14} />
               </button>
             </div>
-          )}
+          </>
+        )}
         </>
       )}
       {menu && <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />}

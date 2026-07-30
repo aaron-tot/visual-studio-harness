@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { useChatStore } from "../../../../stores/chat";
 import { useSessionViewStore } from "../../../../stores/sessionView";
 import type { DesignLocation, DocMode, PlanScope } from "../../types";
@@ -7,17 +6,17 @@ import { usePlans } from "../../hooks/usePlans";
 import { usePlanMutations } from "../../hooks/usePlanMutations";
 import { useInjectedDocs } from "../../hooks/useInjectedDocs";
 import { saveTargetHint } from "../../lib/scope-params";
-import { PanelSectionTitle, ResultBanner } from "../ui";
-import { ScopeSwitcher } from "./ScopeSwitcher";
+import { ResultBanner } from "../ui";
 import { CreateIdeaForm } from "./CreateIdeaForm";
 import { DesignGroupList } from "./DesignGroupList";
 interface IdeasTabProps {
   /** When false, skip network fetches (panel closed) */
   active: boolean;
+  /** Scope from parent ScopePicker */
+  scope: PlanScope;
 }
 
-export function IdeasTab({ active }: IdeasTabProps) {
-  const [scope, setScope] = useState<PlanScope>("global");
+export function IdeasTab({ active, scope }: IdeasTabProps) {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
   const [createName, setCreateName] = useState("");
@@ -110,16 +109,6 @@ export function IdeasTab({ active }: IdeasTabProps) {
     <>
       <div className="flex-[7] flex flex-col min-h-0 overflow-y-auto">
         <div className="px-3 pt-3 pb-2 border-b border-zinc-800 space-y-1.5">
-          <PanelSectionTitle>
-            <ChevronDown size={12} />
-Designs
-          </PanelSectionTitle>
-          <ScopeSwitcher
-            scope={scope}
-            onChange={(s) => {
-              setScope(s);
-            }}
-          />
           {targetHint && (
             <div className="text-[9px] text-zinc-600 leading-snug">{targetHint}</div>
           )}

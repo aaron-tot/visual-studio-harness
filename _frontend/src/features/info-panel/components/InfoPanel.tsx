@@ -1,13 +1,25 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useProximityPanel } from "../../../hooks/useProximityPanel";
 import { ProximityRail } from "../../../components/layout/ProximityRail";
-import type { InfoPanelTab } from "../types";
+import type { InfoPanelTab, PlanScope } from "../types";
 import { TabButton, EmptyState } from "./ui";
+import { ScopePicker } from "./ScopePicker";
 import { UsageV2Tab } from "./usage-v2";
 import { IdeasTab } from "./ideas/IdeasTab";
 import { NotesTab } from "./notes/NotesTab";
 import { GraphTab } from "./GraphTab/GraphTab";
 import { AuditsTab } from "./audits/AuditsTab";
+import { ResearchTab } from "./research/ResearchTab";
+
+/** Canonical tab order — same on every scope; filtered by visibility set. */
+const ALL_TABS: InfoPanelTab[] = ["designs", "notepad", "audits", "research", "usage", "graph"];
+
+/** Which tabs are visible per scope. */
+const SCOPE_TABS: Record<PlanScope, Set<InfoPanelTab>> = {
+  global: new Set(["designs", "notepad", "audits", "research"]),
+  project: new Set(["designs", "notepad", "audits", "research", "graph"]),
+  session: new Set(["usage", "designs", "notepad", "audits", "research"]),
+};
 
 const MIN_W = 200;
 const MAX_W = 640;
@@ -28,10 +40,19 @@ function loadPanelWidth(): number {
 }
 
 export function InfoPanel() {
-  const [tab, setTab] = useState<InfoPanelTab>("usage");
+  const [scope, setScope] = useState<PlanScope>("global");
+  const visibleTabs = ALL_TABS.filter((t) => SCOPE_TABS[scope].has(t));
+  const [tab, setTab] = useState<InfoPanelTab>(visibleTabs[0]);
   const [panelWidth, setPanelWidth] = useState(loadPanelWidth);
   const [resizing, setResizing] = useState(false);
   const resizingRef = useRef(false);
+
+  // Auto-switch tab if current tab is hidden by scope change
+  useEffect(() => {
+    if (!visibleTabs.includes(tab)) {
+      setTab(visibleTabs[0]);
+    }
+  }, [scope, tab, visibleTabs]);
 
   const panel = useProximityPanel({
     side: "right",
@@ -105,33 +126,40 @@ export function InfoPanel() {
         noTransition={resizing}
         pinTitle={{ pinned: "Unpin panel", unpinned: "Pin panel open" }}
         headerStart={
-          <div className="flex gap-1 flex-wrap">
-            <TabButton active={tab === "usage"} onClick={() => setTab("usage")}>
-              Usage
-            </TabButton>
-            <TabButton active={tab === "designs"} onClick={() => setTab("designs")}>
-              Designs
-            </TabButton>
-            <TabButton active={tab === "notepad"} onClick={() => setTab("notepad")}>
-              Notepad
-            </TabButton>
-            <TabButton active={tab === "audits"} onClick={() => setTab("audits")}>
-              Audits
-            </TabButton>
-            <TabButton active={tab === "graph"} onClick={() => setTab("graph")}>
-              Graph
-            </TabButton>
+          <div className="flex items-center min-w-0 flex-1">
+            <ScopePicker scope={scope} onChange={setScope} />
           </div>
         }
       >
+        <div className="flex gap-1 flex-wrap px-3 pt-2 pb-1 shrink-0 border-b border-zinc-800/50">
+          {visibleTabs.map((t) => (
+            <TabButton key={t} active={tab === t} onClick={() => setTab(t)}>
+              {t === "usage"
+                ? "Usage"
+                : t === "designs"
+                  ? "Designs"
+                  : t === "notepad"
+                    ? "Notepad"
+                    : t === "audits"
+                      ? "Audits"
+                      : t === "research"
+                        ? "Research"
+                        : t === "graph"
+                          ? "Graph"
+                          : t}
+            </TabButton>
+          ))}
+        </div>
         {tab === "usage" ? (
           <UsageV2Tab />
         ) : tab === "designs" ? (
-          <IdeasTab active={panel.isOpen} />
+          <IdeasTab active={panel.isOpen} scope={scope} />
         ) : tab === "notepad" ? (
-          <NotesTab active={panel.isOpen} />
+          <NotesTab active={panel.isOpen} scope={scope} />
         ) : tab === "audits" ? (
-          <AuditsTab active={panel.isOpen} />
+          <AuditsTab active={panel.isOpen} scope={scope} />
+        ) : tab === "research" ? (
+          <ResearchTab active={panel.isOpen} scope={scope} />
         ) : tab === "graph" ? (
           <GraphTab />
         ) : (

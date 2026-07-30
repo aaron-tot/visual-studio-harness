@@ -13,18 +13,12 @@ export function UsageV2Tab() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
-      <div className="px-3 py-1.5 text-[9px] text-zinc-600 border-b border-zinc-800/50 space-y-0.5 flex items-start justify-between gap-2">
-        <div>
-          <div>Usage · live tree</div>
-          <div className="text-zinc-700">
-            own (incl) · cost estimate · charts · open subagent sessions
-          </div>
-        </div>
+      <div className="flex justify-end px-3 py-1 border-b border-zinc-800/50">
         {sessionId && (
           <button
             type="button"
             onClick={() => refresh()}
-            className="shrink-0 text-[9px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-zinc-800"
+            className="text-[9px] text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded hover:bg-zinc-800"
           >
             Refresh
           </button>

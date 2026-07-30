@@ -1,4 +1,4 @@
-import type { AuditEntry, NoteEntry, PlanEntry } from "../../lib/api";
+import type { AuditEntry, NoteEntry, PlanEntry, ResearchEntry } from "../../lib/api";
 
 /** Live Usage tree (former Usage V2). */
 export type InfoPanelTab = "usage" | "designs" | "notepad" | "audits" | "research" | "graph";
@@ -40,6 +40,16 @@ export interface AuditGroup {
   isCurrent: boolean;
   audits: AuditEntry[];
   /** Location used for mutations on audits in this group */
+  location: DesignLocation;
+}
+
+export interface ResearchGroup {
+  /** Stable unique key for expand state */
+  key: string;
+  label: string;
+  isCurrent: boolean;
+  docs: ResearchEntry[];
+  /** Location used for mutations on research in this group */
   location: DesignLocation;
 }
 

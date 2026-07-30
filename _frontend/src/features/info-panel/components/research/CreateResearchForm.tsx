@@ -1,42 +1,42 @@
 import { PanelButton, PanelInput } from "../ui";
 
-interface CreateNoteFormProps {
+interface CreateResearchFormProps {
   title: string;
-  body: string;
+  goal: string;
   busy: boolean;
   onTitleChange: (v: string) => void;
-  onBodyChange: (v: string) => void;
+  onGoalChange: (v: string) => void;
   onCreate: () => void;
 }
 
-export function CreateNoteForm({
+export function CreateResearchForm({
   title,
-  body,
+  goal,
   busy,
   onTitleChange,
-  onBodyChange,
+  onGoalChange,
   onCreate,
-}: CreateNoteFormProps) {
+}: CreateResearchFormProps) {
   return (
     <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
       <PanelInput
-        placeholder="Note title"
+        placeholder="Research title"
         value={title}
         onChange={(e) => onTitleChange(e.target.value)}
       />
       <textarea
         className="w-full text-[11px] bg-zinc-800 text-zinc-200 px-2 py-1.5 rounded outline-none placeholder-zinc-600 resize-none"
-        placeholder="Note body…"
+        placeholder="Research goal / question to investigate…"
         rows={3}
-        value={body}
-        onChange={(e) => onBodyChange(e.target.value)}
+        value={goal}
+        onChange={(e) => onGoalChange(e.target.value)}
       />
       <PanelButton
         className="w-full py-1.5"
-        disabled={busy || (!title.trim() && !body.trim())}
+        disabled={busy || !title.trim()}
         onClick={onCreate}
       >
-        + Create Note
+        + Create Research
       </PanelButton>
     </div>
   );

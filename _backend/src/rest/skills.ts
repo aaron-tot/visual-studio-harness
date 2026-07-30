@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 export function registerSkillsRoutes(app: FastifyInstance, dataDir: string) {
   app.get("/api/skills", async () => {
     const names = new Set<string>();
-    const skillsDir = join(dataDir, "skills");
+    const skillsDir = join(dataDir, "mds", "skill");
     if (existsSync(skillsDir)) {
       try {
         const entries = await readdir(skillsDir, { withFileTypes: true });

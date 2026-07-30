@@ -1,60 +1,60 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { join, resolve } from "node:path";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import type { AuditDocument } from "../../../_shared/types/audit";
+import type { ResearchDoc } from "../../../_shared/types/research";
 
-export type AuditScope = "global" | "project" | "session";
+export type ResearchScope = "global" | "project" | "session";
 
-export function resolveAuditsDir(
+export function resolveResearchDir(
   dataDir: string,
-  scope: AuditScope | undefined,
+  scope: ResearchScope | undefined,
   workspaceRoot?: string,
   sessionId?: string
 ): string | null {
   switch (scope) {
     case "project":
       if (!workspaceRoot) return null;
-      return join(resolve(workspaceRoot), ".agentHarness", "audits");
+      return join(resolve(workspaceRoot), ".agentHarness", "research");
     case "session":
       if (!sessionId) return null;
-      return join(dataDir, "session", sessionId, "audits");
+      return join(dataDir, "session", sessionId, "research");
     default:
-      return join(dataDir, "audits");
+      return join(dataDir, "research");
   }
 }
 
-export interface AuditEntry {
+export interface ResearchEntry {
   name: string;
   path: string;
-  document: AuditDocument;
+  document: ResearchDoc;
 }
 
-export async function readAuditDocument(dir: string): Promise<AuditDocument | null> {
+async function readResearchDocument(dir: string): Promise<ResearchDoc | null> {
   try {
-    const raw = await readFile(join(dir, "audit.json"), "utf-8");
-    return JSON.parse(raw) as AuditDocument;
+    const raw = await readFile(join(dir, "research.json"), "utf-8");
+    return JSON.parse(raw) as ResearchDoc;
   } catch {
     return null;
   }
 }
 
-export async function listAudits(
+export async function listResearch(
   dataDir: string,
-  scope: AuditScope = "global",
+  scope: ResearchScope = "global",
   workspaceRoot?: string,
   sessionId?: string
-): Promise<AuditEntry[]> {
-  const dir = resolveAuditsDir(dataDir, scope, workspaceRoot, sessionId);
+): Promise<ResearchEntry[]> {
+  const dir = resolveResearchDir(dataDir, scope, workspaceRoot, sessionId);
   if (!dir || !existsSync(dir)) return [];
 
   const entries = await readdir(dir, { withFileTypes: true });
-  const results: AuditEntry[] = [];
+  const results: ResearchEntry[] = [];
 
   for (const e of entries) {
     if (!e.isDirectory()) continue;
     const pd = join(dir, e.name);
-    const doc = await readAuditDocument(pd);
+    const doc = await readResearchDocument(pd);
     if (!doc) continue;
     results.push({ name: e.name, path: pd, document: doc });
   }
@@ -66,61 +66,51 @@ export async function listAudits(
   );
 }
 
-export interface CreateAuditParams {
+export interface CreateResearchParams {
   name: string;
-  document: AuditDocument;
+  document: ResearchDoc;
   dataDir: string;
-  scope?: AuditScope;
+  scope?: ResearchScope;
   workspaceRoot?: string;
   sessionId?: string;
 }
 
-export async function createAudit(
-  params: CreateAuditParams
-): Promise<{ path: string }> {
+export async function createResearch(params: CreateResearchParams): Promise<{ path: string }> {
   const scope = params.scope || "global";
-  const auditsDir = resolveAuditsDir(
-    params.dataDir,
-    scope,
-    params.workspaceRoot,
-    params.sessionId
-  );
-  if (!auditsDir) {
+  const researchDir = resolveResearchDir(params.dataDir, scope, params.workspaceRoot, params.sessionId);
+  if (!researchDir) {
     throw new Error(
       scope === "project"
-        ? "workspaceRoot is required for project audits"
+        ? "workspaceRoot is required for project research"
         : scope === "session"
-          ? "sessionId is required for session audits"
-          : "invalid audit scope"
+          ? "sessionId is required for session research"
+          : "invalid research scope"
     );
   }
 
-  const nd = join(auditsDir, params.name);
+  const nd = join(researchDir, params.name);
   await mkdir(nd, { recursive: true });
-  await writeFile(
-    join(nd, "audit.json"),
-    JSON.stringify(params.document, null, 2) + "\n"
-  );
+  await writeFile(join(nd, "research.json"), JSON.stringify(params.document, null, 2) + "\n");
   return { path: nd };
 }
 
-export async function editAudit(
-  params: CreateAuditParams & { name: string }
+export async function updateResearch(
+  params: CreateResearchParams
 ): Promise<{ path: string }> {
-  // Re-use createAudit — same dir resolution, write overwrites file
-  return createAudit(params);
+  // Same as create — write overwrites the file
+  return createResearch(params);
 }
 
-export async function deleteAudit(
+export async function deleteResearch(
   name: string,
   dataDir: string,
-  scope?: AuditScope,
+  scope?: ResearchScope,
   workspaceRoot?: string,
   sessionId?: string
 ): Promise<void> {
-  const auditsDir = resolveAuditsDir(dataDir, scope, workspaceRoot, sessionId);
-  if (!auditsDir) throw new Error("Invalid audit scope or missing parameters");
-  const nd = join(auditsDir, name);
+  const researchDir = resolveResearchDir(dataDir, scope, workspaceRoot, sessionId);
+  if (!researchDir) throw new Error("Invalid research scope or missing parameters");
+  const nd = join(researchDir, name);
   await rm(nd, { recursive: true, force: true });
 }
 
@@ -128,10 +118,10 @@ function validateScope(
   scope: string | undefined,
   workspaceRoot: string | undefined,
   sessionId: string | undefined,
-  dir: string,
-  reply: FastifyReply
-): { sc: AuditScope; auditsDir: string } | null {
-  const sc = (scope as AuditScope) || "global";
+  dataDir: string,
+  reply: { code: (status: number) => { send: (body: object) => void } }
+): { sc: ResearchScope; researchDir: string } | null {
+  const sc = (scope as ResearchScope) || "global";
   if (sc === "project" && !workspaceRoot?.trim()) {
     reply.code(400).send({ error: "workspaceRoot is required for project scope" });
     return null;
@@ -140,8 +130,8 @@ function validateScope(
     reply.code(400).send({ error: "sessionId is required for session scope" });
     return null;
   }
-  const auditsDir = resolveAuditsDir(dir, sc, workspaceRoot, sessionId);
-  if (!auditsDir) {
+  const researchDir = resolveResearchDir(dataDir, sc, workspaceRoot, sessionId);
+  if (!researchDir) {
     reply.code(400).send({
       error:
         sc === "project"
@@ -150,29 +140,25 @@ function validateScope(
     });
     return null;
   }
-  return { sc, auditsDir };
+  return { sc, researchDir };
 }
 
-export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
-  app.get("/api/audits", async (request) => {
-    const q = request.query as {
-      scope?: string;
-      workspaceRoot?: string;
-      sessionId?: string;
-    };
-    const scope = (q.scope as AuditScope) || "global";
-    return listAudits(dataDir, scope, q.workspaceRoot, q.sessionId);
+export function registerResearchRoutes(app: FastifyInstance, dataDir: string) {
+  app.get("/api/research", async (request) => {
+    const q = request.query as { scope?: string; workspaceRoot?: string; sessionId?: string };
+    const scope = (q.scope as ResearchScope) || "global";
+    return listResearch(dataDir, scope, q.workspaceRoot, q.sessionId);
   });
 
   app.post<{
     Body: {
       name: string;
-      document: AuditDocument;
+      document: ResearchDoc;
       scope?: string;
       workspaceRoot?: string;
       sessionId?: string;
     };
-  }>("/api/audits/create", async (request, reply) => {
+  }>("/api/research/create", async (request, reply) => {
     const { name, document, scope, workspaceRoot, sessionId } = request.body;
     if (!name?.trim()) {
       return reply.code(400).send({ error: "name is required" });
@@ -182,7 +168,7 @@ export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
     }
     const result = validateScope(scope, workspaceRoot, sessionId, dataDir, reply);
     if (!result) return;
-    const r = await createAudit({
+    const r = await createResearch({
       name: name.trim(),
       document,
       dataDir,
@@ -196,12 +182,12 @@ export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
   app.put<{
     Body: {
       name: string;
-      document: AuditDocument;
+      document: ResearchDoc;
       scope?: string;
       workspaceRoot?: string;
       sessionId?: string;
     };
-  }>("/api/audits/edit", async (request, reply) => {
+  }>("/api/research/edit", async (request, reply) => {
     const { name, document, scope, workspaceRoot, sessionId } = request.body;
     if (!name?.trim()) {
       return reply.code(400).send({ error: "name is required" });
@@ -211,7 +197,7 @@ export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
     }
     const result = validateScope(scope, workspaceRoot, sessionId, dataDir, reply);
     if (!result) return;
-    const r = await editAudit({
+    const r = await updateResearch({
       name: name.trim(),
       document,
       dataDir,
@@ -229,20 +215,20 @@ export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
       workspaceRoot?: string;
       sessionId?: string;
     };
-  }>("/api/audits/read", async (request, reply) => {
+  }>("/api/research/read", async (request, reply) => {
     const { name, scope, workspaceRoot, sessionId } = request.body;
     if (!name?.trim()) {
       return reply.code(400).send({ error: "name is required" });
     }
     const result = validateScope(scope, workspaceRoot, sessionId, dataDir, reply);
     if (!result) return;
-    const pd = join(result.auditsDir, name);
+    const pd = join(result.researchDir, name);
     if (!existsSync(pd)) {
-      return reply.code(404).send({ error: "audit not found" });
+      return reply.code(404).send({ error: "research not found" });
     }
-    const doc = await readAuditDocument(pd);
+    const doc = await readResearchDocument(pd);
     if (!doc) {
-      return reply.code(404).send({ error: "audit document not found" });
+      return reply.code(404).send({ error: "research document not found" });
     }
     return { name, path: pd, document: doc };
   });
@@ -254,18 +240,18 @@ export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
       workspaceRoot?: string;
       sessionId?: string;
     };
-  }>("/api/audits/delete", async (request, reply) => {
+  }>("/api/research/delete", async (request, reply) => {
     const { name, scope, workspaceRoot, sessionId } = request.body;
     if (!name?.trim()) {
       return reply.code(400).send({ error: "name is required" });
     }
     const result = validateScope(scope, workspaceRoot, sessionId, dataDir, reply);
     if (!result) return;
-    const nd = join(result.auditsDir, name);
+    const nd = join(result.researchDir, name);
     if (!existsSync(nd)) {
-      return reply.code(404).send({ error: "audit not found" });
+      return reply.code(404).send({ error: "research not found" });
     }
-    await deleteAudit(name, dataDir, result.sc, workspaceRoot, sessionId);
+    await deleteResearch(name, dataDir, result.sc, workspaceRoot, sessionId);
     return { ok: true };
   });
 }

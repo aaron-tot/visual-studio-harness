@@ -191,12 +191,7 @@ export async function runTurn(
     : null;
 
   setTodoDataDir(dataDir);
-  setSkillRoots([
-    join(workspaceRoot, ".visual-studio-harness", "skills"),
-    join(workspaceRoot, "skills"),
-    join(workspaceRoot, "source", "skills"),
-    join(dataDir, "skills"),
-  ]);
+  setSkillRoots([join(dataDir, "mds", "skill")]);
 
   const abortSignal = events.signal;
   let turnEnded = false;

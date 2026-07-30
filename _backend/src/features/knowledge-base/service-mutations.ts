@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { join } from "node:path";
 import { mkdir, writeFile, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { randomUUIDv7 } from "bun";
 import { openKnowledgeDb, resolveKnowledgeDir, type KbScope } from "./db";
-import { knowledgeDocuments, knowledgeChunks, knowledgeDocumentVersions } from "./schema";
+import type { KnowledgeScopeDb } from "./db";
+import { knowledgeDocuments, knowledgeChunks, knowledgeDocumentVersions, knowledgeGroups, knowledgeGroupDocuments } from "./schema";
 import type { DocumentMeta, CreateDocumentInput, DeleteResult, DocumentContent } from "./types";
 import { extractMetadata } from "./metadata-extraction";
 import { chunkDocument } from "./chunking";
@@ -41,7 +43,7 @@ export async function createDocument(
   const docId = randomUUIDv7();
   const meta = extractMetadata(input.filename, input.content);
   const chunks = chunkDocument(input.filename, input.content);
-  const fileHash = simpleHash(input.content);
+  const fileHash = createHash("sha256").update(input.content).digest("hex");
 
   await kb.db.insert(knowledgeDocuments).values({
     id: docId,
@@ -125,7 +127,7 @@ export async function editDocument(
   if (!existing) throw new Error("Document not found");
 
   const now = new Date().toISOString();
-  const fileHash = simpleHash(content);
+  const fileHash = createHash("sha256").update(content).digest("hex");
   const meta = extractMetadata(existing.filename, content);
   const chunks = chunkDocument(existing.filename, content);
 
@@ -248,16 +250,6 @@ export async function deleteDocument(
   return { ok: true, deleted: true, documentId: id };
 }
 
-function simpleHash(content: string): string {
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const chr = content.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
-}
-
 function safeJsonParse(value: string): string[] {
   try {
     const parsed = JSON.parse(value);
@@ -265,4 +257,67 @@ function safeJsonParse(value: string): string[] {
   } catch {
     return [];
   }
+}
+
+// ── Group CRUD ─────────────────────────────────────────────────────
+
+export async function createGroup(
+  kb: KnowledgeScopeDb,
+  input: { name: string; color: string; scope: KbScope },
+): Promise<{ id: string; name: string; color: string; sortOrder: number; scope: string }> {
+  const now = new Date().toISOString();
+  const id = randomUUIDv7();
+  await kb.db.insert(knowledgeGroups).values({
+    id,
+    name: input.name,
+    color: input.color,
+    sortOrder: 0,
+    scope: input.scope,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { id, name: input.name, color: input.color, sortOrder: 0, scope: input.scope };
+}
+
+export async function updateGroup(
+  kb: KnowledgeScopeDb,
+  id: string,
+  updates: { name?: string; color?: string; sortOrder?: number },
+): Promise<void> {
+  await kb.db
+    .update(knowledgeGroups)
+    .set({ ...updates, updatedAt: new Date().toISOString() })
+    .where(eq(knowledgeGroups.id, id));
+}
+
+export async function setGroupDocuments(
+  kb: KnowledgeScopeDb,
+  groupId: string,
+  documentIds: string[],
+): Promise<void> {
+  await kb.db
+    .delete(knowledgeGroupDocuments)
+    .where(eq(knowledgeGroupDocuments.groupId, groupId));
+  const now = new Date().toISOString();
+  for (let i = 0; i < documentIds.length; i++) {
+    await kb.db.insert(knowledgeGroupDocuments).values({
+      id: randomUUIDv7(),
+      groupId,
+      documentId: documentIds[i],
+      sortOrder: i,
+      createdAt: now,
+    });
+  }
+}
+
+export async function deleteGroup(
+  kb: KnowledgeScopeDb,
+  id: string,
+): Promise<void> {
+  await kb.db
+    .delete(knowledgeGroupDocuments)
+    .where(eq(knowledgeGroupDocuments.groupId, id));
+  await kb.db
+    .delete(knowledgeGroups)
+    .where(eq(knowledgeGroups.id, id));
 }

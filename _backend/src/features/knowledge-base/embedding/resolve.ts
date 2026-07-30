@@ -37,6 +37,7 @@ export async function resolveEmbeddingProvider(
 
   return {
     displayName: provider.displayName,
+    modelName: model,
     dimensions,
     async embed(texts: string[], embedModel?: string): Promise<number[][]> {
       const modelName = embedModel || model;

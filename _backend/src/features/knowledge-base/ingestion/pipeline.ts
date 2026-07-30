@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
@@ -23,6 +24,7 @@ const SKIP_PATTERNS = [
 
 /**
  * Run ingestion: scan sources directory and index all files.
+ * Also detects DB records for files that no longer exist in sources.
  */
 export async function runIngestion(
   dataDir: string,
@@ -41,11 +43,14 @@ export async function runIngestion(
 
   const result: IngestResult = { added: 0, updated: 0, deleted: 0, failed: [] };
 
+  // Read files on disk
   const entries = await readdir(sourcesDir, { withFileTypes: true });
+  const seenFilenames = new Set<string>();
 
   for (const entry of entries) {
     if (!entry.isFile()) continue;
     if (SKIP_PATTERNS.some((p) => p.test(entry.name))) continue;
+    seenFilenames.add(entry.name);
 
     try {
       const filepath = join(sourcesDir, entry.name);
@@ -57,9 +62,8 @@ export async function runIngestion(
       }
 
       const content = await readFile(filepath, "utf-8");
-      const fileHash = simpleHash(content);
+      const fileHash = createHash("sha256").update(content).digest("hex");
 
-      // Check for existing document with same filename in this scope
       const existing = await db.db
         .select()
         .from(knowledgeDocuments)
@@ -67,21 +71,33 @@ export async function runIngestion(
         .get();
 
       if (existing && existing.fileHash === fileHash) {
-        // No change — skip
         continue;
       }
 
       if (existing) {
-        // Hash changed — re-index
-        await reIndexDocument(db, existing.id, entry.name, content, fileHash, fileStat.size);
+        await reIndexDocument(db, scope, existing.id, entry.name, content, fileHash, fileStat.size);
         result.updated++;
       } else {
-        // New document
-        await indexDocument(db, entry.name, filepath, content, fileHash, fileStat.size);
+        await indexDocument(db, scope, entry.name, filepath, content, fileHash, fileStat.size);
         result.added++;
       }
     } catch (err: any) {
       result.failed.push({ filename: entry.name, error: err.message });
+    }
+  }
+
+  // Delete detection: find DB records with no matching file on disk
+  const allDocs = await db.db
+    .select({ id: knowledgeDocuments.id, filename: knowledgeDocuments.filename })
+    .from(knowledgeDocuments)
+    .all();
+
+  for (const doc of allDocs) {
+    if (!seenFilenames.has(doc.filename)) {
+      // File was deleted — remove from DB
+      await db.db.delete(knowledgeChunks).where(eq(knowledgeChunks.documentId, doc.id));
+      await db.db.delete(knowledgeDocuments).where(eq(knowledgeDocuments.id, doc.id));
+      result.deleted++;
     }
   }
 
@@ -90,6 +106,7 @@ export async function runIngestion(
 
 async function indexDocument(
   db: KnowledgeScopeDb,
+  scope: KbScope,
   filename: string,
   filepath: string,
   content: string,
@@ -113,7 +130,7 @@ async function indexDocument(
     fileSize,
     status: "ready",
     createdBy: "user",
-    scope: "global",
+    scope,
     tags: "[]",
     chunkCount: chunks.length,
     createdAt: now,
@@ -136,8 +153,7 @@ async function indexDocument(
       createdAt: now,
     });
 
-    // Queue embedding job for this chunk
-    await createJob(db, "embed", "global" as KbScope, {
+    await createJob(db, "embed", scope, {
       chunkId,
       documentId: docId,
       content: chunk.content,
@@ -147,6 +163,7 @@ async function indexDocument(
 
 async function reIndexDocument(
   db: KnowledgeScopeDb,
+  scope: KbScope,
   docId: string,
   filename: string,
   content: string,
@@ -157,7 +174,6 @@ async function reIndexDocument(
   const meta = extractMetadata(filename, content);
   const chunks = chunkDocument(filename, content);
 
-  // Delete old chunks (cascade removes FTS rows via triggers)
   await db.db
     .delete(knowledgeChunks)
     .where(eq(knowledgeChunks.documentId, docId));
@@ -192,20 +208,10 @@ async function reIndexDocument(
       createdAt: now,
     });
 
-    await createJob(db, "embed", "global" as KbScope, {
+    await createJob(db, "embed", scope, {
       chunkId,
       documentId: docId,
       content: chunk.content,
     });
   }
-}
-
-function simpleHash(content: string): string {
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const chr = content.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
 }

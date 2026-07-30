@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
+import type { FSWatcher } from "node:fs";
 import type { KnowledgeBaseConfig, ProviderConfig } from "../../../../_shared/types/config";
 import { openKnowledgeDb, closeAllKnowledgeDbs, resolveKnowledgeDir, type KbScope } from "./db";
 import { resolveDimension } from "./sqlite/vec";
@@ -16,6 +17,7 @@ export class KnowledgeBaseService {
   private initialized = false;
   private config: KnowledgeBaseConfig | null = null;
   private providers: ProviderConfig[] = [];
+  private watchers: FSWatcher[] = [];
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -40,6 +42,16 @@ export class KnowledgeBaseService {
       const kbDb = await openKnowledgeDb(this.dataDir, "global", undefined, undefined, dimension);
       if (kbDb) {
         console.log(`[knowledge] global DB ready at ${kbDb.path} (dimension: ${dimension})`);
+        // Start file watcher for auto-ingestion on file changes
+        const watcher = startWatcher(sourcesDir, async () => {
+          try {
+            await this.ingest("global");
+          } catch (err: any) {
+            console.error("[knowledge] watcher ingest error:", err.message);
+          }
+        });
+        this.watchers.push(watcher);
+        console.log("[knowledge] file watcher started on", sourcesDir);
       }
     }
 
@@ -49,6 +61,10 @@ export class KnowledgeBaseService {
 
   async destroy(): Promise<void> {
     if (!this.initialized) return;
+    for (const w of this.watchers) {
+      try { w.close(); } catch { /* already closed */ }
+    }
+    this.watchers = [];
     closeAllKnowledgeDbs();
     this.initialized = false;
     console.log("[knowledge] destroyed");

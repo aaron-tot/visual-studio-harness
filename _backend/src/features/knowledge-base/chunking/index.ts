@@ -1,213 +1,132 @@
-import type { ChunkResult } from "../types";
+import { createHash } from "node:crypto";
+import type { Chunk } from "./types";
 
-const DEFAULT_CHUNK_SIZE = 1024;
-const DEFAULT_OVERLAP = 200;
+const HEADING_RE = /^(#{1,6})\s+(.+)$/gm;
+const FENCE_RE = /```[\s\S]*?```/g;
+const TABLE_ROW_RE = /^\|.+\|$/m;
 
 /**
- * Chunk a document into sections-aware pieces.
- *
- * Algorithm:
- * 1. Split by markdown headings (##, ###, etc.) for structured docs
- * 2. For plain text, split by paragraphs then combine
- * 3. If any chunk exceeds chunkSize, split further by sentence boundary or size
- * 4. Overlap prevents context loss at boundaries
+ * Split a markdown document into section-aware chunks.
+ * Never splits inside code fences or markdown tables.
  */
-export function chunkDocument(
-  filename: string,
-  content: string,
-  chunkSize = DEFAULT_CHUNK_SIZE,
-  overlap = DEFAULT_OVERLAP,
-): ChunkResult[] {
-  if (!content.trim()) return [];
-
-  // Detect mode by extension or content
-  const isMarkdown = filename.endsWith(".md") || filename.endsWith(".markdown");
-
-  if (isMarkdown) {
-    return chunkMarkdown(content, chunkSize, overlap);
+export function chunkDocument(filename: string, content: string): Chunk[] {
+  if (filename.endsWith(".md") || filename.endsWith(".markdown")) {
+    return chunkMarkdown(content);
   }
-  return chunkPlainText(content, chunkSize, overlap);
+  // Plain text: single chunk
+  return [makeChunk(content, "Document", 0)];
 }
 
-function chunkMarkdown(content: string, chunkSize: number, overlap: number): ChunkResult[] {
+function chunkMarkdown(content: string): Chunk[] {
+  const fences = extractProtectedRanges(content, FENCE_RE);
+  const tables = extractProtectedRanges(content, TABLE_ROW_RE);
+
+  const protectedRanges = mergeRanges([...fences, ...tables]);
+
   const lines = content.split("\n");
-  const sections: Array<{ heading: string; content: string[] }> = [];
-  let currentHeading = "Document";
+  const chunks: Chunk[] = [];
+  let currentSection = "Document";
   let currentLines: string[] = [];
+  const sections: string[] = [];
 
   for (const line of lines) {
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
-    if (headingMatch) {
+    const heading = isHeading(line, protectedRanges, content);
+    if (heading) {
+      // Flush current chunk
       if (currentLines.length > 0) {
-        sections.push({ heading: currentHeading, content: currentLines });
+        chunks.push(makeChunk(currentLines.join("\n"), currentSection, chunks.length));
+        currentLines = [];
       }
-      currentHeading = headingMatch[2].trim();
-      currentLines = [];
-    } else {
-      currentLines.push(line);
+
+      // Update section breadcrumb
+      sections.length = heading.depth - 1;
+      for (let i = sections.length; i < heading.depth - 1; i++) sections[i] = "";
+      sections[heading.depth - 1] = heading.text;
+      currentSection = sections.filter(Boolean).join(" > ");
+      continue;
     }
+
+    currentLines.push(line);
   }
+
+  // Flush last chunk
   if (currentLines.length > 0) {
-    sections.push({ heading: currentHeading, content: currentLines });
+    chunks.push(makeChunk(currentLines.join("\n"), currentSection, chunks.length));
   }
 
-  const chunks: ChunkResult[] = [];
-  let chunkIndex = 0;
-  let previousOverlap = "";
-
-  for (const section of sections) {
-    const sectionText = section.content.join("\n").trim();
-    if (!sectionText) continue;
-
-    const sectionChunks = splitText(sectionText, chunkSize, overlap);
-
-    for (const chunkText of sectionChunks) {
-      const combined = previousOverlap
-        ? previousOverlap + "\n" + chunkText
-        : chunkText;
-      const contentStr = combined.trim();
-      if (!contentStr) continue;
-
-      chunks.push({
-        content: contentStr,
-        section: section.heading,
-        chunkIndex: chunkIndex++,
-        tokenCount: estimateTokens(contentStr),
-        hash: simpleHash(contentStr),
-      });
-
-      // Store overlap for next chunk
-      if (overlap > 0 && chunkText.length > overlap) {
-        previousOverlap = chunkText.slice(-overlap);
-      } else {
-        previousOverlap = "";
-      }
-    }
+  // If no chunks produced (empty content), produce one empty chunk
+  if (chunks.length === 0) {
+    chunks.push(makeChunk("", currentSection, 0));
   }
 
   return chunks;
 }
 
-function chunkPlainText(content: string, chunkSize: number, overlap: number): ChunkResult[] {
-  const paragraphs = content
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean);
+function makeChunk(content: string, section: string, chunkIndex: number): Chunk {
+  const trimmed = content.trim();
+  const hash = createHash("sha256").update(trimmed).digest("hex");
+  return {
+    content: trimmed,
+    section,
+    chunkIndex,
+    tokenCount: Math.max(1, Math.round(trimmed.length / 4)),
+    hash,
+  };
+}
 
-  const chunks: ChunkResult[] = [];
-  let chunkIndex = 0;
-  let buffer = "";
-  let previousOverlap = "";
+function isHeading(
+  line: string,
+  protectedRanges: { start: number; end: number }[],
+  fullContent: string,
+): { depth: number; text: string } | null {
+  const trimmed = line.trim();
+  const m = trimmed.match(/^(#{1,6})\s+(.+)/);
+  if (!m) return null;
 
-  for (const para of paragraphs) {
-    if ((buffer + "\n\n" + para).length > chunkSize && buffer) {
-      const combined = previousOverlap
-        ? previousOverlap + "\n" + buffer.trim()
-        : buffer.trim();
-      if (combined) {
-        chunks.push({
-          content: combined,
-          section: "Document",
-          chunkIndex: chunkIndex++,
-          tokenCount: estimateTokens(combined),
-          hash: simpleHash(combined),
-        });
-      }
-      if (overlap > 0) {
-        const lines = buffer.split("\n");
-        const overlapLines: string[] = [];
-        let overlapLen = 0;
-        for (let i = lines.length - 1; i >= 0; i--) {
-          if (overlapLen + lines[i].length > overlap) break;
-          overlapLines.unshift(lines[i]);
-          overlapLen += lines[i].length + 1;
-        }
-        previousOverlap = overlapLines.join("\n");
-      } else {
-        previousOverlap = "";
-      }
-      buffer = para;
+  // Check if this line is inside a protected range (code fence / table)
+  // by computing its approximate offset in the content
+  const lineIdx = fullContent.split("\n").indexOf(line);
+  if (lineIdx < 0) return null;
+
+  let offset = 0;
+  const lines = fullContent.split("\n");
+  for (let i = 0; i < lineIdx; i++) {
+    offset += lines[i].length + 1;
+  }
+
+  for (const r of protectedRanges) {
+    if (offset >= r.start && offset <= r.end) return null;
+  }
+
+  return { depth: m[1].length, text: m[2].trim() };
+}
+
+function extractProtectedRanges(
+  content: string,
+  regex: RegExp,
+): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  let m: RegExpExecArray | null;
+  const re = new RegExp(regex.source, regex.flags.includes("g") ? regex.flags : regex.flags + "g");
+  while ((m = re.exec(content)) !== null) {
+    ranges.push({ start: m.index, end: m.index + m[0].length });
+  }
+  return ranges;
+}
+
+function mergeRanges(
+  ranges: { start: number; end: number }[],
+): { start: number; end: number }[] {
+  if (ranges.length === 0) return [];
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const merged: { start: number; end: number }[] = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    const last = merged[merged.length - 1];
+    if (sorted[i].start <= last.end) {
+      last.end = Math.max(last.end, sorted[i].end);
     } else {
-      buffer = buffer ? buffer + "\n\n" + para : para;
+      merged.push(sorted[i]);
     }
   }
-
-  if (buffer.trim()) {
-    const finalContent = previousOverlap
-      ? previousOverlap + "\n" + buffer.trim()
-      : buffer.trim();
-    chunks.push({
-      content: finalContent,
-      section: "Document",
-      chunkIndex: chunkIndex++,
-      tokenCount: estimateTokens(finalContent),
-      hash: simpleHash(finalContent),
-    });
-  }
-
-  return chunks;
-}
-
-function splitText(text: string, maxSize: number, _overlap: number): string[] {
-  if (text.length <= maxSize) return [text];
-
-  const chunks: string[] = [];
-  let start = 0;
-
-  while (start < text.length) {
-    let end = start + maxSize;
-
-    if (end >= text.length) {
-      chunks.push(text.slice(start));
-      break;
-    }
-
-    // Try to break at sentence boundary
-    const searchEnd = end;
-    let breakPoint = text.lastIndexOf(". ", end);
-    if (breakPoint > start && breakPoint < searchEnd) {
-      end = breakPoint + 1;
-    } else {
-      // Try paragraph break
-      breakPoint = text.lastIndexOf("\n\n", end);
-      if (breakPoint > start && breakPoint < searchEnd) {
-        end = breakPoint;
-      } else {
-        // Try newline
-        breakPoint = text.lastIndexOf("\n", end);
-        if (breakPoint > start && breakPoint < searchEnd) {
-          end = breakPoint;
-        } else {
-          // Try word boundary
-          breakPoint = text.lastIndexOf(" ", end);
-          if (breakPoint > start) {
-            end = breakPoint;
-          }
-          // else: hard cut at maxSize (edge case)
-        }
-      }
-    }
-
-    chunks.push(text.slice(start, end).trim());
-    start = end;
-  }
-
-  return chunks;
-}
-
-/**
- * Simple token count approximation: 4 chars ≈ 1 token.
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
-function simpleHash(content: string): string {
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const chr = content.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
+  return merged;
 }

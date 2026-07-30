@@ -1,7 +1,8 @@
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { randomUUIDv7 } from "bun";
 import { openKnowledgeDb, type KbScope } from "../db";
-import { knowledgeEmbeddingCache, knowledgeJobs as kbJobs } from "../schema";
+import { knowledgeEmbeddingCache, knowledgeJobs as kbJobs, knowledgeChunks } from "../schema";
 import { listPendingJobs, updateJobStatus, createJob } from "../jobs";
 import type { EmbeddingProvider } from "./provider";
 import { EMBEDDING_RETRIES } from "../constants";
@@ -88,21 +89,42 @@ export class EmbeddingQueue {
           // Embed
           const embeddings = await this.provider.embed(texts);
 
-          // Store embeddings in cache
+          // Store embeddings in vec0 table and cache
           const now = new Date().toISOString();
           for (let j = 0; j < batch.length; j++) {
             const job = batch[j];
             const payload = job.payload as any;
-            const chunkHash = simpleHash(payload?.content || "");
+            const content = payload?.content || "";
+            const chunkHash = createHash("sha256").update(content).digest("hex");
 
-            // Cache the embedding
+            // Cache the embedding (for dedup)
             await kb.db.insert(knowledgeEmbeddingCache).values({
               id: randomUUIDv7(),
               chunkHash,
-              model: "default",
+              model: this.provider!.modelName,
               dimensions: this.provider!.dimensions,
               createdAt: now,
             });
+
+            // Store vector in vec0 table for search
+            if (embeddings[j]) {
+              const embeddingArr = new Float32Array(embeddings[j]);
+              const embeddingStr = `[${Array.from(embeddingArr).join(",")}]`;
+              try {
+                kb.sqlite.run(
+                  "INSERT INTO knowledge_embeddings(chunk_id, embedding) VALUES (?, ?)",
+                  [payload.chunkId, embeddingStr],
+                );
+
+                // Update chunk's embedding_model field
+                await kb.db
+                  .update(knowledgeChunks)
+                  .set({ embeddingModel: this.provider!.modelName })
+                  .where(eq(knowledgeChunks.id, payload.chunkId));
+              } catch (vecErr: any) {
+                console.warn("[knowledge] Failed to store vector embedding:", vecErr.message);
+              }
+            }
 
             // Mark job as completed
             await updateJobStatus(kb, job.id, "completed");
@@ -129,14 +151,4 @@ export class EmbeddingQueue {
       this.processing = false;
     }
   }
-}
-
-function simpleHash(content: string): string {
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const chr = content.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
 }

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { KnowledgeBaseService } from "../knowledge-base-service";
 import type { KbScope } from "../db";
+import { openKnowledgeDb } from "../db";
 
 export function registerKnowledgeRoutes(
   app: FastifyInstance,
@@ -116,5 +117,66 @@ export function registerKnowledgeRoutes(
     const scope = (request.body?.scope as KbScope) || "session";
     const result = await kb.ingest(scope);
     return { ok: true, ...result };
+  });
+
+  // ── Groups ──────────────────────────────────────────────────────
+  app.get("/api/knowledge/groups", async (request) => {
+    const q = request.query as { scope?: string };
+    const scope = (q.scope as KbScope) || "session";
+    const { listGroupRecords } = await import("../service-queries");
+    const groups = await listGroupRecords(kb.baseDataDir, scope);
+    return { groups };
+  });
+
+  app.post<{
+    Body: { name: string; color?: string; scope?: string };
+  }>("/api/knowledge/groups", async (request, reply) => {
+    const { name, color, scope: bodyScope } = request.body;
+    if (!name?.trim()) {
+      return reply.code(400).send({ error: "name is required" });
+    }
+    const scope = (bodyScope as KbScope) || "session";
+    const kbDb = await openKnowledgeDb(kb.baseDataDir, scope);
+    if (!kbDb) return reply.code(500).send({ error: "Cannot open knowledge DB" });
+
+    const { createGroup } = await import("../service-mutations");
+    const group = await createGroup(kbDb, {
+      name: name.trim(),
+      color: color || "#6366f1",
+      scope,
+    });
+    return { ok: true, group };
+  });
+
+  app.put<{
+    Body: { name?: string; color?: string; sortOrder?: number; documentIds?: string[]; scope?: string };
+  }>("/api/knowledge/groups/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = request.body;
+    const scope = (body.scope as KbScope) || "session";
+    const kbDb = await openKnowledgeDb(kb.baseDataDir, scope);
+    if (!kbDb) return reply.code(500).send({ error: "Cannot open knowledge DB" });
+
+    if (body.documentIds) {
+      const { setGroupDocuments } = await import("../service-mutations");
+      await setGroupDocuments(kbDb, params.id, body.documentIds);
+    }
+    if (body.name !== undefined || body.color !== undefined || body.sortOrder !== undefined) {
+      const { updateGroup } = await import("../service-mutations");
+      await updateGroup(kbDb, params.id, { name: body.name, color: body.color, sortOrder: body.sortOrder });
+    }
+    return { ok: true };
+  });
+
+  app.delete("/api/knowledge/groups/:id", async (request, reply) => {
+    const params = request.params as { id: string };
+    const q = request.query as { scope?: string };
+    const scope = (q.scope as KbScope) || "session";
+    const kbDb = await openKnowledgeDb(kb.baseDataDir, scope);
+    if (!kbDb) return reply.code(500).send({ error: "Cannot open knowledge DB" });
+
+    const { deleteGroup } = await import("../service-mutations");
+    await deleteGroup(kbDb, params.id);
+    return { ok: true };
   });
 }

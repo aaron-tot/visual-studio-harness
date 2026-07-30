@@ -13,12 +13,12 @@ import { ResearchTab } from "./research/ResearchTab";
 import { KnowledgeTab } from "../../knowledge-base";
 
 /** Canonical tab order — same on every scope; filtered by visibility set. */
-const ALL_TABS: InfoPanelTab[] = ["designs", "notepad", "audits", "research", "usage", "graph", "knowledge"];
+const ALL_TABS: InfoPanelTab[] = ["designs", "notepad", "audits", "research", "knowledge", "usage", "graph"];
 
 /** Which tabs are visible per scope. */
 const SCOPE_TABS: Record<PlanScope, Set<InfoPanelTab>> = {
   global: new Set(["designs", "notepad", "audits", "research", "knowledge"]),
-  project: new Set(["designs", "notepad", "audits", "research", "graph", "knowledge"]),
+  project: new Set(["designs", "notepad", "audits", "research", "knowledge", "graph"]),
   session: new Set(["usage", "designs", "notepad", "audits", "research", "knowledge"]),
 };
 
@@ -145,9 +145,11 @@ export function InfoPanel() {
                       ? "Audits"
                       : t === "research"
                         ? "Research"
-                        : t === "graph"
-                          ? "Graph"
-                          : t}
+                        : t === "knowledge"
+                          ? "Knowledge"
+                          : t === "graph"
+                            ? "Graph"
+                            : t}
             </TabButton>
           ))}
         </div>

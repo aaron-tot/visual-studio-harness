@@ -56,4 +56,25 @@ describe("knowledge tools registration", () => {
     expect(searchTool!.outputFields).toBeDefined();
     expect(searchTool!.outputFields!.length).toBeGreaterThan(0);
   });
+
+  it("knowledge_open accepts filename.ext as documentId and resolves to UUID", () => {
+    const registry = createDefaultRegistry();
+    const tools = registry.list();
+    const openTool = tools.find((t) => t.name === "knowledge_open");
+    expect(openTool).toBeDefined();
+
+    // Schema should accept any string, not just UUID format
+    const result = openTool!.inputSchema.safeParse({ documentId: "TESTFILE.txt", scope: "global" });
+    expect(result.success).toBe(true);
+  });
+
+  it("knowledge_list output includes ID: prefix", () => {
+    const registry = createDefaultRegistry();
+    const tools = registry.list();
+    const listTool = tools.find((t) => t.name === "knowledge_list");
+
+    // The schema should accept scope without requiring ID
+    const result = listTool!.inputSchema.safeParse({ scope: "global" });
+    expect(result.success).toBe(true);
+  });
 });

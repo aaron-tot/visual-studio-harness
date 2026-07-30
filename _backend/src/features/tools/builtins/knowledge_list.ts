@@ -29,7 +29,7 @@ export const knowledgeListTool: ToolDef = {
     }
 
     const lines = docs.map((d: any) =>
-      `  ${d.filename}  (${d.extension}, ${d.fileSize} bytes, status: ${d.status}` +
+      `  ID:${d.id}  ${d.filename}  (${d.extension}, ${d.fileSize} bytes, status: ${d.status}` +
       `${d.tags?.length ? `, tags: ${d.tags.join(", ")}` : ""}` +
       `${d.createdBy ? `, by: ${d.createdBy}` : ""})`,
     );

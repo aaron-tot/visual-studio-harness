@@ -177,9 +177,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const result: LayoutNode[] = [];
       for (const n of nodes) {
         if (n.id === groupId && n.kind === "group") {
+          // Remove this group; promote its children up to the current level
           result.push(...(n.children || []).map((c) =>
             c.kind === "session" ? c : { ...c }
           ));
+        } else if (n.children) {
+          // Recurse into children to search for the target group
+          result.push({ ...n, children: dissolve(n.children) });
         } else {
           result.push(n);
         }

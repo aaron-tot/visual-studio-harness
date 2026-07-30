@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { FileJson, X } from "lucide-react";
 import type { PlanDocument, SpecDocument, SpecPlanPart } from "../../../../lib/api";
 import { countCompleted, isPartDone } from "../../lib/plan-status";
 import { PanelButton } from "../ui";
 
-function PartsList({ parts, depth = 0 }: { parts: SpecPlanPart[]; depth?: number }) {
-  if (parts.length === 0) return null;
+function PartsList({ parts, depth = 0 }: { parts?: SpecPlanPart[]; depth?: number }) {
+  if (!parts || parts.length === 0) return null;
   return (
     <ul className="space-y-1" style={{ marginLeft: depth > 0 ? 8 : 0 }}>
       {parts.map((part) => (
@@ -41,6 +42,85 @@ function setGoalField(doc: SpecDocument | PlanDocument, value: string): Record<s
   return { goal: value, endGoal: value };
 }
 
+function JsonModal({ doc, onClose }: { doc: SpecDocument | PlanDocument; onClose: () => void }) {
+  const [jsonMode, setJsonMode] = useState<"pretty" | "raw">("pretty");
+  const [copied, setCopied] = useState(false);
+
+  const indent = jsonMode === "pretty" ? 2 : undefined;
+  const json = JSON.stringify(doc, null, indent);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(json);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard not available
+    }
+  }, [json]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="relative w-[90vw] max-w-3xl max-h-[85vh] bg-zinc-900 border border-zinc-700 rounded-lg flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* header */}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 shrink-0">
+          <span className="text-xs font-semibold text-zinc-400">
+            {("endGoal" in doc ? "Plan" : "Spec")}
+            {' v'}{doc.meta.version}
+            {' — '}{doc.meta.id}
+          </span>
+          <div className="flex items-center gap-2">
+            <div className="flex bg-zinc-800 rounded text-[10px]">
+              <button
+                type="button"
+                className={`px-2 py-0.5 rounded-l transition-colors ${jsonMode === "pretty" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-zinc-200"}`}
+                onClick={() => setJsonMode("pretty")}
+              >
+                Pretty
+              </button>
+              <button
+                type="button"
+                className={`px-2 py-0.5 rounded-r transition-colors ${jsonMode === "raw" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-zinc-200"}`}
+                onClick={() => setJsonMode("raw")}
+              >
+                Raw
+              </button>
+            </div>
+            <button
+              type="button"
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-0.5 rounded bg-zinc-800"
+              onClick={handleCopy}
+            >
+              {copied ? "Copied!" : "Copy JSON"}
+            </button>
+            <button
+              type="button"
+              className="text-zinc-500 hover:text-zinc-300 transition-colors"
+              onClick={onClose}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* body */}
+        <div className="flex-1 overflow-auto p-4">
+          <div className="text-[10px] text-zinc-600 mb-1">JSON · {json.length.toLocaleString()} bytes · {jsonMode} mode</div>
+          <pre className="text-[11px] text-zinc-300 font-mono leading-relaxed whitespace-pre-wrap break-all">
+            {json}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SpecPlanDocView({
   label,
   version,
@@ -61,6 +141,7 @@ export function SpecPlanDocView({
   saving: boolean;
 }) {
   const [editGoal, setEditGoal] = useState(goalField(doc));
+  const [showJson, setShowJson] = useState(false);
 
   const goal = goalField(doc);
 
@@ -115,7 +196,15 @@ export function SpecPlanDocView({
       </div>
       {goal && <div className="text-[10px] text-zinc-500 mb-1 italic">{goal}</div>}
       <div className="text-[10px] text-zinc-600 mb-1">
-        parts: {countCompleted(doc.parts)} completed
+        parts: <span className="tabular-nums">{countCompleted(doc.parts)}</span> completed
+        <button
+          type="button"
+          className="inline-flex items-center ml-1.5 text-zinc-700 hover:text-zinc-400 align-middle transition-colors"
+          onClick={(e) => { e.stopPropagation(); setShowJson(true); }}
+          title="View full JSON"
+        >
+          <FileJson size={12} />
+        </button>
       </div>
       <PartsList parts={doc.parts} />
       <div className="text-[10px] text-zinc-600 mt-1 space-y-0.5">
@@ -124,6 +213,8 @@ export function SpecPlanDocView({
         </div>
         <div className="text-zinc-700">{doc.meta.status}</div>
       </div>
+
+      {showJson && <JsonModal doc={doc} onClose={() => setShowJson(false)} />}
     </div>
   );
 }

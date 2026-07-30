@@ -4,7 +4,7 @@ import type { PlanEntry } from "../../../../lib/api";
 import type { DesignGroup, DesignLocation, DocMode, InjectSub } from "../../types";
 import { planExpandKey } from "../../types";
 import { EmptyState } from "../ui";
-import { PlanCard } from "./PlanCard";
+import { DesignCard } from "./DesignCard";
 
 interface DesignGroupListProps {
   /** When true, render designs without group headers (global scope). */
@@ -83,7 +83,7 @@ function PlanRows({
         const pKey = planExpandKey(group.key, plan.name);
         return (
           <div key={pKey}>
-            <PlanCard
+            <DesignCard
               plan={plan}
               expanded={expandedPlan === pKey}
               flatHeader={!indent}

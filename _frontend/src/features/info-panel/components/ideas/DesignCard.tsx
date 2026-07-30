@@ -1,19 +1,17 @@
 import { useCallback, useState } from "react";
-import { Archive, ChevronDown, ChevronRight, Copy, Folder, Trash2 } from "lucide-react";
-import type { PlanEntry } from "../../../../lib/api";
-import { updateDocViaApi } from "../../../../lib/api";
-import type { DocMode, DesignLocation, InjectSub } from "../../types";
-import { scopeApiParams } from "../../lib/scope-params";
+import { ChevronDown, ChevronRight, Copy, FileJson, Folder, Trash2 } from "lucide-react";
+import type { PlanEntry, DocMode, DesignLocation, InjectSub } from "../../types";
 import { countPartsProgress } from "../../lib/plan-status";
+import { scopeApiParams } from "../../lib/scope-params";
+import { updateDocViaApi } from "../../../../lib/api";
 import { PanelButton } from "../ui";
 import { PlanActions } from "./PlanActions";
-import { SpecPlanDocView } from "./SpecPlanTree";
+import { DesignJsonModal } from "./DesignJsonModal";
 import { AbandonForm } from "./AbandonForm";
 
-interface PlanCardProps {
+interface DesignCardProps {
   plan: PlanEntry;
   expanded: boolean;
-  /** Flat global list — no nested indent under a group header */
   flatHeader?: boolean;
   onToggle: () => void;
   busy: boolean;
@@ -31,12 +29,11 @@ interface PlanCardProps {
   onResult: (msg: string) => void;
   onDelete: () => void;
   onArchive: () => void;
-  /** Location for API calls on this design */
   location: DesignLocation;
   onRefresh: () => void;
 }
 
-export function PlanCard({
+export function DesignCard({
   plan,
   expanded,
   flatHeader = false,
@@ -58,9 +55,10 @@ export function PlanCard({
   onArchive,
   location,
   onRefresh,
-}: PlanCardProps) {
+}: DesignCardProps) {
   const [editingDoc, setEditingDoc] = useState<{ type: "spec" | "plan"; version: number } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showJson, setShowJson] = useState(false);
 
   const handleEdit = useCallback((type: "spec" | "plan", version: number) => {
     setEditingDoc({ type, version });
@@ -99,6 +97,7 @@ export function PlanCard({
 
   return (
     <div className={abandoned ? "opacity-60" : undefined}>
+      {/* Header row */}
       <div
         className={`w-full flex items-center gap-1 pr-3 py-1.5 hover:bg-zinc-900 transition-colors group cursor-pointer ${
           flatHeader ? "px-3" : "pl-6"
@@ -113,11 +112,17 @@ export function PlanCard({
         ) : (
           <ChevronRight size={12} className="shrink-0 text-zinc-600" />
         )}
+        <button
+          type="button"
+          className="text-zinc-500 hover:text-white shrink-0"
+          onClick={(e) => { e.stopPropagation(); setShowJson(true); }}
+          title="Open in design modal"
+        >
+          <FileJson size={12} />
+        </button>
         <span className="text-xs text-zinc-300 truncate flex-1">
           {plan.name}
-          {abandoned && (
-            <span className="ml-1 text-[9px] text-zinc-600">(abandoned)</span>
-          )}
+          {abandoned && <span className="ml-1 text-[9px] text-zinc-600">(abandoned)</span>}
         </span>
         {progress && (
           <span className="text-[10px] text-zinc-600 shrink-0">{progress}</span>
@@ -125,11 +130,7 @@ export function PlanCard({
         <button
           type="button"
           className="text-[10px] px-1 rounded text-zinc-700 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            void navigator.clipboard.writeText(`plans/${plan.name}`);
-            onResult("Path copied");
-          }}
+          onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(`plans/${plan.name}`); onResult("Path copied"); }}
           title="Copy relative path"
         >
           <Copy size={12} />
@@ -137,11 +138,7 @@ export function PlanCard({
         <button
           type="button"
           className="text-[10px] px-1 rounded text-zinc-700 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            void navigator.clipboard.writeText(plan.path);
-            onResult("Full path copied");
-          }}
+          onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(plan.path); onResult("Full path copied"); }}
           title="Copy full path"
         >
           <Folder size={12} />
@@ -153,7 +150,7 @@ export function PlanCard({
           onClick={(e) => { e.stopPropagation(); onArchive(); }}
           title="Archive design"
         >
-          <Archive size={12} />
+          <Trash2 size={12} />
         </button>
         <button
           type="button"
@@ -166,22 +163,15 @@ export function PlanCard({
         </button>
       </div>
 
+      {/* Expanded body */}
       {expanded && (
         <div className="px-3 pb-2 space-y-1" onClick={(e) => e.stopPropagation()}>
           {!abandoned && (
             <div className="flex gap-1 pb-1.5 border-b border-zinc-800">
-              <PanelButton
-                className="flex-1 py-1"
-                disabled={busy}
-                onClick={() => onAddVersion("spec")}
-              >
+              <PanelButton className="flex-1 py-1" disabled={busy} onClick={() => onAddVersion("spec")}>
                 + Spec{plan.specs.length === 0 ? "" : ` v${plan.specs.length + 1}`}
               </PanelButton>
-              <PanelButton
-                className="flex-1 py-1"
-                disabled={busy}
-                onClick={() => onAddVersion("plan")}
-              >
+              <PanelButton className="flex-1 py-1" disabled={busy} onClick={() => onAddVersion("plan")}>
                 + Plan{plan.plans.length === 0 ? "" : ` v${plan.plans.length + 1}`}
               </PanelButton>
             </div>
@@ -194,41 +184,11 @@ export function PlanCard({
             onResult={onResult}
           />
 
-          {plan.specs.length > 0 && (
-            <SpecPlanDocView
-              label="Spec"
-              version={plan.specs.length}
-              doc={plan.specs[plan.specs.length - 1]}
-              editing={editingDoc?.type === "spec" && editingDoc?.version === plan.specs.length}
-              onEdit={() => handleEdit("spec", plan.specs.length)}
-              onSave={handleSave}
-              onCancel={handleCancelEdit}
-              saving={saving}
-            />
-          )}
-          {plan.plans.length > 0 && (
-            <SpecPlanDocView
-              label="Plan"
-              version={plan.plans.length}
-              doc={plan.plans[plan.plans.length - 1]}
-              editing={editingDoc?.type === "plan" && editingDoc?.version === plan.plans.length}
-              onEdit={() => handleEdit("plan", plan.plans.length)}
-              onSave={handleSave}
-              onCancel={handleCancelEdit}
-              saving={saving}
-            />
-          )}
-
           {plan.files.length > 0 && (
             <div className="pt-1">
               <div className="text-[10px] font-semibold text-zinc-500 mb-0.5">Files</div>
               {plan.files.map((f) => (
-                <div
-                  key={f}
-                  className="text-[10px] text-zinc-600 pl-2 border-l border-zinc-800"
-                >
-                  {f}
-                </div>
+                <div key={f} className="text-[10px] text-zinc-600 pl-2 border-l border-zinc-800">{f}</div>
               ))}
             </div>
           )}
@@ -236,9 +196,7 @@ export function PlanCard({
           {abandoned && plan.meta.abandoned && (
             <div className="text-[10px] text-zinc-600 pt-1 space-y-0.5">
               <div>Abandoned: {plan.meta.abandoned.reason}</div>
-              {plan.meta.abandoned.successor && (
-                <div>Successor: {plan.meta.abandoned.successor}</div>
-              )}
+              {plan.meta.abandoned.successor && <div>Successor: {plan.meta.abandoned.successor}</div>}
             </div>
           )}
 
@@ -264,6 +222,18 @@ export function PlanCard({
             )
           )}
         </div>
+      )}
+
+      {/* Design JSON viewer modal */}
+      {showJson && (
+        <DesignJsonModal
+          plan={plan}
+          onClose={() => setShowJson(false)}
+          onAddVersion={onAddVersion}
+          location={location}
+          onRefresh={onRefresh}
+          onResult={onResult}
+        />
       )}
     </div>
   );

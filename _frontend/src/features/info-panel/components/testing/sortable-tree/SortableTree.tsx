@@ -135,24 +135,9 @@ export function SortableTree({
   const [items, setItems] = useState(() => defaultItems);
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const prevDefaultRef = useRef(defaultItems);
-  const prevItemsRef = useRef(defaultItems);
-  const isMountedRef = useRef(false);
   const isSavingRef = useRef(false);
-
-  useEffect(() => {
-    if (!isMountedRef.current) {
-      isMountedRef.current = true;
-      prevItemsRef.current = items;
-      return;
-    }
-    // Only fire onItemsChange if items actually changed (user action)
-    const prev = prevItemsRef.current;
-    const changed = prev.length !== items.length || prev.some((p, i) => p.id !== items[i]?.id);
-    if (changed) {
-      prevItemsRef.current = items;
-      onItemsChange?.(items);
-    }
-  }, [items, onItemsChange]);
+  const onItemsChangeRef = useRef(onItemsChange);
+  onItemsChangeRef.current = onItemsChange;
 
   // Re-sync from defaultItems when props change (new sessions, backend reload)
   // but only when not actively dragging and content actually changed.
@@ -170,8 +155,6 @@ export function SortableTree({
     if (changed) {
       isSavingRef.current = true;
       setItems(defaultItems);
-      // Update prevItemsRef so onItemsChange doesn't fire for this programmatic change
-      prevItemsRef.current = defaultItems;
       queueMicrotask(() => { isSavingRef.current = false; });
     }
   }, [defaultItems, activeId]);
@@ -456,6 +439,9 @@ export function SortableTree({
 
       const newItems = buildTree(finalFlattened);
       setItems(newItems);
+      // Fire onItemsChange directly — the old useEffect-based detection only
+      // compared root-level IDs and missed changes at depth >= 1.
+      onItemsChangeRef.current?.(newItems);
     }
   }
 
@@ -473,7 +459,9 @@ export function SortableTree({
   }
 
   function handleRemove(id: UniqueIdentifier) {
-    setItems((items) => removeItem(items, id));
+    const newItems = removeItem(items, id);
+    setItems(newItems);
+    onItemsChangeRef.current?.(newItems);
   }
 
   function handleCollapse(id: UniqueIdentifier) {

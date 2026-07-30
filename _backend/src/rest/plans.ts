@@ -4,6 +4,13 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promise
 import { existsSync } from "node:fs";
 import type { SpecDocument, PlanDocument, SpecPlanPart, CreatedBy } from "../../../../_shared/types";
 
+/** Recursively ensure every SpecPlanPart has a `parts` array. */
+function ensurePartsArray(p: SpecPlanPart): SpecPlanPart {
+  if (!Array.isArray(p.parts)) p.parts = [];
+  for (const child of p.parts) ensurePartsArray(child);
+  return p;
+}
+
 export type DesignsScope = "global" | "project" | "session";
 
 export function resolveDesignsDir(dataDir: string, scope: DesignsScope | undefined, workspaceRoot?: string, sessionId?: string): string | null {
@@ -124,7 +131,7 @@ export async function createSpecDocument(params: CreateSpecParams): Promise<{ pa
     constraints: Array.isArray(c.constraints) ? (c.constraints as string[]) : [],
     assumptions: Array.isArray(c.assumptions) ? (c.assumptions as string[]) : [],
     acceptanceCriteria: Array.isArray(c.acceptanceCriteria) ? (c.acceptanceCriteria as string[]) : [],
-    parts: Array.isArray(c.parts) ? (c.parts as SpecPlanPart[]) : [],
+    parts: Array.isArray(c.parts) ? (c.parts as SpecPlanPart[]).map(ensurePartsArray) : [],
   };
 
   await mkdir(pd, { recursive: true });
@@ -185,7 +192,7 @@ export async function createPlanDocument(params: CreatePlanParams): Promise<{ pa
       },
     },
     endGoal,
-    parts: Array.isArray(c.parts) ? (c.parts as SpecPlanPart[]) : [],
+    parts: Array.isArray(c.parts) ? (c.parts as SpecPlanPart[]).map(ensurePartsArray) : [],
   };
 
   await mkdir(pd, { recursive: true });

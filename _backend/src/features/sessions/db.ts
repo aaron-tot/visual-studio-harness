@@ -22,6 +22,7 @@ function rowToSessionMeta(row: typeof sessions.$inferSelect): SessionMeta {
     created: row.created,
     updated: row.updated,
     archived: row.archived,
+    starred: row.starred || undefined,
   };
 }
 
@@ -42,6 +43,7 @@ export function createSession(meta: SessionMeta, dataDir?: string): void {
       created: meta.created,
       updated: meta.updated,
       archived: meta.archived ?? false,
+      starred: meta.starred ?? false,
     })
     .onConflictDoNothing()
     .run();
@@ -99,6 +101,7 @@ export function updateSessionFields(
         created: fields.created ?? now,
         updated: fields.updated ?? now,
         archived: fields.archived ?? false,
+        starred: fields.starred ?? false,
       })
       .onConflictDoNothing()
       .run();
@@ -119,6 +122,7 @@ export function updateSessionFields(
   if (fields.agentName !== undefined) patch.agentName = fields.agentName ?? null;
   if (fields.thinkingEffort !== undefined) patch.thinkingEffort = fields.thinkingEffort ?? null;
   if (fields.archived !== undefined) patch.archived = fields.archived;
+  if (fields.starred !== undefined) patch.starred = fields.starred;
   if (fields.systemPrompt !== undefined) patch.systemPrompt = fields.systemPrompt;
   if (fields.todosJson !== undefined) patch.todosJson = fields.todosJson;
   if (fields.modelConfigJson !== undefined) patch.modelConfigJson = fields.modelConfigJson;

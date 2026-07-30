@@ -16,6 +16,7 @@ export interface SessionMeta {
   taskLabel?: string;
   agentName?: string;
   thinkingEffort?: ThinkingEffort;
+  starred?: boolean;
 }
 
 export interface SessionConfig {

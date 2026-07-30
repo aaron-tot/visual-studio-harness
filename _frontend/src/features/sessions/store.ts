@@ -4,6 +4,7 @@ import {
   listSessions,
   deleteSession as apiDelete,
   renameSession as apiRename,
+  starSession as apiStar,
   getSessionLayout,
   putSessionLayout,
 } from "../../lib/api";
@@ -20,6 +21,7 @@ interface SessionState {
   setActive: (id: string | null) => void;
   archive: (id: string) => Promise<void>;
   rename: (id: string, title: string) => Promise<void>;
+  toggleStar: (id: string) => Promise<void>;
   upsertSession: (meta: SessionMeta) => void;
   loadLayout: (workspaceRoot: string) => Promise<void>;
   saveLayout: (workspaceRoot: string, tree: LayoutNode[]) => Promise<void>;
@@ -83,6 +85,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   rename: async (id, title) => {
     await apiRename(id, title);
     set({ sessions: get().sessions.map((s) => (s.id === id ? { ...s, title } : s)) });
+  },
+  toggleStar: async (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session) return;
+    const starred = !session.starred;
+    await apiStar(id, starred);
+    set({ sessions: get().sessions.map((s) => (s.id === id ? { ...s, starred } : s)) });
   },
   upsertSession: (meta) =>
     set((state) => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Archive, Info, CheckCircle2, Trash2 } from "lucide-react";
+import { Archive, Info, CheckCircle2, Star, Trash2 } from "lucide-react";
 import { SortableTree } from "../../features/info-panel/components/testing/sortable-tree";
 import { useSessionStore } from "../../features/sessions/store";
 import type { TreeItems } from "../../features/info-panel/components/testing/sortable-tree/types";
@@ -14,6 +14,7 @@ function SessionActions({ id }: { id: string }) {
   const setActive = useSessionStore((s) => s.setActive);
   const archive = useSessionStore((s) => s.archive);
   const rename = useSessionStore((s) => s.rename);
+  const toggleStar = useSessionStore((s) => s.toggleStar);
   const streamingSessions = useSessionStore((s) => s.streamingSessions);
   const doneNotifications = useSessionStore((s) => s.doneNotifications);
   const sessions = useSessionStore((s) => s.sessions);
@@ -59,6 +60,16 @@ function SessionActions({ id }: { id: string }) {
           >
             {meta?.title || id.slice(0, 8)}
           </span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void toggleStar(id); }}
+            className={`p-0.5 shrink-0 transition-all ${
+              meta?.starred ? "text-yellow-400" : "text-zinc-600 hover:text-zinc-400"
+            }`}
+            title={meta?.starred ? "Starred" : "Star"}
+          >
+            <Star size={12} fill={meta?.starred ? "currentColor" : "none"} />
+          </button>
           {streaming && (
             <span title="Streaming…" className="relative flex h-2 w-2 shrink-0 mx-1">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />

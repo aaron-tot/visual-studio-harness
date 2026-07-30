@@ -26,6 +26,8 @@ export const sessions = sqliteTable("sessions", {
   modelConfigJson: text("model_config_json"),
   /** Session-layer tool perms JSON (was sessionPerms.json). */
   sessionPermsJson: text("session_perms_json"),
+  /** When true, session appears starred/flagged in the session list. */
+  starred: integer("starred", { mode: "boolean" }).notNull().default(false),
 
   // Optional cached aggregates (SoT = SUM of steps via turns)
   cachedInputTokens: integer("cached_input_tokens"),

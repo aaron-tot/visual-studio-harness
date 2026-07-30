@@ -7,6 +7,7 @@ import {
   getSession,
   deleteSession,
   renameSession,
+  updateSessionMeta,
   updateSessionWorkspace,
   listWorkspaces,
   getTurns,
@@ -127,7 +128,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
 
   app.put("/api/sessions/:id", async (request) => {
     const { id } = request.params as { id: string };
-    const body = request.body as { title?: string; workspaceRoot?: string };
+    const body = request.body as { title?: string; workspaceRoot?: string; starred?: boolean };
     // Workspace is set once at session start. Only allow pinning if still unset (legacy).
     if (body.workspaceRoot !== undefined) {
       const session = await getSession(dataDir, id);
@@ -146,6 +147,10 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     if (body.title !== undefined) {
       await renameSession(dataDir, id, body.title);
       return { ok: true };
+    }
+    if (body.starred !== undefined) {
+      const meta = updateSessionMeta(dataDir, id, { starred: body.starred });
+      return { ok: true, session: meta };
     }
     return { error: "nothing to update" };
   });

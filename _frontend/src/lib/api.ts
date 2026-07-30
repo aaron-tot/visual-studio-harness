@@ -1013,3 +1013,56 @@ export function knowledgeIngest(scope?: string) {
     { method: "POST", body: JSON.stringify({ scope }) }
   );
 }
+
+export interface KnowledgeGroup {
+  id: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  scope: string;
+  documentCount: number;
+}
+
+export function knowledgeListGroups(scope?: string) {
+  const params = new URLSearchParams();
+  if (scope) params.set("scope", scope);
+  return fetchJson<{ groups: KnowledgeGroup[] }>(
+    `${BASE}/knowledge/groups?${params}`
+  );
+}
+
+export function knowledgeCreateGroup(body: { name: string; color?: string; scope?: string }) {
+  return fetchJson<{ ok: boolean; group: KnowledgeGroup }>(
+    `${BASE}/knowledge/groups`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function knowledgeUpdateGroup(
+  id: string,
+  body: { name?: string; color?: string; sortOrder?: number; documentIds?: string[]; scope?: string }
+) {
+  return fetchJson<{ ok: boolean }>(
+    `${BASE}/knowledge/groups/${id}`,
+    { method: "PUT", body: JSON.stringify(body) }
+  );
+}
+
+export function knowledgeDeleteGroup(id: string, scope?: string) {
+  const params = new URLSearchParams();
+  if (scope) params.set("scope", scope);
+  return fetchJson<{ ok: boolean }>(
+    `${BASE}/knowledge/groups/${id}?${params}`,
+    { method: "DELETE" }
+  );
+}
+
+export function knowledgeUploadFile(file: File, scope?: string) {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (scope) formData.append("scope", scope);
+  return fetchJson<{ ok: boolean; document: KnowledgeDocumentMeta }>(
+    `${BASE}/knowledge/upload`,
+    { method: "POST", body: formData }
+  );
+}

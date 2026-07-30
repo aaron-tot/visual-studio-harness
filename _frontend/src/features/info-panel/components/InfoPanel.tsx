@@ -164,7 +164,7 @@ export function InfoPanel() {
         ) : tab === "graph" ? (
           <GraphTab />
         ) : tab === "knowledge" ? (
-          <KnowledgeTab />
+          <KnowledgeTab scope={scope} />
         ) : (
           <EmptyState>Coming soon</EmptyState>
         )}

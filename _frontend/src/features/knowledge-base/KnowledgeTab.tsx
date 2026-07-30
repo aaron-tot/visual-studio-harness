@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useKnowledgeStore } from "./store";
-import { TabButton, EmptyState } from "../info-panel/components/ui";
+import { EmptyState } from "../info-panel/components/ui";
+import type { PlanScope } from "../info-panel/types";
 
-export function KnowledgeTab() {
+export function KnowledgeTab({ scope }: { scope: PlanScope }) {
   const {
     documents,
     searchResults,
@@ -10,12 +11,10 @@ export function KnowledgeTab() {
     searching,
     uploading,
     error,
-    scope,
     fetchDocuments,
     search,
     deleteDocument,
     ingest,
-    setScope,
     uploadFiles,
   } = useKnowledgeStore();
 
@@ -24,12 +23,12 @@ export function KnowledgeTab() {
   const [showSearch, setShowSearch] = useState(false);
 
   useEffect(() => {
-    fetchDocuments();
-  }, [fetchDocuments]);
+    fetchDocuments(scope);
+  }, [fetchDocuments, scope]);
 
   const handleSearch = () => {
     if (!query.trim()) return;
-    search(query.trim());
+    search(query.trim(), { scope });
     setShowSearch(true);
   };
 
@@ -41,7 +40,7 @@ export function KnowledgeTab() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    uploadFiles(Array.from(files));
+    uploadFiles(Array.from(files), scope);
     // Reset so same file can be picked again
     e.target.value = "";
   };
@@ -60,7 +59,7 @@ export function KnowledgeTab() {
         className="hidden"
       />
 
-      {/* Search bar */}
+      {/* Search bar with add button */}
       <div className="p-3 border-b border-zinc-800/50 space-y-2">
         <div className="flex gap-1">
           <input
@@ -102,19 +101,6 @@ export function KnowledgeTab() {
             &larr; Back to documents
           </button>
         )}
-      </div>
-
-      {/* Scope picker */}
-      <div className="flex gap-1 px-3 py-2 border-b border-zinc-800/50">
-        {(["global", "project", "session"] as const).map((s) => (
-          <TabButton
-            key={s}
-            active={scope === s}
-            onClick={() => setScope(s)}
-          >
-            {s === "global" ? "Global" : s === "project" ? "Project" : "Session"}
-          </TabButton>
-        ))}
       </div>
 
       {/* Content area */}
@@ -183,7 +169,7 @@ export function KnowledgeTab() {
                   </div>
                 </div>
                 <button
-                  onClick={() => deleteDocument(doc.id)}
+                  onClick={() => deleteDocument(doc.id, { scope })}
                   className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity ml-2 shrink-0"
                   title="Delete"
                 >
@@ -198,7 +184,7 @@ export function KnowledgeTab() {
       {/* Bottom actions */}
       <div className="p-3 border-t border-zinc-800/50">
         <button
-          onClick={ingest}
+          onClick={() => ingest(scope)}
           disabled={loading}
           className="w-full px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 rounded disabled:opacity-40 text-zinc-300"
         >

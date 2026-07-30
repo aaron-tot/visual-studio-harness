@@ -19,7 +19,7 @@ export const knowledgeSearchTool: ToolDef = {
   inputSchema: z.object({
     query: z.string().min(1).describe("Search query (natural language or exact term)"),
     limit: z.number().int().min(1).max(50).default(10).describe("Maximum results to return"),
-    scope: z.enum(["global", "project", "session"]).default("session").describe("Scope to search in"),
+    scope: z.enum(["global", "project", "session"]).default("global").describe("Scope to search in"),
     mode: z
       .enum(["general", "code", "research", "documentation"])
       .default("general")
@@ -35,7 +35,7 @@ export const knowledgeSearchTool: ToolDef = {
   execute: async (args, ctx) => {
     const kb = getKbService();
     const { results, hybrid } = await kb.search(
-      (args.scope as "global" | "project" | "session") || "session",
+      (args.scope as "global" | "project" | "session") || "global",
       args.query,
       { limit: args.limit, mode: args.mode, filters: args.filters },
     );

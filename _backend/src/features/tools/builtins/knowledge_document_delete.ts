@@ -11,13 +11,13 @@ export const knowledgeDocumentDeleteTool: ToolDef = {
   permissionDefault: "allow",
   inputSchema: z.object({
     documentId: z.string().describe("UUID of the document to delete"),
-    scope: z.enum(["global", "project", "session"]).default("session").describe("Scope of the document"),
+    scope: z.enum(["global", "project", "session"]).default("global").describe("Scope of the document"),
     confirmed: z.boolean().default(false).describe("Must be true for user-created documents"),
   }),
   execute: async (args, ctx) => {
     const kb = getKbService();
     const result = await kb.deleteDocument(
-      (args.scope as "global" | "project" | "session") || "session",
+      (args.scope as "global" | "project" | "session") || "global",
       args.documentId,
       args.confirmed,
     );

@@ -12,7 +12,7 @@ export const knowledgeListTool: ToolDef = {
     { name: "count", type: "integer", description: "Number of documents", required: true },
   ],
   inputSchema: z.object({
-    scope: z.enum(["global", "project", "session"]).default("session").describe("Scope to list from"),
+    scope: z.enum(["global", "project", "session"]).default("global").describe("Scope to list from"),
     extension: z.string().optional().describe("Filter by extension"),
     status: z.enum(["pending", "processing", "ready", "failed"]).optional().describe("Filter by indexing status"),
     createdBy: z.string().optional().describe("Filter by creator"),
@@ -20,7 +20,7 @@ export const knowledgeListTool: ToolDef = {
   execute: async (args, ctx) => {
     const kb = getKbService();
     const docs = await kb.listDocuments(
-      (args.scope as "global" | "project" | "session") || "session",
+      (args.scope as "global" | "project" | "session") || "global",
       { extension: args.extension, status: args.status, createdBy: args.createdBy },
     );
 

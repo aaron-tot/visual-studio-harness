@@ -15,12 +15,12 @@ export const knowledgeDocumentEditTool: ToolDef = {
   inputSchema: z.object({
     documentId: z.string().describe("UUID of the document to edit"),
     content: z.string().min(1).describe("New document content"),
-    scope: z.enum(["global", "project", "session"]).default("session").describe("Scope of the document"),
+    scope: z.enum(["global", "project", "session"]).default("global").describe("Scope of the document"),
   }),
   execute: async (args, ctx) => {
     const kb = getKbService();
     const doc = await kb.editDocument(
-      (args.scope as "global" | "project" | "session") || "session",
+      (args.scope as "global" | "project" | "session") || "global",
       args.documentId,
       args.content,
     );

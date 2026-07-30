@@ -17,18 +17,18 @@ export const knowledgeDocumentCreateTool: ToolDef = {
     filename: z.string().min(1).describe("Filename (must end in .md or .txt)"),
     content: z.string().min(1).describe("Document content in markdown or plain text"),
     tags: z.array(z.string()).optional().describe("Optional tags"),
-    scope: z.enum(["global", "project", "session"]).default("session").describe("Scope for the document"),
+    scope: z.enum(["global", "project", "session"]).default("global").describe("Scope for the document"),
   }),
   execute: async (args, ctx) => {
     const kb = getKbService();
     const prefixedFilename = `${AGENT_FILENAME_PREFIX}${args.filename}`;
     const doc = await kb.createDocument(
-      (args.scope as "global" | "project" | "session") || "session",
+      (args.scope as "global" | "project" | "session") || "global",
       {
         filename: prefixedFilename,
         content: args.content,
         tags: args.tags,
-        scope: args.scope || "session",
+        scope: args.scope || "global",
         createdBy: "agent",
       },
     );

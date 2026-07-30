@@ -202,6 +202,35 @@ describe("Knowledge Base Schema", () => {
     expect(triggerNames).toContain("knowledge_fts_update");
     expect(triggerNames).toContain("knowledge_fts_delete");
   });
+
+  it("FTS5 trigger fires on chunk insert — runtime search verification", async () => {
+    const result = await openKnowledgeDb(tmpDir, "global");
+    const sqlite = result!.sqlite;
+
+    // Insert a document via raw SQL (same as Drizzle would)
+    const docId = "fts-test-doc-0001";
+    sqlite.run(
+      `INSERT INTO knowledge_documents (id, filename, file_hash, file_size, created_at, updated_at)
+       VALUES (?, 'search-test.md', 'abc', 50, datetime('now'), datetime('now'))`,
+      [docId],
+    );
+
+    // Insert a chunk — this should fire the FTS5 trigger
+    const chunkId = "fts-test-chunk-0001";
+    sqlite.run(
+      `INSERT INTO knowledge_chunks (id, document_id, content, section, chunk_index, hash, created_at)
+       VALUES (?, ?, 'uniquematchword for testing', 'Section', 0, 'hash1', datetime('now'))`,
+      [chunkId, docId],
+    );
+
+    // Search via FTS5 — the trigger should have populated knowledge_fts
+    const rows = sqlite
+      .query("SELECT chunk_id, content FROM knowledge_fts WHERE content MATCH ?")
+      .all("uniquematchword") as { chunk_id: string; content: string }[];
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((r) => r.chunk_id === chunkId)).toBe(true);
+  });
 });
 
 describe("resolveKnowledgeDir", () => {

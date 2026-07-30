@@ -18,7 +18,7 @@ export function registerKnowledgeRoutes(
     if (!q.query?.trim()) {
       return reply.code(400).send({ error: "query is required" });
     }
-    const scope = (q.scope as KbScope) || "session";
+    const scope = (q.scope as KbScope) || "global";
     const limit = q.limit ? parseInt(q.limit, 10) : 10;
     const { results, hybrid } = await kb.search(scope, q.query, {
       limit,
@@ -35,7 +35,7 @@ export function registerKnowledgeRoutes(
       status?: string;
       createdBy?: string;
     };
-    const scope = (q.scope as KbScope) || "session";
+    const scope = (q.scope as KbScope) || "global";
     const docs = await kb.listDocuments(scope, {
       extension: q.extension,
       status: q.status,
@@ -48,7 +48,7 @@ export function registerKnowledgeRoutes(
   app.get("/api/knowledge/documents/:id", async (request, reply) => {
     const params = request.params as { id: string };
     const q = request.query as { scope?: string; maxChars?: string };
-    const scope = (q.scope as KbScope) || "session";
+    const scope = (q.scope as KbScope) || "global";
     const maxChars = q.maxChars ? parseInt(q.maxChars, 10) : undefined;
     const doc = await kb.openDocument(scope, params.id, maxChars);
     if (!doc) {
@@ -72,7 +72,7 @@ export function registerKnowledgeRoutes(
       return reply.code(400).send({ error: "filename and content are required" });
     }
     const doc = await kb.createDocument(
-      (scope as KbScope) || "session",
+      (scope as KbScope) || "global",
       { filename, content, tags, createdBy },
     );
     return { ok: true, document: doc };
@@ -88,7 +88,7 @@ export function registerKnowledgeRoutes(
       return reply.code(400).send({ error: "content is required" });
     }
     const doc = await kb.editDocument(
-      (scope as KbScope) || "session",
+      (scope as KbScope) || "global",
       params.id,
       content,
     );
@@ -101,7 +101,7 @@ export function registerKnowledgeRoutes(
   }>("/api/knowledge/documents/:id", async (request, reply) => {
     const params = request.params as { id: string };
     const body = request.body as { scope?: string; confirmed?: boolean } | undefined;
-    const scope = (body?.scope as KbScope) || "session";
+    const scope = (body?.scope as KbScope) || "global";
     const confirmed = body?.confirmed ?? false;
     const result = await kb.deleteDocument(scope, params.id, confirmed);
     if (!result.ok) {
@@ -114,7 +114,7 @@ export function registerKnowledgeRoutes(
   app.post<{
     Body: { scope?: string };
   }>("/api/knowledge/ingest", async (request) => {
-    const scope = (request.body?.scope as KbScope) || "session";
+    const scope = (request.body?.scope as KbScope) || "global";
     const result = await kb.ingest(scope);
     return { ok: true, ...result };
   });
@@ -122,7 +122,7 @@ export function registerKnowledgeRoutes(
   // ── Groups ──────────────────────────────────────────────────────
   app.get("/api/knowledge/groups", async (request) => {
     const q = request.query as { scope?: string };
-    const scope = (q.scope as KbScope) || "session";
+    const scope = (q.scope as KbScope) || "global";
     const { listGroupRecords } = await import("../service-queries");
     const groups = await listGroupRecords(kb.baseDataDir, scope);
     return { groups };
@@ -135,7 +135,7 @@ export function registerKnowledgeRoutes(
     if (!name?.trim()) {
       return reply.code(400).send({ error: "name is required" });
     }
-    const scope = (bodyScope as KbScope) || "session";
+    const scope = (bodyScope as KbScope) || "global";
     const kbDb = await openKnowledgeDb(kb.baseDataDir, scope);
     if (!kbDb) return reply.code(500).send({ error: "Cannot open knowledge DB" });
 
@@ -153,7 +153,7 @@ export function registerKnowledgeRoutes(
   }>("/api/knowledge/groups/:id", async (request, reply) => {
     const params = request.params as { id: string };
     const body = request.body;
-    const scope = (body.scope as KbScope) || "session";
+    const scope = (body.scope as KbScope) || "global";
     const kbDb = await openKnowledgeDb(kb.baseDataDir, scope);
     if (!kbDb) return reply.code(500).send({ error: "Cannot open knowledge DB" });
 
@@ -171,7 +171,7 @@ export function registerKnowledgeRoutes(
   app.delete("/api/knowledge/groups/:id", async (request, reply) => {
     const params = request.params as { id: string };
     const q = request.query as { scope?: string };
-    const scope = (q.scope as KbScope) || "session";
+    const scope = (q.scope as KbScope) || "global";
     const kbDb = await openKnowledgeDb(kb.baseDataDir, scope);
     if (!kbDb) return reply.code(500).send({ error: "Cannot open knowledge DB" });
 

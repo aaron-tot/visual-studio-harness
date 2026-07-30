@@ -36,7 +36,7 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   searching: false,
   uploading: false,
   error: null,
-  scope: "session",
+  scope: "global",
 
   fetchDocuments: async () => {
     set({ loading: true, error: null });

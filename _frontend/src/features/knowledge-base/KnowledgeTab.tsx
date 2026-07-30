@@ -81,18 +81,17 @@ export function KnowledgeTab() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="px-2 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 rounded disabled:opacity-40 text-zinc-300 flex items-center gap-1"
-            title="Add files"
+            className="p-1 text-zinc-400 hover:text-zinc-200 disabled:opacity-40 hover:bg-zinc-700/50 rounded transition-colors"
+            title={uploading ? "Uploading..." : "Add files to knowledge base"}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 16 16"
+              viewBox="0 0 20 20"
               fill="currentColor"
-              className="w-3.5 h-3.5"
+              className="w-4 h-4"
             >
-              <path d="M8.75 3.75a.75.75 0 00-1.5 0v3.5h-3.5a.75.75 0 000 1.5h3.5v3.5a.75.75 0 001.5 0v-3.5h3.5a.75.75 0 000-1.5h-3.5v-3.5z" />
+              <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
             </svg>
-            {uploading ? "..." : "Add"}
           </button>
         </div>
         {showSearch && (

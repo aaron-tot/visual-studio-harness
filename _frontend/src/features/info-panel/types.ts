@@ -1,7 +1,7 @@
 import type { AuditEntry, NoteEntry, PlanEntry, ResearchEntry } from "../../lib/api";
 
 /** Live Usage tree (former Usage V2). */
-export type InfoPanelTab = "usage" | "designs" | "notepad" | "audits" | "research" | "graph";
+export type InfoPanelTab = "usage" | "designs" | "notepad" | "audits" | "research" | "graph" | "knowledge";
 export type PlanScope = "global" | "project" | "session";
 export type DocMode = "spec" | "plan";
 export type InjectSub = "full" | "path";

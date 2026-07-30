@@ -16,8 +16,10 @@ export async function keywordSearch(
     const ftsQuery = buildFtsQuery(query);
 
     // Build filter WHERE clause
+    // params order: [ftsQuery, ...filterParams, topK]
+    // Filters are embedded BEFORE LIMIT ?, so push them between ftsQuery and topK
     const whereClauses: string[] = [];
-    const params: unknown[] = [ftsQuery, topK];
+    const params: unknown[] = [ftsQuery];
 
     if (filters?.extension) {
       // Use LIKE on filename since there's no extension column
@@ -41,6 +43,9 @@ export async function keywordSearch(
       params.push(filters.createdBy);
     }
 
+    // TopK comes last — after all filter params, because LIMIT ? is the final placeholder
+    params.push(topK);
+
     const whereSQL = whereClauses.length > 0 ? `AND ${whereClauses.join(" AND ")}` : "";
 
     const rows = db
@@ -55,7 +60,15 @@ export async function keywordSearch(
       )
       .all(...params) as { id: string; document_id: string; filename: string; section: string; content: string; rank: number }[];
 
-    return rows;
+    return rows.map((r) => ({
+      chunkId: r.id,
+      documentId: r.document_id,
+      filename: r.filename,
+      section: r.section,
+      content: r.content,
+      score: r.rank,
+      rank: r.rank,
+    }));
   } catch (err: any) {
     console.warn("[knowledge] Keyword search unavailable:", err.message);
     return [];

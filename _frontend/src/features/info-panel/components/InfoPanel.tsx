@@ -10,15 +10,16 @@ import { NotesTab } from "./notes/NotesTab";
 import { GraphTab } from "./GraphTab/GraphTab";
 import { AuditsTab } from "./audits/AuditsTab";
 import { ResearchTab } from "./research/ResearchTab";
+import { KnowledgeTab } from "../../knowledge-base";
 
 /** Canonical tab order — same on every scope; filtered by visibility set. */
-const ALL_TABS: InfoPanelTab[] = ["designs", "notepad", "audits", "research", "usage", "graph"];
+const ALL_TABS: InfoPanelTab[] = ["designs", "notepad", "audits", "research", "usage", "graph", "knowledge"];
 
 /** Which tabs are visible per scope. */
 const SCOPE_TABS: Record<PlanScope, Set<InfoPanelTab>> = {
-  global: new Set(["designs", "notepad", "audits", "research"]),
-  project: new Set(["designs", "notepad", "audits", "research", "graph"]),
-  session: new Set(["usage", "designs", "notepad", "audits", "research"]),
+  global: new Set(["designs", "notepad", "audits", "research", "knowledge"]),
+  project: new Set(["designs", "notepad", "audits", "research", "graph", "knowledge"]),
+  session: new Set(["usage", "designs", "notepad", "audits", "research", "knowledge"]),
 };
 
 const MIN_W = 200;
@@ -162,6 +163,8 @@ export function InfoPanel() {
           <ResearchTab active={panel.isOpen} scope={scope} />
         ) : tab === "graph" ? (
           <GraphTab />
+        ) : tab === "knowledge" ? (
+          <KnowledgeTab />
         ) : (
           <EmptyState>Coming soon</EmptyState>
         )}

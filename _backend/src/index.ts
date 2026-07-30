@@ -38,6 +38,7 @@ import { abortOrphanedStreamingTurns } from "./features/chat/db-trace";
 import { ensureGlobalAgentsFile } from "./agent/system-prompt";
 import { KnowledgeBaseService } from "./features/knowledge-base/knowledge-base-service";
 import { registerKnowledgeRoutes } from "./features/knowledge-base/rest";
+import { setKbService } from "./features/tools/builtins/knowledge_common";
 import type { ConfigFile } from "../../_shared/types";
 
 // Double-click / no TTY: re-launch inside a terminal so logs stay visible.
@@ -180,6 +181,7 @@ async function main() {
   // Initialize Knowledge Base (enabled/disabled by config.knowledge.enabled)
   const knowledgeService = new KnowledgeBaseService(DATA_DIR);
   await knowledgeService.init(currentConfig.knowledge, currentConfig.providers);
+  setKbService(knowledgeService);
 
   registerConfigRoutes(app, DATA_DIR, () => currentConfig, (c) => {
     currentConfig = c;

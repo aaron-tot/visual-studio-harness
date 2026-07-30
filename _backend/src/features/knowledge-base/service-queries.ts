@@ -1,8 +1,11 @@
-import { and, eq, like, inArray, sql } from "drizzle-orm";
-import { openKnowledgeDb, type KbScope } from "./db";
+import { eq, like, and, sql } from "drizzle-orm";
+import { openKnowledgeDb, resolveKnowledgeDir, type KbScope } from "./db";
 import { knowledgeDocuments, knowledgeChunks, knowledgeDocumentVersions } from "./schema";
-import type { DocumentMeta, DocumentContent, SearchFilters } from "./types";
+import type { DocumentMeta, DocumentContent } from "./types";
 
+/**
+ * List documents with optional filters.
+ */
 export async function listDocuments(
   dataDir: string,
   scope: KbScope,
@@ -13,32 +16,54 @@ export async function listDocuments(
   const kb = await openKnowledgeDb(dataDir, scope, workspaceRoot, sessionId);
   if (!kb) return [];
 
-  const conditions = [eq(knowledgeDocuments.scope, scope)];
+  const conditions: ReturnType<typeof eq>[] = [eq(knowledgeDocuments.scope, scope)];
 
   if (filters?.status) {
     conditions.push(eq(knowledgeDocuments.status, filters.status));
   }
-  if (filters?.extension) {
-    conditions.push(like(knowledgeDocuments.filename, `%${filters.extension}`));
-  }
   if (filters?.createdBy) {
     conditions.push(eq(knowledgeDocuments.createdBy, filters.createdBy));
   }
-  if (filters?.tags && filters.tags.length > 0) {
-    for (const tag of filters.tags) {
-      conditions.push(like(knowledgeDocuments.tags, `%"${tag}"%`));
-    }
+
+  let rows;
+  if (filters?.extension) {
+    rows = await kb.db
+      .select()
+      .from(knowledgeDocuments)
+      .where(and(...conditions, like(knowledgeDocuments.filename, `%${filters.extension}`)))
+      .orderBy(sql`created_at DESC`);
+  } else {
+    rows = await kb.db
+      .select()
+      .from(knowledgeDocuments)
+      .where(and(...conditions))
+      .orderBy(sql`created_at DESC`);
   }
 
-  const rows = await kb.db
-    .select()
-    .from(knowledgeDocuments)
-    .where(and(...conditions))
-    .orderBy(knowledgeDocuments.updatedAt);
-
-  return rows.map(rowToMeta);
+  return rows.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    filepath: r.filepath,
+    title: r.title,
+    topics: safeJsonParse(r.topics),
+    summary: r.summary,
+    contentType: r.contentType,
+    fileHash: r.fileHash,
+    fileSize: r.fileSize,
+    status: r.status,
+    createdBy: r.createdBy,
+    scope: r.scope,
+    tags: safeJsonParse(r.tags),
+    chunkCount: r.chunkCount,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    extension: r.filename.includes(".") ? r.filename.split(".").pop() || "" : "",
+  }));
 }
 
+/**
+ * Open a document's full content by reading the latest version.
+ */
 export async function openDocument(
   dataDir: string,
   scope: KbScope,
@@ -58,17 +83,15 @@ export async function openDocument(
 
   if (!doc) return null;
 
-  // Get the latest version content
+  // Get latest version content
   const version = await kb.db
-    .select()
+    .select({ content: knowledgeDocumentVersions.content })
     .from(knowledgeDocumentVersions)
-    .where(eq(knowledgeDocumentVersions.documentId, id))
-    .orderBy(knowledgeDocumentVersions.versionNumber)
+    .where(eq(knowledgeDocumentVersions.documentId, doc.id))
+    .orderBy(sql`version_number DESC`)
     .get();
 
-  if (!version) return null;
-
-  let content = version.content;
+  let content = version?.content || "";
   let contentTruncated = false;
 
   if (maxChars && content.length > maxChars) {
@@ -85,31 +108,11 @@ export async function openDocument(
   };
 }
 
-function rowToMeta(row: typeof knowledgeDocuments.$inferSelect): DocumentMeta {
-  return {
-    id: row.id,
-    filename: row.filename,
-    filepath: row.filepath,
-    title: row.title,
-    topics: safeJsonParse<string[]>(row.topics, []),
-    summary: row.summary,
-    contentType: row.contentType,
-    fileHash: row.fileHash,
-    fileSize: row.fileSize,
-    status: row.status,
-    createdBy: row.createdBy,
-    scope: row.scope,
-    tags: safeJsonParse<string[]>(row.tags, []),
-    chunkCount: row.chunkCount,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
-function safeJsonParse<T>(raw: string, fallback: T): T {
+function safeJsonParse(value: string): string[] {
   try {
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return fallback;
+    return [];
   }
 }

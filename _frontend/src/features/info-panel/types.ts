@@ -1,7 +1,7 @@
-import type { PlanEntry } from "../../lib/api";
+import type { AuditEntry, NoteEntry, PlanEntry } from "../../lib/api";
 
 /** Live Usage tree (former Usage V2). */
-export type InfoPanelTab = "usage" | "designs" | "resources" | "research" | "graph";
+export type InfoPanelTab = "usage" | "designs" | "notepad" | "audits" | "research" | "graph";
 export type PlanScope = "global" | "project" | "session";
 export type DocMode = "spec" | "plan";
 export type InjectSub = "full" | "path";
@@ -20,6 +20,26 @@ export interface DesignGroup {
   isCurrent: boolean;
   designs: PlanEntry[];
   /** Location used for mutations on designs in this group */
+  location: DesignLocation;
+}
+
+export interface NoteGroup {
+  /** Stable unique key for expand state */
+  key: string;
+  label: string;
+  isCurrent: boolean;
+  notes: NoteEntry[];
+  /** Location used for mutations on notes in this group */
+  location: DesignLocation;
+}
+
+export interface AuditGroup {
+  /** Stable unique key for expand state */
+  key: string;
+  label: string;
+  isCurrent: boolean;
+  audits: AuditEntry[];
+  /** Location used for mutations on audits in this group */
   location: DesignLocation;
 }
 

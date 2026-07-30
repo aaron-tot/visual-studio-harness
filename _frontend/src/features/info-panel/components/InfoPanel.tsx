@@ -5,7 +5,9 @@ import type { InfoPanelTab } from "../types";
 import { TabButton, EmptyState } from "./ui";
 import { UsageV2Tab } from "./usage-v2";
 import { IdeasTab } from "./ideas/IdeasTab";
+import { NotesTab } from "./notes/NotesTab";
 import { GraphTab } from "./GraphTab/GraphTab";
+import { AuditsTab } from "./audits/AuditsTab";
 
 const MIN_W = 200;
 const MAX_W = 640;
@@ -110,11 +112,11 @@ export function InfoPanel() {
             <TabButton active={tab === "designs"} onClick={() => setTab("designs")}>
               Designs
             </TabButton>
-            <TabButton active={tab === "resources"} onClick={() => setTab("resources")}>
-              Resources
+            <TabButton active={tab === "notepad"} onClick={() => setTab("notepad")}>
+              Notepad
             </TabButton>
-            <TabButton active={tab === "research"} onClick={() => setTab("research")}>
-              Research
+            <TabButton active={tab === "audits"} onClick={() => setTab("audits")}>
+              Audits
             </TabButton>
             <TabButton active={tab === "graph"} onClick={() => setTab("graph")}>
               Graph
@@ -126,6 +128,10 @@ export function InfoPanel() {
           <UsageV2Tab />
         ) : tab === "designs" ? (
           <IdeasTab active={panel.isOpen} />
+        ) : tab === "notepad" ? (
+          <NotesTab active={panel.isOpen} />
+        ) : tab === "audits" ? (
+          <AuditsTab active={panel.isOpen} />
         ) : tab === "graph" ? (
           <GraphTab />
         ) : (

@@ -618,6 +618,199 @@ export function getAppInfo() {
   return fetchJson<AppInfo>(`${BASE}/app-info`);
 }
 
+// ── Notes ──────────────────────────────────────────────────────────
+
+export interface NoteMeta {
+  createdAt: string;
+  updatedAt: string;
+  archived?: boolean;
+}
+
+export interface NoteEntry {
+  name: string;
+  path: string;
+  title: string;
+  body: string;
+  meta: NoteMeta;
+}
+
+export function listNotes(opts?: { scope?: string; workspaceRoot?: string; sessionId?: string }) {
+  const params = new URLSearchParams();
+  if (opts?.scope) params.set("scope", opts.scope);
+  if (opts?.workspaceRoot) params.set("workspaceRoot", opts.workspaceRoot);
+  if (opts?.sessionId) params.set("sessionId", opts.sessionId);
+  const qs = params.toString();
+  return fetchJson<NoteEntry[]>(`${BASE}/notes${qs ? `?${qs}` : ""}`);
+}
+
+export function createNoteViaApi(body: {
+  name: string;
+  title: string;
+  body: string;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(`${BASE}/notes/create`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateNoteViaApi(body: {
+  name: string;
+  title?: string;
+  body?: string;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(`${BASE}/notes/update`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function archiveNoteViaApi(body: {
+  name: string;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; archivedPath: string }>(`${BASE}/notes/archive`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteNoteViaApi(body: {
+  name: string;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean }>(`${BASE}/notes/delete`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ── Audits ─────────────────────────────────────────────────────────
+
+import type { AuditDocument } from "../../_shared/types/audit";
+
+export type { AuditDocument } from "../../_shared/types/audit";
+
+export interface AuditEntry {
+  name: string;
+  path: string;
+  document: AuditDocument;
+}
+
+export function listAudits(opts?: { scope?: string; workspaceRoot?: string; sessionId?: string }) {
+  const params = new URLSearchParams();
+  if (opts?.scope) params.set("scope", opts.scope);
+  if (opts?.workspaceRoot) params.set("workspaceRoot", opts.workspaceRoot);
+  if (opts?.sessionId) params.set("sessionId", opts.sessionId);
+  const qs = params.toString();
+  return fetchJson<AuditEntry[]>(`${BASE}/audits${qs ? `?${qs}` : ""}`);
+}
+
+export function createAuditViaApi(body: {
+  name: string;
+  document: AuditDocument;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(`${BASE}/audits/create`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function readAuditViaApi(body: {
+  name: string;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ name: string; path: string; document: AuditDocument }>(
+    `${BASE}/audits/read`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function deleteAuditViaApi(body: {
+  name: string;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean }>(`${BASE}/audits/delete`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ── Audit Prompts ──────────────────────────────────────────────────
+
+import type { AuditPrompt } from "../../_shared/types/audit";
+
+export interface AuditPromptEntry {
+  id: string;
+  path: string;
+  prompt: AuditPrompt;
+}
+
+export function listAuditPrompts() {
+  return fetchJson<{ prompts: AuditPromptEntry[] }>(`${BASE}/audit-prompts`);
+}
+
+export function createAuditPromptViaApi(body: {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  auditType?: string;
+  endGoal?: string;
+  templateInstructions: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string; prompt: AuditPrompt }>(`${BASE}/audit-prompts/create`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function readAuditPromptViaApi(body: { id: string }) {
+  return fetchJson<{ prompt: AuditPrompt; path: string }>(`${BASE}/audit-prompts/read`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function editAuditPromptViaApi(body: {
+  id: string;
+  name?: string;
+  description?: string;
+  category?: string;
+  auditType?: string;
+  endGoal?: string;
+  templateInstructions?: string;
+}) {
+  return fetchJson<{ ok: boolean; prompt: AuditPrompt; path: string }>(`${BASE}/audit-prompts/edit`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteAuditPromptViaApi(body: { id: string }) {
+  return fetchJson<{ ok: boolean }>(`${BASE}/audit-prompts/delete`, {
+    method: "DELETE",
+    body: JSON.stringify(body),
+  });
+}
+
 export function runMasterTest() {
   return fetchJson<{ ok: boolean; pid?: number; error?: string }>(
     `${BASE}/run-master-test`,

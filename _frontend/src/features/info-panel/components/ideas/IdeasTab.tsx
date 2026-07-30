@@ -11,8 +11,6 @@ import { PanelSectionTitle, ResultBanner } from "../ui";
 import { ScopeSwitcher } from "./ScopeSwitcher";
 import { CreateIdeaForm } from "./CreateIdeaForm";
 import { DesignGroupList } from "./DesignGroupList";
-import { AuditsSection } from "./AuditsSection";
-
 interface IdeasTabProps {
   /** When false, skip network fetches (panel closed) */
   active: boolean;
@@ -185,8 +183,6 @@ Designs
         />
       </div>
 
-      <div className="h-px bg-zinc-800 shrink-0" />
-      <AuditsSection />
     </>
   );
 }

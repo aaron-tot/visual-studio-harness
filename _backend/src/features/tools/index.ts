@@ -19,6 +19,20 @@ import { designReadTool } from "./builtins/design_read";
 import { designEditTool } from "./builtins/design_edit";
 import { designAbandonTool } from "./builtins/design_abandon";
 import { designsListTool } from "./builtins/designs_list";
+import { notesListTool } from "./builtins/notes_list";
+import { notesReadTool } from "./builtins/notes_read";
+import { notesCreateTool } from "./builtins/notes_create";
+import { notesUpdateTool } from "./builtins/notes_update";
+import { notesArchiveTool } from "./builtins/notes_archive";
+import { auditCreateTool } from "./builtins/audit_create";
+import { auditListTool } from "./builtins/audit_list";
+import { auditReadTool } from "./builtins/audit_read";
+import { auditDeleteTool } from "./builtins/audit_delete";
+import { auditPromptCreateTool } from "./builtins/audit_prompt_create";
+import { auditPromptListTool } from "./builtins/audit_prompt_list";
+import { auditPromptReadTool } from "./builtins/audit_prompt_read";
+import { auditPromptEditTool } from "./builtins/audit_prompt_edit";
+import { auditPromptDeleteTool } from "./builtins/audit_prompt_delete";
 import { graphSearchTool } from "./builtins/graph_search";
 import { graphFilesTool } from "./builtins/graph_files";
 import { graphInfoTool } from "./builtins/graph_info";
@@ -52,6 +66,20 @@ const ALL_TOOLS: ToolDef[] = [
   designEditTool,
   designsListTool,
   designAbandonTool,
+  notesListTool,
+  notesReadTool,
+  notesCreateTool,
+  notesUpdateTool,
+  notesArchiveTool,
+  auditCreateTool,
+  auditListTool,
+  auditReadTool,
+  auditDeleteTool,
+  auditPromptCreateTool,
+  auditPromptListTool,
+  auditPromptReadTool,
+  auditPromptEditTool,
+  auditPromptDeleteTool,
   graphSearchTool,
   graphFilesTool,
   graphInfoTool,

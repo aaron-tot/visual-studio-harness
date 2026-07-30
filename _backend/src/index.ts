@@ -18,6 +18,9 @@ import { registerToolsRoutes } from "./rest/tools";
 import { registerSkillsRoutes } from "./rest/skills";
 import { registerAgentsRoutes } from "./rest/agents";
 import { registerPlansRoutes } from "./rest/plans";
+import { registerNotesRoutes } from "./rest/notes";
+import { registerAuditsRoutes } from "./rest/audits";
+import { registerAuditPromptsRoutes } from "./rest/audit-prompts";
 import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
 import { setWorkspaceGraphManager, getWorkspaceGraphManager } from "./core/workspaceGraph/service-singleton";
@@ -184,6 +187,9 @@ async function main() {
   registerSkillsRoutes(app, DATA_DIR);
   registerAgentsRoutes(app, DATA_DIR);
   registerPlansRoutes(app, DATA_DIR);
+  registerNotesRoutes(app, DATA_DIR);
+  registerAuditsRoutes(app, DATA_DIR);
+  registerAuditPromptsRoutes(app, DATA_DIR);
   registerMcpRoutes(app);
 
   // Workspace graph: create manager, register REST routes (per-workspace lookup via query param)
@@ -231,6 +237,17 @@ async function main() {
       installedAt = parsed.installedAt ?? null;
     } catch { /* file missing in dev or first run */ }
     return { buildTimestamp: buildTimestamp ?? null, installedAt };
+  });
+
+  // Open a folder in the OS file manager
+  app.get("/api/open-folder", async (req) => {
+    const path = (req.query as Record<string, string>).path;
+    if (!path) return { ok: false, error: "Missing path query param" };
+    const fullPath = resolve(import.meta.dir, "..", "..", "..", path);
+    if (!existsSync(fullPath)) return { ok: false, error: "Path does not exist" };
+    const cmd = process.platform === "win32" ? "explorer" : "xdg-open";
+    Bun.spawn([cmd, fullPath], { detached: true });
+    return { ok: true };
   });
 
   // Dev-only: run master e2e test in headed mode

@@ -28,6 +28,7 @@ import { auditCreateTool } from "./builtins/audit_create";
 import { auditListTool } from "./builtins/audit_list";
 import { auditReadTool } from "./builtins/audit_read";
 import { auditDeleteTool } from "./builtins/audit_delete";
+import { auditEditTool } from "./builtins/audit_edit";
 import { auditPromptCreateTool } from "./builtins/audit_prompt_create";
 import { auditPromptListTool } from "./builtins/audit_prompt_list";
 import { auditPromptReadTool } from "./builtins/audit_prompt_read";
@@ -75,6 +76,7 @@ const ALL_TOOLS: ToolDef[] = [
   auditListTool,
   auditReadTool,
   auditDeleteTool,
+  auditEditTool,
   auditPromptCreateTool,
   auditPromptListTool,
   auditPromptReadTool,

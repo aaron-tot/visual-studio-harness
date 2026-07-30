@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useChatStore } from "../../../../stores/chat";
 import { useSessionViewStore } from "../../../../stores/sessionView";
-import type { PlanScope } from "../../types";
+import type { DesignLocation, PlanScope } from "../../types";
 import { useAudits } from "../../hooks/useAudits";
 import { useAuditMutations } from "../../hooks/useAuditMutations";
 import { PanelSectionTitle, ResultBanner } from "../ui";
@@ -12,6 +12,16 @@ import { AuditPromptsList } from "./AuditPromptsList";
 
 interface AuditsTabProps {
   active: boolean;
+}
+
+function createLocation(
+  scope: PlanScope,
+  workspaceRoot: string | null | undefined,
+  sessionId: string | null | undefined
+): DesignLocation {
+  if (scope === "project") return { scope: "project", workspaceRoot: workspaceRoot?.trim() || undefined };
+  if (scope === "session") return { scope: "session", sessionId: sessionId || undefined };
+  return { scope: "global" };
 }
 
 export function AuditsTab({ active }: AuditsTabProps) {
@@ -78,6 +88,7 @@ export function AuditsTab({ active }: AuditsTabProps) {
           }
           busy={mutations.busy}
           onDelete={(name, loc) => void mutations.remove(name, loc)}
+          onSave={(name, doc) => void mutations.edit(name, doc, createLocation(scope, workspaceRoot, currentSessionId))}
         />
       </div>
 

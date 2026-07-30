@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
-import type { AuditEntry } from "../../../../lib/api";
+import type { AuditEntry, AuditDocument } from "../../../../lib/api";
 import type { AuditGroup } from "../../types";
 import { EmptyState } from "../ui";
 import { AuditCard } from "./AuditCard";
@@ -17,6 +17,7 @@ interface AuditGroupListProps {
   onToggleAudit: (key: string) => void;
   busy: boolean;
   onDelete: (auditName: string, location: AuditGroup["location"]) => void;
+  onSave?: (auditName: string, document: AuditDocument) => void;
 }
 
 function AuditRows({
@@ -25,12 +26,14 @@ function AuditRows({
   onToggleAudit,
   busy,
   onDelete,
+  onSave,
 }: {
   group: AuditGroup;
   expandedAudit: string | null;
   onToggleAudit: (key: string) => void;
   busy: boolean;
   onDelete: (auditName: string, location: AuditGroup["location"]) => void;
+  onSave?: (auditName: string, document: AuditDocument) => void;
 }) {
   return (
     <>
@@ -45,6 +48,7 @@ function AuditRows({
             busy={busy}
             onDelete={() => onDelete(audit.name, group.location)}
             location={group.location}
+            onSave={onSave}
           />
         );
       })}
@@ -63,6 +67,7 @@ export function AuditGroupList({
   onToggleAudit,
   busy,
   onDelete,
+  onSave,
 }: AuditGroupListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const total = groups.reduce((s, g) => s + g.audits.length, 0);
@@ -128,6 +133,7 @@ export function AuditGroupList({
             onToggleAudit={onToggleAudit}
             busy={busy}
             onDelete={onDelete}
+            onSave={onSave}
           />
         )}
       </div>
@@ -203,6 +209,7 @@ export function AuditGroupList({
                   onToggleAudit={onToggleAudit}
                   busy={busy}
                   onDelete={onDelete}
+                  onSave={onSave}
                 />
               ))}
           </div>

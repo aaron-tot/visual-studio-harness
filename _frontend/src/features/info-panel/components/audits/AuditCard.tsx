@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Copy, ExternalLink, Trash2 } from "lucide-react";
-import type { AuditEntry } from "../../../../lib/api";
+import type { AuditEntry, AuditDocument } from "../../../../lib/api";
 import type { DesignLocation } from "../../types";
 import { AuditJsonModal } from "./AuditJsonModal";
 
@@ -10,7 +10,8 @@ interface AuditCardProps {
   onToggle: () => void;
   busy: boolean;
   onDelete: () => void;
-  location: DesignLocation;
+  onSave?: (name: string, document: AuditDocument) => void;
+  location?: DesignLocation;
 }
 
 const severityColors: Record<string, string> = {
@@ -37,6 +38,7 @@ export function AuditCard({
   onToggle,
   busy,
   onDelete,
+  onSave,
 }: AuditCardProps) {
   const [showModal, setShowModal] = useState(false);
   const m = audit.document.meta;
@@ -216,7 +218,7 @@ export function AuditCard({
           </div>
 
           {/* Modal */}
-          {showModal && <AuditJsonModal audit={audit} onClose={() => setShowModal(false)} />}
+          {showModal && <AuditJsonModal audit={audit} onClose={() => setShowModal(false)} onSave={(name, doc) => { onSave?.(name, doc); setShowModal(false); }} />}
         </div>
       )}
     </div>

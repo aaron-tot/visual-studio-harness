@@ -58,6 +58,13 @@ export function renameSession(id: string, title: string) {
   });
 }
 
+export function starSession(id: string, starred: boolean) {
+  return fetchJson<{ ok: boolean }>(`${BASE}/sessions/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ starred }),
+  });
+}
+
 export function updateSessionWorkspace(id: string, workspaceRoot: string) {
   return fetchJson<{ ok: boolean; session?: SessionMeta; error?: string }>(
     `${BASE}/sessions/${id}`,
@@ -749,6 +756,19 @@ export function deleteAuditViaApi(body: {
 }) {
   return fetchJson<{ ok: boolean }>(`${BASE}/audits/delete`, {
     method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function editAuditViaApi(body: {
+  name: string;
+  document: AuditDocument;
+  scope?: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(`${BASE}/audits/edit`, {
+    method: "PUT",
     body: JSON.stringify(body),
   });
 }

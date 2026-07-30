@@ -104,6 +104,13 @@ export async function createAudit(
   return { path: nd };
 }
 
+export async function editAudit(
+  params: CreateAuditParams & { name: string }
+): Promise<{ path: string }> {
+  // Re-use createAudit — same dir resolution, write overwrites file
+  return createAudit(params);
+}
+
 export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
   app.get("/api/audits", async (request) => {
     const q = request.query as {
@@ -151,6 +158,40 @@ export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
       sessionId,
     });
     return { ok: true, ...result };
+  });
+
+  app.put<{
+    Body: {
+      name: string;
+      document: AuditDocument;
+      scope?: string;
+      workspaceRoot?: string;
+      sessionId?: string;
+    };
+  }>("/api/audits/edit", async (request, reply) => {
+    const { name, document, scope, workspaceRoot, sessionId } = request.body;
+    if (!name?.trim()) {
+      return reply.code(400).send({ error: "name is required" });
+    }
+    if (!document?.meta) {
+      return reply.code(400).send({ error: "document.meta is required" });
+    }
+    const sc = (scope as AuditScope) || "global";
+    if (sc === "project" && !workspaceRoot?.trim()) {
+      return reply.code(400).send({ error: "workspaceRoot is required for project scope" });
+    }
+    if (sc === "session" && !sessionId?.trim()) {
+      return reply.code(400).send({ error: "sessionId is required for session scope" });
+    }
+    // Ensure the audit directory exists before overwriting
+    const auditsDir = resolveAuditsDir(dataDir, sc, workspaceRoot, sessionId);
+    if (!auditsDir) {
+      return reply.code(400).send({ error: "Invalid scope" });
+    }
+    const nd = join(auditsDir, name.trim());
+    await mkdir(nd, { recursive: true });
+    await writeFile(join(nd, "audit.json"), JSON.stringify(document, null, 2) + "\n");
+    return { ok: true, path: nd };
   });
 
   app.post<{

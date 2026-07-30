@@ -41,6 +41,13 @@ import { graphImportsTool } from "./builtins/graph_imports";
 import { graphExportsTool } from "./builtins/graph_exports";
 import { graphManifestTool } from "./builtins/graph_manifest";
 import { graphStatusTool } from "./builtins/graph_status";
+import { knowledgeSearchTool } from "./builtins/knowledge_search";
+import { knowledgeOpenTool } from "./builtins/knowledge_open";
+import { knowledgeListTool } from "./builtins/knowledge_list";
+import { knowledgeIngestTool } from "./builtins/knowledge_ingest";
+import { knowledgeDocumentCreateTool } from "./builtins/knowledge_document_create";
+import { knowledgeDocumentEditTool } from "./builtins/knowledge_document_edit";
+import { knowledgeDocumentDeleteTool } from "./builtins/knowledge_document_delete";
 import { setDefaultTools } from "./perms/defaults";
 import type { ToolDef } from "./types";
 import type { AgentSettings } from "../../../../_shared/types";
@@ -89,6 +96,13 @@ const ALL_TOOLS: ToolDef[] = [
   graphExportsTool,
   graphManifestTool,
   graphStatusTool,
+  knowledgeSearchTool,
+  knowledgeOpenTool,
+  knowledgeListTool,
+  knowledgeIngestTool,
+  knowledgeDocumentCreateTool,
+  knowledgeDocumentEditTool,
+  knowledgeDocumentDeleteTool,
 ];
 
 export interface CreateRegistryOptions {

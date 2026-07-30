@@ -37,6 +37,7 @@ import { abortOrphanedStreamingTurns } from "./features/chat/db-trace";
 
 import { ensureGlobalAgentsFile } from "./agent/system-prompt";
 import { KnowledgeBaseService } from "./features/knowledge-base/knowledge-base-service";
+import { registerKnowledgeRoutes } from "./features/knowledge-base/rest";
 import type { ConfigFile } from "../../_shared/types";
 
 // Double-click / no TTY: re-launch inside a terminal so logs stay visible.
@@ -178,7 +179,7 @@ async function main() {
 
   // Initialize Knowledge Base (enabled/disabled by config.knowledge.enabled)
   const knowledgeService = new KnowledgeBaseService(DATA_DIR);
-  await knowledgeService.init(currentConfig.knowledge);
+  await knowledgeService.init(currentConfig.knowledge, currentConfig.providers);
 
   registerConfigRoutes(app, DATA_DIR, () => currentConfig, (c) => {
     currentConfig = c;
@@ -202,9 +203,7 @@ async function main() {
   // Workspace graph: create manager, register REST routes (per-workspace lookup via query param)
   registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphManager());
 
-  // Knowledge Base REST routes (Phase 6)
-  // import { registerKnowledgeRoutes } from "./features/knowledge-base/rest";
-  // registerKnowledgeRoutes(app, knowledgeService);
+  registerKnowledgeRoutes(app, knowledgeService);
 
   // Initialize workspace graphs in background (non-blocking) — gated by workspaceGraph config
   if (currentConfig.workspaceGraph !== false) {

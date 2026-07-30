@@ -42,7 +42,7 @@ export function resolveKnowledgeDir(
  * in _backend/src/db/client.ts). Drizzle ORM is used only for queries,
  * not for schema management.
  */
-function initSchema(sqlite: Database): void {
+function initSchema(sqlite: Database, embeddingDimension?: number): void {
   sqlite.run("PRAGMA journal_mode = WAL");
   sqlite.run("PRAGMA synchronous = NORMAL");
   sqlite.run("PRAGMA foreign_keys = ON");
@@ -226,7 +226,7 @@ function initSchema(sqlite: Database): void {
   `);
 
   // ── Virtual tables (vec0 + FTS5) ─────────────────────────────────
-  ensureVecTable(sqlite);
+  ensureVecTable(sqlite, embeddingDimension);
   ensureFtsTable(sqlite);
 }
 
@@ -238,6 +238,7 @@ export async function openKnowledgeDb(
   scope: KbScope,
   workspaceRoot?: string,
   sessionId?: string,
+  embeddingDimension?: number,
 ): Promise<KnowledgeScopeDb | null> {
   const dir = resolveKnowledgeDir(dataDir, scope, workspaceRoot, sessionId);
   if (!dir) return null;
@@ -251,7 +252,7 @@ export async function openKnowledgeDb(
   await mkdir(dir, { recursive: true });
   const sqlite = new Database(dbPath);
 
-  initSchema(sqlite);
+  initSchema(sqlite, embeddingDimension);
 
   const db = drizzle(sqlite, { schema });
   const entry: KnowledgeScopeDb = { path: dbPath, sqlite, db };

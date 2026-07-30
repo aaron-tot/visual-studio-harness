@@ -153,7 +153,6 @@ export const KnowledgeBaseConfigSchema = z.object({
 export const ConfigFileSchema = z.object({
   providers: z.array(ProviderConfigSchema),
   knowledge: KnowledgeBaseConfigSchema.optional(),
-  providers: z.array(ProviderConfigSchema),
   agents: z.record(AgentSettingsSchema).default({}),
   subagent: SubagentToolSettingsSchema.optional(),
   toolSettings: ToolSettingsSchema.optional(),

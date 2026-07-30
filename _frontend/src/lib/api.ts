@@ -913,3 +913,103 @@ export function runMasterTest() {
     { method: "POST" }
   );
 }
+
+// ── Knowledge Base API ──────────────────────────────────────────────
+
+export interface KnowledgeDocumentMeta {
+  id: string;
+  filename: string;
+  filepath: string;
+  title: string;
+  topics: string[];
+  summary: string;
+  contentType: string;
+  fileHash: string;
+  fileSize: number;
+  status: string;
+  createdBy: string;
+  scope: string;
+  tags: string[];
+  chunkCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeDocumentContent {
+  id: string;
+  filename: string;
+  title: string;
+  content: string;
+  contentTruncated?: boolean;
+}
+
+export interface KnowledgeSearchResult {
+  chunkId: string;
+  documentId: string;
+  filename: string;
+  section: string;
+  content: string;
+  score: number;
+}
+
+export function knowledgeSearch(query: string, opts?: { scope?: string; limit?: number; mode?: string }) {
+  const params = new URLSearchParams({ query });
+  if (opts?.scope) params.set("scope", opts.scope);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.mode) params.set("mode", opts.mode);
+  return fetchJson<{ results: KnowledgeSearchResult[]; hybrid: boolean; count: number }>(
+    `${BASE}/knowledge/search?${params}`
+  );
+}
+
+export function knowledgeListDocuments(opts?: { scope?: string; extension?: string; status?: string; createdBy?: string }) {
+  const params = new URLSearchParams();
+  if (opts?.scope) params.set("scope", opts.scope);
+  if (opts?.extension) params.set("extension", opts.extension);
+  if (opts?.status) params.set("status", opts.status);
+  if (opts?.createdBy) params.set("createdBy", opts.createdBy);
+  return fetchJson<{ documents: KnowledgeDocumentMeta[]; count: number }>(
+    `${BASE}/knowledge/documents?${params}`
+  );
+}
+
+export function knowledgeOpenDocument(id: string, opts?: { scope?: string; maxChars?: number }) {
+  const params = new URLSearchParams();
+  if (opts?.scope) params.set("scope", opts.scope);
+  if (opts?.maxChars) params.set("maxChars", String(opts.maxChars));
+  return fetchJson<KnowledgeDocumentContent>(`${BASE}/knowledge/documents/${id}?${params}`);
+}
+
+export function knowledgeCreateDocument(body: {
+  filename: string;
+  content: string;
+  tags?: string[];
+  createdBy?: string;
+  scope?: string;
+}) {
+  return fetchJson<{ ok: boolean; document: KnowledgeDocumentMeta }>(
+    `${BASE}/knowledge/documents`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function knowledgeEditDocument(id: string, body: { content: string; scope?: string }) {
+  return fetchJson<{ ok: boolean; document: KnowledgeDocumentMeta }>(
+    `${BASE}/knowledge/documents/${id}`,
+    { method: "PUT", body: JSON.stringify(body) }
+  );
+}
+
+export function knowledgeDeleteDocument(id: string, body?: { scope?: string; confirmed?: boolean }) {
+  return fetchJson<{ ok: boolean; deleted: boolean; documentId: string }>(
+    `${BASE}/knowledge/documents/${id}`,
+    { method: "DELETE", body: JSON.stringify(body ?? {}) }
+  );
+}
+
+export function knowledgeIngest(scope?: string) {
+  return fetchJson<{ ok: boolean; added: number; updated: number; deleted: number; failed: { filename: string; error: string }[] }>(
+    `${BASE}/knowledge/ingest`,
+    { method: "POST", body: JSON.stringify({ scope }) }
+  );
+}

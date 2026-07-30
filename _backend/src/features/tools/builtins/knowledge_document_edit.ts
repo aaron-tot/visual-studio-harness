@@ -23,6 +23,8 @@ export const knowledgeDocumentEditTool: ToolDef = {
       (args.scope as "global" | "project" | "session") || "global",
       args.documentId,
       args.content,
+      ctx.workspaceRoot,
+      ctx.sessionId,
     );
     return {
       title: "Document updated",

@@ -31,6 +31,8 @@ export const knowledgeDocumentCreateTool: ToolDef = {
         scope: args.scope || "global",
         createdBy: "agent",
       },
+      ctx.workspaceRoot,
+      ctx.sessionId,
     );
     return {
       title: "Document created",

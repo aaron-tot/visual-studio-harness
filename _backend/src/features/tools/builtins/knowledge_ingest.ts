@@ -13,7 +13,11 @@ export const knowledgeIngestTool: ToolDef = {
   }),
   execute: async (args, ctx) => {
     const kb = getKbService();
-    const result = await kb.ingest((args.scope as "global" | "project" | "session") || "global");
+    const result = await kb.ingest(
+      (args.scope as "global" | "project" | "session") || "global",
+      ctx.workspaceRoot,
+      ctx.sessionId,
+    );
     return {
       title: "Ingestion triggered",
       output: `Scan complete: ${result.added} added, ${result.updated} updated, ${result.deleted} deleted${

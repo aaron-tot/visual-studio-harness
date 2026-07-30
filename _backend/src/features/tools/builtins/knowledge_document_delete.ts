@@ -20,6 +20,8 @@ export const knowledgeDocumentDeleteTool: ToolDef = {
       (args.scope as "global" | "project" | "session") || "global",
       args.documentId,
       args.confirmed,
+      ctx.workspaceRoot,
+      ctx.sessionId,
     );
     if (!result.ok) {
       return {

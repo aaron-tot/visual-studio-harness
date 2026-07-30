@@ -26,7 +26,7 @@ export const knowledgeOpenTool: ToolDef = {
     // If not a UUID, treat as filename — resolve to UUID first
     let resolvedId = args.documentId;
     if (!UUID_RE.test(args.documentId)) {
-      const docs = await kb.listDocuments(scope, { extension: undefined, status: undefined, createdBy: undefined });
+      const docs = await kb.listDocuments(scope, { extension: undefined, status: undefined, createdBy: undefined }, ctx.workspaceRoot, ctx.sessionId);
       const match = docs.find((d) => d.filename === args.documentId);
       if (match) {
         resolvedId = match.id;
@@ -35,7 +35,7 @@ export const knowledgeOpenTool: ToolDef = {
       }
     }
 
-    const doc = await kb.openDocument(scope, resolvedId, args.maxChars);
+    const doc = await kb.openDocument(scope, resolvedId, args.maxChars, ctx.workspaceRoot, ctx.sessionId);
     if (!doc) {
       return { title: "Document not found", output: `No document with ID: ${resolvedId}` };
     }

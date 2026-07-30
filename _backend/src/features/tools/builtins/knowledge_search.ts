@@ -38,6 +38,8 @@ export const knowledgeSearchTool: ToolDef = {
       (args.scope as "global" | "project" | "session") || "global",
       args.query,
       { limit: args.limit, mode: args.mode, filters: args.filters },
+      ctx.workspaceRoot,
+      ctx.sessionId,
     );
 
     if (results.length === 0) {

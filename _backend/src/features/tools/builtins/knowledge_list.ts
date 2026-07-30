@@ -22,6 +22,8 @@ export const knowledgeListTool: ToolDef = {
     const docs = await kb.listDocuments(
       (args.scope as "global" | "project" | "session") || "global",
       { extension: args.extension, status: args.status, createdBy: args.createdBy },
+      ctx.workspaceRoot,
+      ctx.sessionId,
     );
 
     if (docs.length === 0) {

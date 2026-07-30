@@ -4,6 +4,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { AuditPrompt } from "../../../_shared/types/audit";
 import { SEED_PROMPTS } from "./audit-prompt-seeds";
+import { localISOString } from "../utils/datetime";
 
 const PROMPTS_DIR = "audit-prompts";
 
@@ -76,7 +77,7 @@ export async function createPrompt(
 ): Promise<{ prompt: AuditPrompt; path: string }> {
   const nd = join(promptsDir, params.id);
   if (existsSync(nd)) throw new Error("prompt id already exists");
-  const now = new Date().toISOString();
+  const now = localISOString();
   const prompt: AuditPrompt = {
     id: params.id,
     name: params.name,
@@ -128,7 +129,7 @@ export async function editPrompt(
     ...(updates.auditType !== undefined ? { auditType: updates.auditType as AuditPrompt["auditType"] } : {}),
     ...(updates.endGoal !== undefined ? { endGoal: updates.endGoal.trim() || undefined } : {}),
     ...(updates.templateInstructions !== undefined ? { templateInstructions: updates.templateInstructions.trim() } : {}),
-    updatedAt: new Date().toISOString(),
+    updatedAt: localISOString(),
   };
   await writeFile(join(nd, "prompt.json"), JSON.stringify(updated, null, 2) + "\n");
   return { prompt: updated, path: nd };

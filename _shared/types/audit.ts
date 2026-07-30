@@ -2,22 +2,26 @@ export type AuditSeverity = "critical" | "high" | "medium" | "low" | "info";
 
 export type AuditEffort = "quick" | "moderate" | "significant";
 
-export type AuditCategory =
-  | "implementation_completed"
-  | "general_audit"
-  | "code_review"
-  | "security_audit"
-  | "performance_audit"
-  | "architecture_review"
-  | "dependency_audit"
-  | "style_consistency"
-  | "config_audit"
-  | "memory_leak"
-  | "race_condition"
-  | "magic_numbers"
-  | "dead_code"
-  | "back_compat"
-  | "custom";
+/** Single source of truth for all audit category strings. */
+export const AUDIT_CATEGORIES = [
+  "implementation_completed",
+  "general_audit",
+  "code_review",
+  "security_audit",
+  "performance_audit",
+  "architecture_review",
+  "dependency_audit",
+  "style_consistency",
+  "config_audit",
+  "memory_leak",
+  "race_condition",
+  "magic_numbers",
+  "dead_code",
+  "back_compat",
+  "custom",
+] as const;
+
+export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 
 export interface AuditAttachment {
   designName?: string;

@@ -63,6 +63,8 @@ export function VersionCard({ label, doc, version, docType, planName, location, 
     }
   }, [editFields, planName, docType, version, location, onResult, onRefresh]);
 
+  const mergedDoc = editing && editFields ? { ...doc, ...editFields } : doc;
+
   return (
     <div className="border border-zinc-800 rounded">
       {/* Header bar */}
@@ -125,12 +127,12 @@ export function VersionCard({ label, doc, version, docType, planName, location, 
         {editing ? (
           viewMode === "pretty" ? (
             docType === "spec" ? (
-              <EditableSpecView spec={doc as SpecDocument} vNum={version} onChange={handleFieldChange} />
+              <EditableSpecView spec={mergedDoc as SpecDocument} vNum={version} onChange={handleFieldChange} />
             ) : (
-              <EditablePlanView plan={doc as PlanDocument} vNum={version} onChange={handleFieldChange} />
+              <EditablePlanView plan={mergedDoc as PlanDocument} vNum={version} onChange={handleFieldChange} />
             )
           ) : (
-            <RawJsonEditor doc={doc} onChange={handleFieldChange} />
+            <RawJsonEditor doc={mergedDoc} onChange={handleFieldChange} />
           )
         ) : (
           viewMode === "pretty" ? (

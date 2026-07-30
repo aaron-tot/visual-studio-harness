@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { ChevronDown, ChevronRight, Copy, ExternalLink, Trash2 } from "lucide-react";
 import type { AuditEntry } from "../../../../lib/api";
 import type { DesignLocation } from "../../types";
+import { AuditJsonModal } from "./AuditJsonModal";
 
 interface AuditCardProps {
   audit: AuditEntry;
@@ -36,6 +38,7 @@ export function AuditCard({
   busy,
   onDelete,
 }: AuditCardProps) {
+  const [showModal, setShowModal] = useState(false);
   const m = audit.document.meta;
   const isImplCheck = m.auditType === "implementation_completed";
   const hasAssessments = m.assessments && m.assessments.length > 0;
@@ -185,6 +188,15 @@ export function AuditCard({
             <button
               type="button"
               className="text-[9px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+              onClick={() => setShowModal(true)}
+              title="View full audit report"
+            >
+              <ExternalLink size={10} className="inline mr-0.5" />
+              View
+            </button>
+            <button
+              type="button"
+              className="text-[9px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
               disabled={busy}
               onClick={handleCopyReport}
               title="Copy audit JSON to clipboard"
@@ -202,6 +214,9 @@ export function AuditCard({
               Delete
             </button>
           </div>
+
+          {/* Modal */}
+          {showModal && <AuditJsonModal audit={audit} onClose={() => setShowModal(false)} />}
         </div>
       )}
     </div>

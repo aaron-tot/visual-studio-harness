@@ -225,9 +225,12 @@ export async function runTurn(
   try {
     let partSeq = 0;
     const resolveCtx: ResolveContext = { dataDir, sessionId, workspaceRoot };
+    const providerName = provider?.displayName;
+    const modelName = model?.modelName;
     const tools = registry
       ? await registry.toFilteredAiSdkTools((callId) => ({
           sessionId, turnId: traceTurnId, workspaceRoot, dataDir,
+          providerName, modelName,
           toolSettings: config.toolSettings,
           abortSignal: abortSignal ?? new AbortController().signal,
           callId, hookCtx,

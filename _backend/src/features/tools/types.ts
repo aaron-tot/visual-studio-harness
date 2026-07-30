@@ -68,6 +68,10 @@ export interface BaseToolContext {
   graphService?: WorkspaceGraphService | null;
   /** Per-tool timeout/limit settings from config.json, injected at turn start */
   toolSettings?: ToolSettings;
+  /** Provider name (displayName) of the LLM that invoked this tool */
+  providerName?: string;
+  /** Model name (modelName) of the LLM that invoked this tool */
+  modelName?: string;
 }
 
 /** Extended context used only by the task tool — adds subagent/slot/agent callbacks. */

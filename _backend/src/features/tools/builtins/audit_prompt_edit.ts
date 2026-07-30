@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ToolDef } from "../types";
+import { editPrompt, resolveAuditPromptsDir } from "../../../rest/audit-prompts";
 
 export const auditPromptEditTool: ToolDef = {
   name: "audit_prompt_edit",
@@ -18,32 +19,37 @@ export const auditPromptEditTool: ToolDef = {
     templateInstructions: z.string().optional().describe("New template instructions"),
   }),
   execute: async (args, ctx) => {
-    const url = `${ctx.apiBase || "http://localhost:3001"}/api/audit-prompts/edit`;
-    const res = await fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: args.id,
-        name: args.name,
-        description: args.description,
-        category: args.category,
-        auditType: args.auditType,
-        endGoal: args.endGoal,
-        templateInstructions: args.templateInstructions,
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "HTTP " + res.status }));
+    const promptsDir = resolveAuditPromptsDir(ctx.dataDir);
+
+    // Only pass defined fields
+    const updates: Record<string, string | undefined> = {};
+    if (args.name !== undefined) updates.name = args.name;
+    if (args.description !== undefined) updates.description = args.description;
+    if (args.category !== undefined) updates.category = args.category;
+    if (args.auditType !== undefined) updates.auditType = args.auditType;
+    if (args.endGoal !== undefined) updates.endGoal = args.endGoal;
+    if (args.templateInstructions !== undefined) updates.templateInstructions = args.templateInstructions;
+
+    try {
+      const result = await editPrompt(promptsDir, args.id, updates as Parameters<typeof editPrompt>[2]);
+      if (!result) {
+        return {
+          title: "Not found",
+          output: `Prompt "${args.id}" not found.`,
+          metadata: { updated: false },
+        };
+      }
+      return {
+        title: "Audit prompt updated",
+        output: `Updated audit prompt "${args.id}".`,
+        metadata: { updated: true },
+      };
+    } catch (e) {
       return {
         title: "Failed to edit prompt",
-        output: `Error: ${err.error || "HTTP " + res.status}`,
+        output: `Error editing prompt "${args.id}": ${(e as Error).message}`,
         metadata: { updated: false },
       };
     }
-    return {
-      title: "Audit prompt updated",
-      output: `Updated audit prompt "${args.id}".`,
-      metadata: { updated: true },
-    };
   },
 };

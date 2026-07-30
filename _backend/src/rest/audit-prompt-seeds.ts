@@ -1,4 +1,7 @@
 import type { AuditPrompt } from "../../../_shared/types/audit";
+import { localISOString } from "../utils/datetime";
+
+const NOW = localISOString();
 
 export const SEED_PROMPTS: AuditPrompt[] = [
   {
@@ -9,8 +12,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "security_audit",
     endGoal: "Scan every .ts file in src/ for hardcoded secrets, XSS sinks (dangerouslySetInnerHTML, innerHTML), SQL injection risks, command injection (exec, spawn with unsanitized input), unsafe eval, path traversal, insecure deserialization, missing authorization checks, and any OWASP Top 10 vulnerabilities.",
     templateInstructions: "Audit the codebase for security vulnerabilities — hardcoded secrets, XSS sinks, SQL injection risks, command injection, path traversal, insecure deserialization, missing input validation, weak crypto, missing authorization checks, and any OWASP Top 10 issues.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "memory-leak",
@@ -20,8 +23,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "memory_leak",
     endGoal: "Audit src/ (and key subdirectories) for memory leaks — unclosed EventSource/WebSocket connections, detached DOM refs stored in closures, setInterval/setTimeout without cleanup in useEffect, growing listener arrays, unbounded in-memory caches, closed-over variables preventing GC, any resource not released after use, and React component unmount cleanup gaps.",
     templateInstructions: "Audit the codebase for memory leaks — unclosed connections, detached DOM refs, setInterval without cleanup, growing listeners, unbounded caches, closed-over references preventing GC, and any resources not released after use.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "race-condition",
@@ -31,8 +34,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "race_condition",
     endGoal: "Audit the codebase for race conditions — shared mutable state without synchronization (global variables, module-level state mutated concurrently), async operations with assumed ordering (fire-and-forget that expects completion), promise chains with interleaving side effects, non-atomic read-write patterns in event handlers, uncoordinated React setState calls that depend on each other, and any concurrent access to shared resources without locks or mutexes.",
     templateInstructions: "Audit the codebase for race conditions — shared mutable state without synchronization, async operations with assumed ordering, promise chains with interleaving side effects, non-atomic read-write patterns in event handlers, and missing locks on concurrent access.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "magic-numbers",
@@ -42,8 +45,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "magic_numbers",
     endGoal: "Scan every .ts/.tsx file for magic numbers and hardcoded values — numerical literals without named constants, hardcoded URLs, API endpoints, timeouts, delays, IDs, secrets, passwords, tokens, file paths, port numbers, and any inline literal that should be a named constant, config entry, or environment variable.",
     templateInstructions: "Audit the codebase for magic numbers and hardcoded values — numerical literals without named constants, hardcoded URLs, API endpoints, timeouts, delays, IDs, secrets, passwords, tokens, and any value that should be a named constant, config entry, or environment variable.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "dead-code",
@@ -53,8 +56,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "dead_code",
     endGoal: "Audit the codebase for dead code — unused exports (functions/types/variables never imported elsewhere), orphaned functions no longer called, unreachable branches after returns/throws, commented-out code blocks left in source, deprecated files no longer imported by any active module, dead CSS selectors, and any code paths that cannot be reached from the application entry points.",
     templateInstructions: "Audit the codebase for dead code — unused exports, orphaned functions, unreachable branches, commented-out code, deprecated files no longer imported, dead CSS selectors, and any code paths that cannot be reached or are never called from the entry points.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "back-compat",
@@ -64,8 +67,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "back_compat",
     endGoal: "Audit the codebase for backward compatibility issues — removed public exports that are still imported elsewhere, changed function signatures without overloads, renamed interfaces/types without aliases, altered return types, removed URL endpoints, changed config shapes, removed environment variables that code still reads, and any breaking changes that would silently break consumers of the public API.",
     templateInstructions: "Audit the codebase for backward compatibility issues — removed public exports, changed function signatures, renamed interfaces, altered return types, removed URL endpoints, changed config shapes, any breaking changes that would affect consumers of the public API.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "architecture-review",
@@ -75,8 +78,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "architecture_review",
     endGoal: "Review the architecture of the codebase — module coupling and cohesion metrics, circular dependency chains, single responsibility violations in large modules, god objects or god functions doing too much, excessive indirection (too many layers for simple operations), leaky abstractions exposing implementation details, inappropriate intimacy between layers, dead architecture (layers that nothing uses), and whether current structure matches the intended architecture.",
     templateInstructions: "Review the architecture of the codebase — module coupling and cohesion, circular dependencies, single responsibility violations, excessive indirection, god objects, leaky abstractions, inappropriate intimacy between layers, and whether the structure matches its intended architecture.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "performance",
@@ -86,8 +89,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "performance_audit",
     endGoal: "Audit the codebase for performance issues — N+1 database/API queries in loops, large object allocations in hot code paths, unnecessary React re-renders (missing memoization, inline function/object props), layout thrashing (read-offsetWidth then write-style in sync), expensive operations inside map/reduce/filter, missing useMemo/useCallback on expensive computations, blocking the main thread with synchronous operations in async contexts, and any O(n²) or worse algorithmic patterns in hot code.",
     templateInstructions: "Audit the codebase for performance issues — N+1 queries, large object allocations in hot paths, unnecessary re-renders, layout thrashing, expensive operations in loops, missing memoization, blocking the main thread with sync ops, and any O(n²) or worse patterns in hot code.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "config-hardcoding",
@@ -97,8 +100,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "config_audit",
     endGoal: "Audit the codebase for configuration issues — values that should be configurable (via env vars, config files, or constants) but are hardcoded as literals, missing config validation that would catch misconfiguration early, silent fallback defaults that hide missing configuration, environment-specific values not using environment variables, hardcoded file paths that differ per deployment, hardcoded ports or hostnames, and any deployment environment assumptions baked into source code.",
     templateInstructions: "Audit the codebase for configuration issues — values that should be configurable but are hardcoded, missing config validation, silent defaults, environment-specific values not using env vars, hardcoded file paths, hardcoded ports or hostnames, and any assumption that depends on the deployment environment.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "style-consistency",
@@ -108,8 +111,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "style_consistency",
     endGoal: "Audit the codebase for style and consistency issues — inconsistent naming conventions across files (camelCase vs snake_case vs PascalCase), mixed import/export styles (default vs named exports within a module), inconsistent error handling patterns (some callbacks return errors, others throw), mixed quote or semicolon usage not caught by linter, missing or inconsistent JSDoc/TSDoc on public APIs, and any code that doesn't match documented project conventions.",
     templateInstructions: "Audit the codebase for style and consistency issues — inconsistent naming conventions (camelCase vs snake_case vs PascalCase), mixed import styles, inconsistent error handling patterns, mixed quote styles, missing or inconsistent JSDoc, and any code that doesn't match the established project conventions.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "implementation-check",
@@ -118,8 +121,8 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     category: "implementation",
     auditType: "implementation_completed",
     templateInstructions: "Run an implementation_completed audit. Attach one or more designs (with optional spec/plan versions) and check every aspect against the codebase. For each spec requirement and plan step: (1) verify it's implemented, (2) check it's implemented correctly, (3) identify any dead code left behind from this implementation, (4) identify old code that should have been replaced but wasn't, (5) assess whether the code works as a user would reasonably expect based on the documents. Use the assessments[] array for per-aspect status and the findings[] array for specific issues.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
     id: "custom",
@@ -129,7 +132,7 @@ export const SEED_PROMPTS: AuditPrompt[] = [
     auditType: "custom",
     endGoal: "",
     templateInstructions: "Run a custom audit. Specify what you want analyzed (e.g., a specific file, a pattern, a concern) and I'll investigate and report findings in the standardized audit format.",
-    createdAt: "2026-07-30T00:00:00.000Z",
-    updatedAt: "2026-07-30T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
   },
 ];

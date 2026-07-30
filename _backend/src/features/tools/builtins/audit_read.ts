@@ -44,10 +44,25 @@ export const auditReadTool: ToolDef = {
     }
     const raw = await readFile(fp, "utf-8");
     const data = JSON.parse(raw);
+    const m = data.meta || {};
     return {
-      title: data.meta?.title || args.name,
+      title: m.title || args.name,
       output: raw,
-      metadata: { found: true, name: args.name, title: data.meta?.title || args.name },
+      metadata: {
+        found: true,
+        name: args.name,
+        title: m.title || args.name,
+        auditType: m.auditType,
+        totalFindings: m.totalFindings,
+        criticalCount: m.criticalCount,
+        highCount: m.highCount,
+        mediumCount: m.mediumCount,
+        lowCount: m.lowCount,
+        infoCount: m.infoCount,
+        summary: m.summary,
+        overallStatus: m.overallStatus,
+        scope: m.scope,
+      },
     };
   },
 };

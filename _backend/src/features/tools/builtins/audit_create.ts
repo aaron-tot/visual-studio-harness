@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { ToolDef } from "../types";
+import { AUDIT_CATEGORIES } from "../../../../../_shared/types/audit";
 import { createAudit } from "../../../rest/audits";
+import { localISOString } from "../../../utils/datetime";
 
 export const auditCreateTool: ToolDef = {
   name: "audit_create",
@@ -18,23 +20,7 @@ export const auditCreateTool: ToolDef = {
     name: z.string().min(1).describe("Unique slug name for the audit directory (e.g. 'memleak-audit-main')"),
     title: z.string().min(1).describe("Human-readable title (e.g. 'Memory Leak Audit: Main Codebase')"),
     auditType: z
-      .enum([
-        "implementation_completed",
-        "general_audit",
-        "code_review",
-        "security_audit",
-        "performance_audit",
-        "architecture_review",
-        "dependency_audit",
-        "style_consistency",
-        "config_audit",
-        "memory_leak",
-        "race_condition",
-        "magic_numbers",
-        "dead_code",
-        "back_compat",
-        "custom",
-      ])
+      .enum(AUDIT_CATEGORIES)
       .describe(
         "Audit category. 'implementation_completed' compares code vs spec/plan. " +
           "'general_audit' is a free-form named audit with endGoal. Use specific categories for targeted sweeps."
@@ -98,9 +84,9 @@ export const auditCreateTool: ToolDef = {
         title: args.title,
         auditType: args.auditType,
         endGoal: args.endGoal,
-        createdAt: new Date().toISOString(),
+        createdAt: localISOString(),
         createdBy: "agent" as const,
-        agentModel: args.agentModel || undefined,
+        agentModel: args.agentModel || [ctx.providerName, ctx.modelName].filter(Boolean).join(" / ") || undefined,
         scope,
         workspaceRoot: ctx.workspaceRoot || undefined,
         sessionId: ctx.sessionId || undefined,
@@ -120,19 +106,28 @@ export const auditCreateTool: ToolDef = {
       rawReport: args.rawReport,
     };
 
-    const result = await createAudit({
-      name: args.name,
-      document,
-      dataDir: ctx.dataDir,
-      scope,
-      workspaceRoot: ctx.workspaceRoot,
-      sessionId: ctx.sessionId,
-    });
+    try {
+      const result = await createAudit({
+        name: args.name,
+        document,
+        dataDir: ctx.dataDir,
+        scope,
+        workspaceRoot: ctx.workspaceRoot,
+        sessionId: ctx.sessionId,
+      });
 
-    return {
-      title: "Audit created",
-      output: `Created audit "${args.title}" as "${args.name}" in ${scope} scope. ${args.findings.length} findings (${severityCounts.critical} critical, ${severityCounts.high} high, ${severityCounts.medium} medium, ${severityCounts.low} low, ${severityCounts.info} info).`,
-      metadata: { created: true, name: args.name, path: result.path },
-    };
+      return {
+        title: "Audit created",
+        output: `Created audit "${args.title}" as "${args.name}" in ${scope} scope. ${args.findings.length} findings (${severityCounts.critical} critical, ${severityCounts.high} high, ${severityCounts.medium} medium, ${severityCounts.low} low, ${severityCounts.info} info).`,
+        metadata: { created: true, name: args.name, path: result.path },
+      };
+    } catch (err) {
+      return {
+        title: "Failed to create audit",
+        output: `Error creating audit "${args.name}": ${(err as Error).message}`,
+        metadata: { created: false },
+        isError: true,
+      };
+    }
   },
 };

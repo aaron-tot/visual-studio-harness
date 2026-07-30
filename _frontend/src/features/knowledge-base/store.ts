@@ -25,6 +25,8 @@ interface KnowledgeState {
   deleteDocument: (id: string, confirmed?: boolean) => Promise<void>;
   ingest: () => Promise<void>;
   setScope: (scope: "global" | "project" | "session") => void;
+  uploadFiles: (files: File[]) => Promise<void>;
+  uploading: boolean;
 }
 
 export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
@@ -32,6 +34,7 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   searchResults: [],
   loading: false,
   searching: false,
+  uploading: false,
   error: null,
   scope: "session",
 
@@ -91,5 +94,25 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   setScope: (scope) => {
     set({ scope });
     get().fetchDocuments();
+  },
+
+  uploadFiles: async (files) => {
+    set({ uploading: true, error: null });
+    try {
+      const scope = get().scope;
+      for (const file of files) {
+        const content = await file.text();
+        await knowledgeCreateDocument({
+          filename: file.name,
+          content,
+          scope,
+        });
+      }
+      await get().fetchDocuments();
+    } catch (err: any) {
+      set({ error: err.message, uploading: false });
+    } finally {
+      set({ uploading: false });
+    }
   },
 }));

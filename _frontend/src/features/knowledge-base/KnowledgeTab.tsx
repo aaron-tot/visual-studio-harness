@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useKnowledgeStore } from "./store";
 import { TabButton, EmptyState } from "../info-panel/components/ui";
 
@@ -8,6 +8,7 @@ export function KnowledgeTab() {
     searchResults,
     loading,
     searching,
+    uploading,
     error,
     scope,
     fetchDocuments,
@@ -15,8 +16,10 @@ export function KnowledgeTab() {
     deleteDocument,
     ingest,
     setScope,
+    uploadFiles,
   } = useKnowledgeStore();
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
@@ -35,10 +38,28 @@ export function KnowledgeTab() {
     setShowSearch(false);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    uploadFiles(Array.from(files));
+    // Reset so same file can be picked again
+    e.target.value = "";
+  };
+
   const results = showSearch ? searchResults : null;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".md,.txt,.json,.yaml,.yml,.json5,.csv,.xml,.toml,.ini,.cfg,.conf,.env,.sh,.js,.ts,.jsx,.tsx,.css,.html,.py,.rb,.go,.rs,.java,.sql"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
       {/* Search bar */}
       <div className="p-3 border-b border-zinc-800/50 space-y-2">
         <div className="flex gap-1">
@@ -56,6 +77,22 @@ export function KnowledgeTab() {
             className="px-2 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 rounded disabled:opacity-40 text-zinc-300"
           >
             {searching ? "..." : "Search"}
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="px-2 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 rounded disabled:opacity-40 text-zinc-300 flex items-center gap-1"
+            title="Add files"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              className="w-3.5 h-3.5"
+            >
+              <path d="M8.75 3.75a.75.75 0 00-1.5 0v3.5h-3.5a.75.75 0 000 1.5h3.5v3.5a.75.75 0 001.5 0v-3.5h3.5a.75.75 0 000-1.5h-3.5v-3.5z" />
+            </svg>
+            {uploading ? "..." : "Add"}
           </button>
         </div>
         {showSearch && (

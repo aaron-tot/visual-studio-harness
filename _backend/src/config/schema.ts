@@ -128,7 +128,31 @@ export const SnippetConfigSchema = z.object({
   content: z.string(),
 });
 
+export const KnowledgeBaseEmbeddingConfigSchema = z.object({
+  providerId: z.string().default("ollama"),
+  model: z.string().default("nomic-embed-text"),
+  batchSize: z.number().int().positive().default(50),
+});
+
+export const KnowledgeBaseSearchConfigSchema = z.object({
+  vectorWeight: z.number().min(0).max(1).default(0.6),
+  keywordWeight: z.number().min(0).max(1).default(0.3),
+  metadataWeight: z.number().min(0).max(1).default(0.1),
+  topK: z.number().int().min(1).max(100).default(10),
+  reranking: z.boolean().default(false),
+});
+
+export const KnowledgeBaseConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  sourcesPath: z.string().default("knowledge/sources"),
+  dbPath: z.string().default("knowledge/knowledge.db"),
+  embedding: KnowledgeBaseEmbeddingConfigSchema.default({}),
+  search: KnowledgeBaseSearchConfigSchema.default({}),
+});
+
 export const ConfigFileSchema = z.object({
+  providers: z.array(ProviderConfigSchema),
+  knowledge: KnowledgeBaseConfigSchema.optional(),
   providers: z.array(ProviderConfigSchema),
   agents: z.record(AgentSettingsSchema).default({}),
   subagent: SubagentToolSettingsSchema.optional(),

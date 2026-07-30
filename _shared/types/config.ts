@@ -132,8 +132,27 @@ export interface WorkspaceManifestSettings {
   postfix?: string;
 }
 
+export interface KnowledgeBaseConfig {
+  enabled: boolean;
+  sourcesPath: string;
+  dbPath: string;
+  embedding: {
+    providerId: string;
+    model: string;
+    batchSize: number;
+  };
+  search: {
+    vectorWeight: number;
+    keywordWeight: number;
+    metadataWeight: number;
+    topK: number;
+    reranking: boolean;
+  };
+}
+
 export interface ConfigFile {
   providers: ProviderConfig[];
+  knowledge?: KnowledgeBaseConfig;
   agents?: Record<string, AgentSettings>;
   subagent?: SubagentToolSettings;
   toolSettings?: ToolSettings;

@@ -150,21 +150,23 @@ export async function buildModelMessages(
             break;
           }
           case "tool": {
-            if (part.status === "running" && options.includeToolCalls) {
+            if (options.includeToolCalls && part.toolCallId) {
+              const args = data.args ?? {};
               contentParts.push({
                 type: "tool-call",
-                toolCallId: part.toolCallId ?? "",
+                toolCallId: part.toolCallId,
                 toolName: part.toolName ?? "",
-                input: data.args ?? {},
+                input: args,
               });
-            } else if (part.status === "completed" && options.includeToolResults) {
+            }
+            if (options.includeToolResults && part.status === "completed" && part.toolCallId) {
               const rawOutput = data.result ?? data.output ?? "";
               toolResultMessages.push({
                 role: "tool",
                 content: [
                   {
                     type: "tool-result",
-                    toolCallId: part.toolCallId ?? "",
+                    toolCallId: part.toolCallId,
                     toolName: part.toolName ?? "",
                     output: { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) },
                   },

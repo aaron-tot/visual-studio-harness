@@ -183,6 +183,12 @@ export const ConfigFileSchema = z.object({
   messagePanelFullWidth: z.boolean().default(false),
   messagePanelPinnedDefault: z.boolean().default(false),
   showSessionName: z.boolean().default(false),
+  includeFailedTurnsInHistory: z.boolean().default(true),
+  includeToolCallsInHistory: z.boolean().default(true),
+  includeToolResultsInHistory: z.boolean().default(true),
+  includeReasoningInHistory: z.boolean().default(false),
+  includePatchesInHistory: z.boolean().default(false),
+  contextMaxTurns: z.number().int().positive().optional(),
   /** Error message string that should trigger a streaming retry (case-insensitive substring match) */
   streamRetryErrorName: z.string().default("Streaming response failed"),
   /** Maximum number of retries for the streamRetryErrorName error (default: 3) */

@@ -35,7 +35,7 @@ import { ensureGlobal } from "./features/tools/perms/store";
 import { migrateToSqlite } from "./storage/migrate";
 import { abortOrphanedStreamingTurns } from "./features/chat/db-trace";
 
-import { ensureGlobalAgentsFile } from "./agent/system-prompt";
+import { ensureGlobalSystemPromptFile } from "./agent/system-prompt";
 import { KnowledgeBaseService } from "./features/knowledge-base/knowledge-base-service";
 import { registerKnowledgeRoutes } from "./features/knowledge-base/rest";
 import { setKbService } from "./features/tools/builtins/knowledge_common";
@@ -135,11 +135,11 @@ async function main() {
     throw err;
   }
 
-  // Spec: if global agents.md missing, seed from agents.default.ts then always read disk.
+  // Spec: if global systemPromptBase.md missing, seed from defaults then always read disk.
   try {
-    await ensureGlobalAgentsFile(DATA_DIR, MODE);
+    await ensureGlobalSystemPromptFile(DATA_DIR, MODE);
   } catch (err) {
-    console.error("Failed to ensure agents.md:", err);
+    console.error("Failed to ensure systemPromptBase.md:", err);
   }
 
   // Phase A: hooks bus ready; emit sites land in Phase B

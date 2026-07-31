@@ -1,16 +1,16 @@
 import { mkdir, readFile, copyFile, access } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { atomicWriteFile } from "../tools/host/atomic-write";
-import { buildDefaultGlobalAgentsMarkdown } from "./defaults";
-import { globalAgentsPath, legacyGlobalAgentsPath, seedsDir, seedSubdirForMode } from "./paths";
+import { buildDefaultGlobalSystemPrompt } from "./defaults";
+import { globalSystemPromptPath, legacyGlobalAgentsPath, seedsDir, seedSubdirForMode } from "./paths";
 import { readAgentsFile } from "./reader";
 
 async function fileExists(path: string): Promise<boolean> {
   try { await import("node:fs/promises").then(fs => fs.access(path)); return true; } catch { return false; }
 }
 
-export async function ensureGlobalAgentsFile(dataDir: string, mode = "dev"): Promise<void> {
-  const path = globalAgentsPath(dataDir);
+export async function ensureGlobalSystemPromptFile(dataDir: string, mode = "dev"): Promise<void> {
+  const path = globalSystemPromptPath(dataDir);
   if (await fileExists(path)) return;
 
   // Migration from legacy path (mds/global/agents.md)
@@ -47,7 +47,7 @@ export async function ensureGlobalAgentsFile(dataDir: string, mode = "dev"): Pro
   try {
     const mdsDir = join(resolve(dataDir), "mds");
     await mkdir(mdsDir, { recursive: true });
-    await atomicWriteFile(path, buildDefaultGlobalAgentsMarkdown());
+    await atomicWriteFile(path, buildDefaultGlobalSystemPrompt());
   } catch (err) {
     console.warn(`[system-prompt] failed to create global prompt at ${path}:`, err instanceof Error ? err.message : err);
   }

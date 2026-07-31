@@ -1,9 +1,9 @@
-export { buildDefaultGlobalAgentsMarkdown } from "./defaults";
+export { buildDefaultGlobalSystemPrompt } from "./defaults";
 export { AGENTS_MD_NAMES } from "./constants";
 export {
-  globalAgentsPath,
+  globalSystemPromptPath,
   legacyGlobalAgentsPath,
-  projectAgentsPath,
+  projectAgentsMdPath,
   seedsDir,
   seedSubdirForMode,
   seedConfigPath,
@@ -14,11 +14,11 @@ export {
   listAgentsMdAtRoot,
   listAgentsMdAtScopedRoot,
   readAgentsFile,
-  readAgentsFromRoot,
+  readProjectAgentsMd,
   resolveAgentMd,
   resolveSkillMds,
 } from "./reader";
 export { formatRuntimeInfo } from "./runtime-format";
 export { formatTodoList } from "./todo-list-format";
-export { ensureGlobalAgentsFile } from "./seeder";
+export { ensureGlobalSystemPromptFile } from "./seeder";
 export { messagesForModel, assertExactlyOneSystemMessage } from "./messages";

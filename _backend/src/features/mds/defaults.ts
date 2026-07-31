@@ -1,4 +1,4 @@
-export function buildDefaultGlobalAgentsMarkdown(): string {
+export function buildDefaultGlobalSystemPrompt(): string {
   return `Core Directive: execute tasks with surgical precision, enforce safety, and deliver sustainable, long-term solutions.
 
 Mandatory Coding Standards

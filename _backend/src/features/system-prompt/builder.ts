@@ -1,5 +1,5 @@
 import type { SystemPromptJoiners } from "../../../_shared/types";
-import { ensureGlobalAgentsFile } from "../mds";
+import { ensureGlobalSystemPromptFile } from "../mds";
 import {
   DEFAULT_SYSTEM_PROMPT_JOINERS,
   TAG_PRE,
@@ -38,7 +38,7 @@ const SECTION_BUILDERS: Array<{ tag: string; build: (ctx: SectionContext) => Pro
 
 export async function buildSystemBlock(input: BuildSystemBlockInput): Promise<string> {
   if (input.noSystemPrompt) return "";
-  await ensureGlobalAgentsFile(input.dataDir, input.mode);
+  await ensureGlobalSystemPromptFile(input.dataDir, input.mode);
 
   const joiners = input.systemPromptJoiners ?? DEFAULT_SYSTEM_PROMPT_JOINERS;
   const ctx: SectionContext = {

@@ -1,7 +1,7 @@
 import type { SectionContext } from "./types";
-import { readAgentsFromRoot } from "../../mds";
+import { readProjectAgentsMd } from "../../mds";
 
 export async function buildSection(ctx: SectionContext): Promise<string | null> {
-  const text = await readAgentsFromRoot(ctx.workspaceRoot);
+  const text = await readProjectAgentsMd(ctx.workspaceRoot);
   return text || null;
 }

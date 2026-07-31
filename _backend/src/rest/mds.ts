@@ -117,7 +117,7 @@ async function reconcile(
       updatedData.push({ ...existing, fullPath, stats });
     } else {
       const tags: string[] = [];
-      if (relPath === "global/agents.md") tags.push("global");
+      if (relPath === "systemPromptBase.md") tags.push("global");
       updatedData.push({ path: relPath, fullPath, tags, lastEdited: null, stats });
     }
   }

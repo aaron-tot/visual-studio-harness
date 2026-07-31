@@ -3,11 +3,12 @@ import { readFile } from "node:fs/promises";
 import type { SystemPromptJoiners } from "../../../_shared/types";
 import { AGENTS_MD_NAMES } from "./constants";
 
-export function globalAgentsPath(dataDir: string): string {
+/** Path to the global system prompt base file (the "constitution"). Not an AGENTS.md file. */
+export function globalSystemPromptPath(dataDir: string): string {
   return join(resolve(dataDir), "mds", "systemPromptBase.md");
 }
 
-/** Legacy path used prior to the switch to systemPromptBase.md — kept for migration. */
+/** Legacy path (mds/global/agents.md) used prior to the switch to systemPromptBase.md — kept for migration. */
 export function legacyGlobalAgentsPath(dataDir: string): string {
   return join(resolve(dataDir), "mds", "global", "agents.md");
 }
@@ -25,7 +26,10 @@ export function seedsDir(): string | null {
   return null;
 }
 
-export function projectAgentsPath(workspaceRoot: string): string {
+/** Path to the workspace root's AGENTS.md file (project-level agent instructions). */
+export function projectAgentsMdPath(workspaceRoot: string): string {
+  return join(resolve(workspaceRoot), AGENTS_MD_NAMES[0]);
+}
   return join(resolve(workspaceRoot), AGENTS_MD_NAMES[0]);
 }
 

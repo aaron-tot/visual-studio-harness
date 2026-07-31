@@ -1,8 +1,8 @@
 export { AGENTS_MD_NAMES } from "../features/mds/constants";
 export type { BuildSystemBlockInput } from "../features/system-prompt/constants";
 export { DEFAULT_SYSTEM_PROMPT_JOINERS } from "../features/system-prompt/constants";
-export { globalAgentsPath, projectAgentsPath } from "../features/mds/paths";
-export { ensureGlobalAgentsFile } from "../features/mds/seeder";
+export { globalSystemPromptPath } from "../features/mds/paths";
+export { ensureGlobalSystemPromptFile } from "../features/mds/seeder";
 export { listAgentsMdAtRoot, listAgentsMdAtScopedRoot } from "../features/mds/reader";
 export { formatRuntimeInfo } from "../features/mds/runtime-format";
 export { resolveAgentMd, resolveSkillMds } from "../features/mds/reader";

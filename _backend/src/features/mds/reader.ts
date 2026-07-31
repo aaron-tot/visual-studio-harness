@@ -40,7 +40,8 @@ export async function readAgentsFile(path: string): Promise<string | null> {
   }
 }
 
-export async function readAgentsFromRoot(rootDir: string): Promise<string> {
+/** Reads and concatenates all AGENTS.md files found at the workspace root (project-level rules). */
+export async function readProjectAgentsMd(rootDir: string): Promise<string> {
   const parts: string[] = [];
   for (const path of await listAgentsMdAtRoot(rootDir)) {
     const text = await readAgentsFile(path);

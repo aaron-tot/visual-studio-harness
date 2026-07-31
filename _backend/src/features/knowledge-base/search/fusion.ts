@@ -52,16 +52,15 @@ export function fuseResults(
     const existing = map.get(r.chunkId);
     if (existing) {
       existing.score += weights.keyword * normKeywordScore;
-      existing.score += computeMetadataBoost(r) * weights.metadata;
     } else {
       map.set(r.chunkId, {
         ...r,
-        score: weights.keyword * normKeywordScore + computeMetadataBoost(r) * weights.metadata,
+        score: weights.keyword * normKeywordScore,
       });
     }
   }
 
-  // Apply metadata boost to vector-only results
+  // Apply metadata boost exactly once per result (vector-only, keyword-only, or both)
   for (const [, r] of map) {
     r.score += computeMetadataBoost(r) * weights.metadata;
   }

@@ -7,6 +7,8 @@ import { resolveDimension } from "./sqlite/vec";
 import { startWatcher } from "./ingestion/watcher";
 import { runIngestion } from "./ingestion/pipeline";
 import { searchKnowledge } from "./search";
+import { EmbeddingQueue } from "./embedding/queue";
+import { resolveEmbeddingProvider } from "./embedding/resolve";
 import type { SearchFilters, SearchResult } from "./search/types";
 import { listDocuments, openDocument } from "./service-queries";
 import { createDocument, editDocument, deleteDocument } from "./service-mutations";
@@ -18,6 +20,7 @@ export class KnowledgeBaseService {
   private config: KnowledgeBaseConfig | null = null;
   private providers: ProviderConfig[] = [];
   private watchers: FSWatcher[] = [];
+  private embeddingQueue: EmbeddingQueue | null = null;
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -42,6 +45,34 @@ export class KnowledgeBaseService {
       const kbDb = await openKnowledgeDb(this.dataDir, "global", undefined, undefined, dimension);
       if (kbDb) {
         console.log(`[knowledge] global DB ready at ${kbDb.path} (dimension: ${dimension})`);
+
+        // Resolve the embedding provider and start the background embedding queue.
+        let provider: Awaited<ReturnType<typeof resolveEmbeddingProvider>> = null;
+        try {
+          provider = await resolveEmbeddingProvider(
+            config.embedding.providerId,
+            this.providers,
+            config.embedding.model,
+          );
+        } catch (err: any) {
+          // Config error — surface loudly. Search will re-resolve and throw a
+          // clear error instead of silently degrading to keyword-only.
+          console.error(`[knowledge] ${err.message}`);
+        }
+        this.embeddingQueue = new EmbeddingQueue(provider, config.embedding.batchSize);
+        if (provider) {
+          console.log(`[knowledge] embedding provider: ${provider.displayName} / ${provider.modelName} (${provider.dimensions} dims)`);
+        }
+
+        // Process any pending embed jobs from a previous run (async, non-blocking).
+        (async () => {
+          try {
+            await this.embeddingQueue?.processPending(this.dataDir, "global");
+          } catch (err: any) {
+            console.warn("[knowledge] startup embed queue error:", err.message);
+          }
+        })();
+
         // Start file watcher for auto-ingestion on file changes
         const watcher = startWatcher(sourcesDir, async () => {
           try {
@@ -86,17 +117,12 @@ export class KnowledgeBaseService {
     opts?: { limit?: number; mode?: string; filters?: SearchFilters },
     workspaceRoot?: string,
     sessionId?: string,
-  ): Promise<{ results: SearchResult[]; hybrid: boolean }> {
-    // If no config was provided (knowledge section missing from config.json),
-    // use a default config with no embedding provider so keyword-only search still works.
-    const cfg = this.config || {
-      enabled: true,
-      sourcesPath: "",
-      dbPath: "",
-      embedding: { providerId: "", model: "nomic-embed-text-v1.5", batchSize: 10 },
-      search: { vectorWeight: 0.5, keywordWeight: 0.5, metadataWeight: 0.0, topK: 10, reranking: false },
-    };
-    const { results, hybrid } = await searchKnowledge(
+  ): Promise<{ results: SearchResult[]; hybrid: boolean; total: number }> {
+    if (!this.config) {
+      throw new Error("Knowledge Base is not enabled in config — enable knowledge.enabled to search.");
+    }
+    const cfg = this.config;
+    const { results, hybrid, total } = await searchKnowledge(
       this.dataDir,
       scope,
       query,
@@ -106,7 +132,7 @@ export class KnowledgeBaseService {
       workspaceRoot,
       sessionId,
     );
-    return { results, hybrid };
+    return { results, hybrid, total };
   }
 
   async openDocument(
@@ -136,7 +162,21 @@ export class KnowledgeBaseService {
     if (!this.config) return { added: 0, updated: 0, deleted: 0, failed: [] };
     const db = await openKnowledgeDb(this.dataDir, scope, workspaceRoot, sessionId);
     if (!db) return { added: 0, updated: 0, deleted: 0, failed: [] };
-    return runIngestion(this.dataDir, scope, db, this.config, workspaceRoot, sessionId);
+    const result = await runIngestion(this.dataDir, scope, db, this.config, workspaceRoot, sessionId);
+
+    // Generate embeddings for any newly-queued chunks (non-blocking; search
+    // still works with keyword results while embeddings are in-flight).
+    if (this.embeddingQueue) {
+      (async () => {
+        try {
+          await this.embeddingQueue!.processPending(this.dataDir, scope);
+        } catch (err: any) {
+          console.warn("[knowledge] embed queue processing error:", err.message);
+        }
+      })();
+    }
+
+    return result;
   }
 
   async createDocument(
@@ -145,7 +185,8 @@ export class KnowledgeBaseService {
     workspaceRoot?: string,
     sessionId?: string,
   ): Promise<DocumentMeta> {
-    return createDocument(this.dataDir, scope, input, workspaceRoot, sessionId);
+    const embeddingsEnabled = !!this.config?.embedding.providerId;
+    return createDocument(this.dataDir, scope, input, workspaceRoot, sessionId, embeddingsEnabled);
   }
 
   async editDocument(
@@ -155,7 +196,8 @@ export class KnowledgeBaseService {
     workspaceRoot?: string,
     sessionId?: string,
   ): Promise<DocumentMeta> {
-    return editDocument(this.dataDir, scope, id, content, workspaceRoot, sessionId);
+    const embeddingsEnabled = !!this.config?.embedding.providerId;
+    return editDocument(this.dataDir, scope, id, content, workspaceRoot, sessionId, embeddingsEnabled);
   }
 
   async deleteDocument(

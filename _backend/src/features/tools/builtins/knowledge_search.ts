@@ -14,11 +14,18 @@ export const knowledgeSearchTool: ToolDef = {
   permissionDefault: "allow",
   outputFields: [
     { name: "count", type: "integer", description: "Number of results returned", required: true },
+    { name: "total", type: "integer", description: "Total matching results before top-K truncation", required: true },
     { name: "hybrid", type: "boolean", description: "Whether both vector and keyword search were used", required: true },
   ],
   inputSchema: z.object({
     query: z.string().min(1).describe("Search query (natural language or exact term)"),
-    limit: z.number().int().min(1).max(50).default(10).describe("Maximum results to return"),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe("Maximum results to return (defaults to the mode's chunk count)"),
     scope: z.enum(["global", "project", "session"]).default("global").describe("Scope to search in"),
     mode: z
       .enum(["general", "code", "research", "documentation"])
@@ -34,7 +41,7 @@ export const knowledgeSearchTool: ToolDef = {
   }),
   execute: async (args, ctx) => {
     const kb = getKbService();
-    const { results, hybrid } = await kb.search(
+    const { results, hybrid, total } = await kb.search(
       (args.scope as "global" | "project" | "session") || "global",
       args.query,
       { limit: args.limit, mode: args.mode, filters: args.filters },
@@ -46,7 +53,7 @@ export const knowledgeSearchTool: ToolDef = {
       return {
         title: "No knowledge found",
         output: `No results for query: "${args.query}"`,
-        metadata: { count: 0, hybrid },
+        metadata: { count: 0, total, hybrid },
       };
     }
 
@@ -59,7 +66,7 @@ export const knowledgeSearchTool: ToolDef = {
     return {
       title: `${results.length} knowledge result(s) for "${args.query}"`,
       output: lines.join("\n\n"),
-      metadata: { count: results.length, hybrid },
+      metadata: { count: results.length, total, hybrid },
     };
   },
 };

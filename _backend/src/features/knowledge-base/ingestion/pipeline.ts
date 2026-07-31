@@ -7,6 +7,7 @@ import { randomUUIDv7 } from "bun";
 import type { KnowledgeScopeDb } from "../db";
 import { openKnowledgeDb, resolveKnowledgeDir, type KbScope } from "../db";
 import { knowledgeDocuments, knowledgeChunks } from "../schema";
+import { deleteDocumentEmbeddings } from "../sqlite/vec";
 import type { KnowledgeBaseConfig } from "../../../../../_shared/types/config";
 import { extractMetadata } from "../metadata-extraction";
 import { chunkDocument } from "../chunking";
@@ -42,6 +43,7 @@ export async function runIngestion(
   }
 
   const result: IngestResult = { added: 0, updated: 0, deleted: 0, failed: [] };
+  const embeddingsEnabled = !!config.embedding.providerId;
 
   // Read files on disk
   const entries = await readdir(sourcesDir, { withFileTypes: true });
@@ -75,10 +77,10 @@ export async function runIngestion(
       }
 
       if (existing) {
-        await reIndexDocument(db, scope, existing.id, entry.name, content, fileHash, fileStat.size);
+        await reIndexDocument(db, scope, existing.id, entry.name, content, fileHash, fileStat.size, embeddingsEnabled);
         result.updated++;
       } else {
-        await indexDocument(db, scope, entry.name, filepath, content, fileHash, fileStat.size);
+        await indexDocument(db, scope, entry.name, filepath, content, fileHash, fileStat.size, embeddingsEnabled);
         result.added++;
       }
     } catch (err: any) {
@@ -95,6 +97,16 @@ export async function runIngestion(
   for (const doc of allDocs) {
     if (!seenFilenames.has(doc.filename)) {
       // File was deleted — remove from DB
+      const oldChunks = await db.db
+        .select({ id: knowledgeChunks.id, hash: knowledgeChunks.hash })
+        .from(knowledgeChunks)
+        .where(eq(knowledgeChunks.documentId, doc.id))
+        .all();
+      deleteDocumentEmbeddings(
+        db.sqlite,
+        oldChunks.map((c) => c.id),
+        oldChunks.map((c) => c.hash),
+      );
       await db.db.delete(knowledgeChunks).where(eq(knowledgeChunks.documentId, doc.id));
       await db.db.delete(knowledgeDocuments).where(eq(knowledgeDocuments.id, doc.id));
       result.deleted++;
@@ -112,6 +124,7 @@ async function indexDocument(
   content: string,
   fileHash: string,
   fileSize: number,
+  embeddingsEnabled: boolean,
 ): Promise<void> {
   const now = new Date().toISOString();
   const docId = randomUUIDv7();
@@ -153,11 +166,13 @@ async function indexDocument(
       createdAt: now,
     });
 
-    await createJob(db, "embed", scope, {
-      chunkId,
-      documentId: docId,
-      content: chunk.content,
-    });
+    if (embeddingsEnabled) {
+      await createJob(db, "embed", scope, {
+        chunkId,
+        documentId: docId,
+        content: chunk.content,
+      });
+    }
   }
 }
 
@@ -169,10 +184,22 @@ async function reIndexDocument(
   content: string,
   fileHash: string,
   fileSize: number,
+  embeddingsEnabled: boolean,
 ): Promise<void> {
   const now = new Date().toISOString();
   const meta = extractMetadata(filename, content);
   const chunks = chunkDocument(filename, content);
+
+  const oldChunks = await db.db
+    .select({ id: knowledgeChunks.id, hash: knowledgeChunks.hash })
+    .from(knowledgeChunks)
+    .where(eq(knowledgeChunks.documentId, docId))
+    .all();
+  deleteDocumentEmbeddings(
+    db.sqlite,
+    oldChunks.map((c) => c.id),
+    oldChunks.map((c) => c.hash),
+  );
 
   await db.db
     .delete(knowledgeChunks)
@@ -208,10 +235,12 @@ async function reIndexDocument(
       createdAt: now,
     });
 
-    await createJob(db, "embed", scope, {
-      chunkId,
-      documentId: docId,
-      content: chunk.content,
-    });
+    if (embeddingsEnabled) {
+      await createJob(db, "embed", scope, {
+        chunkId,
+        documentId: docId,
+        content: chunk.content,
+      });
+    }
   }
 }

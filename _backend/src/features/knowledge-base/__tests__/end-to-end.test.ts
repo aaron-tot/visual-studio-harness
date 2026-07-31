@@ -17,7 +17,7 @@ const CONFIG: KnowledgeBaseConfig = {
   chunkOverlap: 200,
   maxEmbeddingBatch: 50,
   maxTokens: 8192,
-  embedding: { providerId: "none", model: "none", batchSize: 50 },
+  embedding: { providerId: "", model: "", batchSize: 50 },
   search: { vectorWeight: 0.6, keywordWeight: 0.3, metadataWeight: 0.1, topK: 10, reranking: false },
 };
 
@@ -223,5 +223,59 @@ describe("knowledge_search end-to-end (replicates tool flow)", () => {
       );
       expect(results.length).toBeGreaterThan(0, `mode=${mode} should return results`);
     }
+  });
+
+  it("11. search throws when embedding provider is configured but missing (no silent keyword-only fallback)", async () => {
+    const badConfig: KnowledgeBaseConfig = {
+      ...CONFIG,
+      embedding: { providerId: "nonexistent-provider", model: "jina-embeddings-v3", batchSize: 50 },
+    };
+
+    await expect(
+      searchKnowledge(DATA_DIR, "global", "anything", { limit: 10 }, badConfig, []),
+    ).rejects.toThrow(/not found in configured providers/);
+  });
+
+  it("12. searchKnowledge returns total matching results before top-K truncation", async () => {
+    const { results, total, hybrid } = await searchKnowledge(
+      DATA_DIR,
+      "global",
+      "XylophoneZebra42",
+      { limit: 10 },
+      CONFIG,
+      [],
+    );
+    expect(results.length).toBeGreaterThan(0);
+    // total = distinct matches across channels before truncation (keyword-only here)
+    expect(total).toBeGreaterThanOrEqual(results.length);
+    expect(typeof total).toBe("number");
+    expect(hybrid).toBe(false); // no vector provider, so vector channel never ran
+  });
+
+  it("13. mode chunk counts are used when no limit is given (spec mode presets)", async () => {
+    const doc = await createDocument(DATA_DIR, "global", {
+      filename: "many-chunks.md",
+      // Headings force the chunker to split into 20 chunks, each containing the term.
+      content: Array.from(
+        { length: 20 },
+        (_, i) => `## Section ${i}\n\nManyChunkTerm42 paragraph ${i}.`,
+      ).join("\n\n"),
+      tags: [],
+      createdBy: "agent",
+    });
+    expect(doc.id).toBeTruthy();
+
+    // general preset topK=10; content has many chunks matching ManyChunkTerm42
+    const general = await searchKnowledge(
+      DATA_DIR, "global", "ManyChunkTerm42", {}, CONFIG, [],
+    );
+    // research preset topK=20 — no limit passed, so the full set is returned
+    const research = await searchKnowledge(
+      DATA_DIR, "global", "ManyChunkTerm42", { mode: "research" }, CONFIG, [],
+    );
+    expect(general.total).toBeGreaterThan(10);
+    expect(general.results.length).toBe(10);
+    expect(research.total).toBeGreaterThan(10);
+    expect(research.results.length).toBeGreaterThan(10);
   });
 });

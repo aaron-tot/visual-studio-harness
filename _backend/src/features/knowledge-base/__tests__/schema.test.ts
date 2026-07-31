@@ -53,10 +53,8 @@ describe("Knowledge Base Schema", () => {
     const virtualNames = virtualTables.map((t) => t.name);
     // FTS5 is always available via Bun SQLite
     expect(virtualNames).toContain("knowledge_fts");
-    // vec0 requires sqlite-vec extension — may not be present
-    if (!virtualNames.includes("knowledge_embeddings")) {
-      console.warn("[test] vec0 table not created — sqlite-vec extension not loaded");
-    }
+    // vec0 requires the sqlite-vec extension, which is loaded on DB open
+    expect(virtualNames).toContain("knowledge_embeddings");
   });
 
   it("has correct columns on knowledge_documents", async () => {

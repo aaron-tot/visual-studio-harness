@@ -5,6 +5,7 @@ import { mkdir } from "node:fs/promises";
 import * as schema from "./schema";
 import { ensureVecTable } from "./sqlite/vec";
 import { ensureFtsTable } from "./sqlite/fts";
+import { getLoadablePath as getVecLoadablePath } from "sqlite-vec";
 
 type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -125,6 +126,10 @@ function initSchema(sqlite: Database, embeddingDimension?: number): void {
       token_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
+  `);
+  sqlite.run(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_meta_hash_model
+    ON knowledge_embedding_meta(chunk_hash, model)
   `);
 
   // ── knowledge_relationships ──────────────────────────────────────
@@ -251,6 +256,14 @@ export async function openKnowledgeDb(
 
   await mkdir(dir, { recursive: true });
   const sqlite = new Database(dbPath);
+
+  // Load sqlite-vec extension so the vec0 virtual table can be created.
+  // If unavailable, vector search is disabled but keyword search still works.
+  try {
+    sqlite.loadExtension(getVecLoadablePath());
+  } catch (err: any) {
+    console.warn("[knowledge] sqlite-vec extension unavailable — vector search disabled:", err?.message);
+  }
 
   initSchema(sqlite, embeddingDimension);
 

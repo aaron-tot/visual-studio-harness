@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { randomUUIDv7 } from "bun";
 import { openKnowledgeDb, type KbScope } from "../db";
-import { knowledgeEmbeddingCache, knowledgeJobs as kbJobs, knowledgeChunks } from "../schema";
+import { knowledgeEmbeddingCache, knowledgeEmbeddingMeta, knowledgeJobs as kbJobs, knowledgeChunks } from "../schema";
 import { listPendingJobs, updateJobStatus, createJob } from "../jobs";
 import type { EmbeddingProvider } from "./provider";
 import { EMBEDDING_RETRIES } from "../constants";
@@ -54,9 +54,11 @@ export class EmbeddingQueue {
 
   /**
    * Process all pending embedding jobs.
+   * Throws if there are pending jobs but no provider is available — a job
+   * that can never be embedded must surface, not sit silently in the queue.
    */
   async processPending(dataDir: string, scope: KbScope): Promise<void> {
-    if (!this.provider || this.processing) return;
+    if (this.processing) return;
     this.processing = true;
 
     try {
@@ -65,6 +67,13 @@ export class EmbeddingQueue {
 
       const pending = await listPendingJobs(kb, "embed");
       if (pending.length === 0) return;
+
+      if (!this.provider) {
+        throw new Error(
+          `${pending.length} embed job(s) are pending but no embedding provider is available. ` +
+            `Check knowledge.embedding.providerId in config.`,
+        );
+      }
 
       // Process in batches
       for (let i = 0; i < pending.length; i += this.batchSize) {
@@ -86,7 +95,7 @@ export class EmbeddingQueue {
             await updateJobStatus(kb, job.id, "processing");
           }
 
-          // Embed
+          // Embed (transient API errors retry inside the provider).
           const embeddings = await this.provider.embed(texts);
 
           // Store embeddings in vec0 table and cache
@@ -97,20 +106,30 @@ export class EmbeddingQueue {
             const content = payload?.content || "";
             const chunkHash = createHash("sha256").update(content).digest("hex");
 
-            // Cache the embedding (for dedup)
-            await kb.db.insert(knowledgeEmbeddingCache).values({
-              id: randomUUIDv7(),
-              chunkHash,
-              model: this.provider!.modelName,
-              dimensions: this.provider!.dimensions,
-              createdAt: now,
-            });
+            try {
+              // Cache the embedding (for dedup) — ignore conflicts on repeat content
+              await kb.db.insert(knowledgeEmbeddingCache).values({
+                id: randomUUIDv7(),
+                chunkHash,
+                model: this.provider!.modelName,
+                dimensions: this.provider!.dimensions,
+                createdAt: now,
+              }).onConflictDoNothing();
 
-            // Store vector in vec0 table for search
-            if (embeddings[j]) {
-              const embeddingArr = new Float32Array(embeddings[j]);
-              const embeddingStr = `[${Array.from(embeddingArr).join(",")}]`;
-              try {
+              // Record embedding metadata (per chunk hash)
+              await kb.db.insert(knowledgeEmbeddingMeta).values({
+                id: randomUUIDv7(),
+                chunkHash,
+                model: this.provider!.modelName,
+                dimensions: this.provider!.dimensions,
+                tokenCount: 0,
+                createdAt: now,
+              }).onConflictDoNothing();
+
+              // Store vector in vec0 table for search
+              if (embeddings[j]) {
+                const embeddingArr = new Float32Array(embeddings[j]);
+                const embeddingStr = `[${Array.from(embeddingArr).join(",")}]`;
                 kb.sqlite.run(
                   "INSERT INTO knowledge_embeddings(chunk_id, embedding) VALUES (?, ?)",
                   [payload.chunkId, embeddingStr],
@@ -121,34 +140,40 @@ export class EmbeddingQueue {
                   .update(knowledgeChunks)
                   .set({ embeddingModel: this.provider!.modelName })
                   .where(eq(knowledgeChunks.id, payload.chunkId));
-              } catch (vecErr: any) {
-                console.warn("[knowledge] Failed to store vector embedding:", vecErr.message);
               }
-            }
 
-            // Mark job as completed
-            await updateJobStatus(kb, job.id, "completed");
+              // Mark job as completed
+              await updateJobStatus(kb, job.id, "completed");
+            } catch (storeErr: any) {
+              // Storage failed (e.g. vec0 insert) — retry the job, don't mark it done.
+              await this.markJobRetry(kb, job.id, storeErr);
+            }
           }
         } catch (err: any) {
-          // Mark as failed
+          // Batch embed failed — mark every job for retry/failure.
           for (const job of batch) {
-            const jobRecord = await kb.db
-              .select()
-              .from(kbJobs)
-              .where(eq(kbJobs.id, job.id))
-              .get();
-
-            const retries = jobRecord?.retryCount ?? 0;
-            if (retries >= EMBEDDING_RETRIES) {
-              await updateJobStatus(kb, job.id, "failed", err.message);
-            } else {
-              await updateJobStatus(kb, job.id, "queued", err.message);
-            }
+            await this.markJobRetry(kb, job.id, err);
           }
         }
       }
     } finally {
       this.processing = false;
+    }
+  }
+
+  private async markJobRetry(kb: Awaited<ReturnType<typeof openKnowledgeDb>>, jobId: string, err: any): Promise<void> {
+    if (!kb) return;
+    const jobRecord = await kb.db
+      .select()
+      .from(kbJobs)
+      .where(eq(kbJobs.id, jobId))
+      .get();
+
+    const retries = jobRecord?.retryCount ?? 0;
+    if (retries >= EMBEDDING_RETRIES) {
+      await updateJobStatus(kb, jobId, "failed", err.message);
+    } else {
+      await updateJobStatus(kb, jobId, "queued", err.message, retries + 1);
     }
   }
 }

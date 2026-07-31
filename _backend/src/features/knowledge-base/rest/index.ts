@@ -19,12 +19,13 @@ export function registerKnowledgeRoutes(
       return reply.code(400).send({ error: "query is required" });
     }
     const scope = (q.scope as KbScope) || "global";
-    const limit = q.limit ? parseInt(q.limit, 10) : 10;
-    const { results, hybrid } = await kb.search(scope, q.query, {
+    // Leave undefined when absent so the mode preset's chunk count (topK) applies.
+    const limit = q.limit ? parseInt(q.limit, 10) : undefined;
+    const { results, hybrid, total } = await kb.search(scope, q.query, {
       limit,
       mode: q.mode || "general",
     });
-    return { results, hybrid, count: results.length };
+    return { results, hybrid, total, count: results.length };
   });
 
   // ── List documents ──────────────────────────────────────────────

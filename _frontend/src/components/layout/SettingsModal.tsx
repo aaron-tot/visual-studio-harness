@@ -9,6 +9,8 @@ import { MdManager } from "../settings/MdManager";
 import { ToolsPanel } from "../settings/ToolsPanel";
 import { GeneralPanel } from "../settings/GeneralPanel";
 import { SystemPromptPanel } from "../settings/SystemPromptPanel";
+import { ShortcutsPanel } from "../settings/ShortcutsPanel";
+import { TestModelsPanel } from "../settings/TestModelsPanel";
 import { KnowledgeSettingsPanel } from "../settings/KnowledgeSettingsPanel";
 import { McpServersPanel } from "../settings/McpServersPanel";
 import { McpServerEditor } from "../settings/McpServerEditor";

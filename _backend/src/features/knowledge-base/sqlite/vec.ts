@@ -60,3 +60,37 @@ export function dropVecTable(sqlite: Database): void {
     // table may not exist
   }
 }
+
+/**
+ * Remove embeddings for a document's chunks from vec0, cache, and meta.
+ * vec0 is a virtual table so it has no FK cascade — cleanup is manual.
+ */
+export function deleteDocumentEmbeddings(
+  sqlite: Database,
+  chunkIds: string[],
+  chunkHashes: string[],
+): void {
+  if (chunkIds.length === 0) return;
+
+  const idIn = chunkIds.map(() => "?").join(",");
+  const hashIn = chunkHashes.map(() => "?").join(",");
+
+  try {
+    sqlite.run(`DELETE FROM knowledge_embeddings WHERE chunk_id IN (${idIn})`, ...chunkIds);
+  } catch (err: any) {
+    console.warn("[knowledge] Failed to delete vectors:", err.message);
+  }
+
+  if (chunkHashes.length > 0) {
+    try {
+      sqlite.run(`DELETE FROM knowledge_embedding_cache WHERE chunk_hash IN (${hashIn})`, ...chunkHashes);
+    } catch (err: any) {
+      console.warn("[knowledge] Failed to delete embedding cache:", err.message);
+    }
+    try {
+      sqlite.run(`DELETE FROM knowledge_embedding_meta WHERE chunk_hash IN (${hashIn})`, ...chunkHashes);
+    } catch (err: any) {
+      console.warn("[knowledge] Failed to delete embedding meta:", err.message);
+    }
+  }
+}

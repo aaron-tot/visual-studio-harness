@@ -57,6 +57,32 @@ describe("knowledge tools registration", () => {
     expect(searchTool!.outputFields!.length).toBeGreaterThan(0);
   });
 
+  it("knowledge_search outputFields include count, total, and hybrid", () => {
+    const registry = createDefaultRegistry();
+    const tools = registry.list();
+    const searchTool = tools.find((t) => t.name === "knowledge_search");
+
+    expect(searchTool).toBeDefined();
+    const names = searchTool!.outputFields!.map((f) => f.name);
+    expect(names).toContain("count");
+    expect(names).toContain("total");
+    expect(names).toContain("hybrid");
+  });
+
+  it("knowledge_search limit is optional so the mode preset chunk count applies", () => {
+    const registry = createDefaultRegistry();
+    const tools = registry.list();
+    const searchTool = tools.find((t) => t.name === "knowledge_search");
+
+    // No limit provided — mode preset topK should be used.
+    const noLimit = searchTool!.inputSchema.safeParse({ query: "hello", mode: "code" });
+    expect(noLimit.success).toBe(true);
+    // Explicit limit still honored.
+    const withLimit = searchTool!.inputSchema.safeParse({ query: "hello", limit: 3 });
+    expect(withLimit.success).toBe(true);
+    expect(withLimit.data.limit).toBe(3);
+  });
+
   it("knowledge_open accepts filename.ext as documentId and resolves to UUID", () => {
     const registry = createDefaultRegistry();
     const tools = registry.list();

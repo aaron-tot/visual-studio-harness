@@ -40,6 +40,7 @@ export function Sidebar({ search }: SidebarProps) {
   const resizingRef = useRef(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [masterTestResult, setMasterTestResult] = useState<MasterTestResult | null>(null);
+  const [testRunning, setTestRunning] = useState(false);
   const testRunningRef = useRef(false);
 
   useEffect(() => {
@@ -114,9 +115,15 @@ export function Sidebar({ search }: SidebarProps) {
               onClick={async () => {
                 if (testRunningRef.current) return;
                 testRunningRef.current = true;
+                setTestRunning(true);
+                setMasterTestResult(null);
                 try {
+                  // Capture baseline result timestamp BEFORE starting, so polling
+                  // reliably detects when the new result arrives.  This avoids
+                  // depending on the component state (which may be null or stale).
+                  const before = await getMasterTestResult().catch(() => null);
+                  const startedAt = before?.timestamp ?? null;
                   await runMasterTest();
-                  const startedAt = masterTestResult?.timestamp ?? null;
                   for (let i = 0; i < 120; i++) {
                     await new Promise((r) => setTimeout(r, 2000));
                     const res = await getMasterTestResult().catch(() => null);
@@ -127,6 +134,7 @@ export function Sidebar({ search }: SidebarProps) {
                   }
                 } catch { /* ignore */ }
                 testRunningRef.current = false;
+                setTestRunning(false);
               }}
               title="Run master e2e test (headed)"
               className="inline-flex items-center justify-center size-3.5 rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -151,6 +159,13 @@ export function Sidebar({ search }: SidebarProps) {
               className="text-red-400 select-none"
               style={{ fontSize: "7px", lineHeight: "1" }}
             >✕</span>
+          )}
+          {testRunning && masterTestResult === null && (
+            <span
+              title="Test running…"
+              className="text-zinc-500 select-none animate-pulse"
+              style={{ fontSize: "7px", lineHeight: "1" }}
+            >◉</span>
           )}
           <div className="hidden group-hover/version:block absolute bottom-full left-0 mb-1 z-50 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[10px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
             {import.meta.env.DEV ? (

@@ -1,5 +1,7 @@
 import type { EmbeddingProvider } from "./provider";
 import type { ProviderConfig } from "../../../../../_shared/types/config";
+import { withRetry } from "./retry";
+import { EMBEDDING_RETRIES, EMBEDDING_TIMEOUT_MS } from "../constants";
 
 const EMBEDDING_DIMENSIONS: Record<string, number> = {
   "text-embedding-3-small": 1536,
@@ -16,31 +18,45 @@ const EMBEDDING_DIMENSIONS: Record<string, number> = {
 /**
  * Resolve an embedding provider from the configured providers list.
  * Looks up by providerId (displayName match).
- * Returns null if not found — letting the caller fall back to keyword-only search.
+ * The embedding model and its dimensions come from the knowledge config;
+ * the provider's baseUrl/apiKey supply the OpenAI-compatible endpoint.
+ *
+ * Throws when providerId is configured but no matching provider exists —
+ * a silent keyword-only fallback would hide the misconfiguration.
+ * Returns null only when embedding is intentionally disabled (empty providerId).
  */
 export async function resolveEmbeddingProvider(
   providerId: string,
   providers: ProviderConfig[],
+  model?: string,
 ): Promise<EmbeddingProvider | null> {
+  if (!providerId) {
+    return null;
+  }
+
   const provider = providers.find(
     (p) => p.displayName === providerId || p.displayName.toLowerCase() === providerId.toLowerCase(),
   );
 
   if (!provider) {
-    console.warn(`[knowledge] Embedding provider "${providerId}" not found in configured providers — fallback to keyword-only search`);
-    return null;
+    throw new Error(
+      `Embedding provider "${providerId}" is configured in knowledge.embedding.providerId but not found in configured providers. ` +
+        `Fix the config or remove knowledge.embedding.providerId to disable embeddings.`,
+    );
   }
 
-  // The model to use for embeddings
-  const model = providerId === "openai" ? "text-embedding-3-small" : "nomic-embed-text";
-  const dimensions = EMBEDDING_DIMENSIONS[model] || 768;
+  // The model to use for embeddings (from knowledge config, falls back to the
+  // provider's first enabled model, then to nomic-embed-text).
+  const firstEnabledModel = provider.models?.find((m) => m.enabled !== false)?.modelName;
+  const modelName = model || firstEnabledModel || "nomic-embed-text";
+  const dimensions = EMBEDDING_DIMENSIONS[modelName] || 768;
 
   return {
     displayName: provider.displayName,
-    modelName: model,
+    modelName,
     dimensions,
     async embed(texts: string[], embedModel?: string): Promise<number[][]> {
-      const modelName = embedModel || model;
+      const resolvedModel = embedModel || modelName;
       const url = `${provider.baseUrl.replace(/\/+$/, "")}/embeddings`;
 
       const headers: Record<string, string> = {
@@ -51,29 +67,41 @@ export async function resolveEmbeddingProvider(
         headers["Authorization"] = `Bearer ${provider.apiKey}`;
       }
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          input: texts,
-          model: modelName,
-        }),
-      });
+      return withRetry(async () => {
+        const response = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            input: texts,
+            model: resolvedModel,
+          }),
+          signal: AbortSignal.timeout(EMBEDDING_TIMEOUT_MS),
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "Unknown error");
-        throw new Error(`Embedding API error (${response.status}): ${errorText}`);
-      }
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "Unknown error");
+          const err = new Error(`Embedding API error (${response.status}): ${errorText}`) as Error & {
+            status?: number;
+            retryAfterMs?: number;
+          };
+          err.status = response.status;
+          const retryAfter = response.headers.get("retry-after");
+          if (retryAfter) {
+            err.retryAfterMs = Number(retryAfter) * 1000;
+          }
+          throw err;
+        }
 
-      const data = await response.json() as {
-        data: Array<{ embedding: number[] }>;
-      };
+        const data = await response.json() as {
+          data: Array<{ embedding: number[] }>;
+        };
 
-      if (!data.data || !Array.isArray(data.data)) {
-        throw new Error(`Unexpected embedding API response format`);
-      }
+        if (!data.data || !Array.isArray(data.data)) {
+          throw new Error(`Unexpected embedding API response format`);
+        }
 
-      return data.data.map((d) => d.embedding);
+        return data.data.map((d) => d.embedding);
+      }, { retries: EMBEDDING_RETRIES });
     },
   };
 }

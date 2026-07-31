@@ -7,6 +7,7 @@ import { randomUUIDv7 } from "bun";
 import { openKnowledgeDb, resolveKnowledgeDir, type KbScope } from "./db";
 import type { KnowledgeScopeDb } from "./db";
 import { knowledgeDocuments, knowledgeChunks, knowledgeDocumentVersions, knowledgeGroups, knowledgeGroupDocuments } from "./schema";
+import { deleteDocumentEmbeddings } from "./sqlite/vec";
 import type { DocumentMeta, CreateDocumentInput, DeleteResult, DocumentContent } from "./types";
 import { extractMetadata } from "./metadata-extraction";
 import { chunkDocument } from "./chunking";
@@ -24,6 +25,7 @@ export async function createDocument(
   input: CreateDocumentInput,
   workspaceRoot?: string,
   sessionId?: string,
+  embeddingsEnabled?: boolean,
 ): Promise<DocumentMeta> {
   const knowledgeDir = resolveKnowledgeDir(dataDir, scope, workspaceRoot, sessionId);
   if (!knowledgeDir) throw new Error("Cannot resolve knowledge directory for scope: " + scope);
@@ -80,7 +82,9 @@ export async function createDocument(
       createdAt: now,
     });
 
-    await createJob(kb, "embed", scope, { chunkId, documentId: docId, content: chunk.content });
+    if (embeddingsEnabled) {
+      await createJob(kb, "embed", scope, { chunkId, documentId: docId, content: chunk.content });
+    }
   }
 
   return {
@@ -114,6 +118,7 @@ export async function editDocument(
   content: string,
   workspaceRoot?: string,
   sessionId?: string,
+  embeddingsEnabled?: boolean,
 ): Promise<DocumentMeta> {
   const kb = await openKnowledgeDb(dataDir, scope, workspaceRoot, sessionId);
   if (!kb) throw new Error("Cannot open knowledge database");
@@ -131,7 +136,17 @@ export async function editDocument(
   const meta = extractMetadata(existing.filename, content);
   const chunks = chunkDocument(existing.filename, content);
 
-  // Delete old chunks
+  // Delete old chunks (and their embeddings — vec0 has no FK cascade)
+  const oldChunks = await kb.db
+    .select({ id: knowledgeChunks.id, hash: knowledgeChunks.hash })
+    .from(knowledgeChunks)
+    .where(eq(knowledgeChunks.documentId, id))
+    .all();
+  deleteDocumentEmbeddings(
+    kb.sqlite,
+    oldChunks.map((c) => c.id),
+    oldChunks.map((c) => c.hash),
+  );
   await kb.db.delete(knowledgeChunks).where(eq(knowledgeChunks.documentId, id));
 
   // Update document record
@@ -170,7 +185,9 @@ export async function editDocument(
       createdAt: now,
     });
 
-    await createJob(kb, "embed", scope, { chunkId, documentId: id, content: chunk.content });
+    if (embeddingsEnabled) {
+      await createJob(kb, "embed", scope, { chunkId, documentId: id, content: chunk.content });
+    }
   }
 
   return {
@@ -231,6 +248,19 @@ export async function deleteDocument(
   await kb.db
     .delete(knowledgeDocumentVersions)
     .where(eq(knowledgeDocumentVersions.documentId, id));
+
+  // Remove embeddings before chunks (vec0 has no FK cascade)
+  const oldChunks = await kb.db
+    .select({ id: knowledgeChunks.id, hash: knowledgeChunks.hash })
+    .from(knowledgeChunks)
+    .where(eq(knowledgeChunks.documentId, id))
+    .all();
+  deleteDocumentEmbeddings(
+    kb.sqlite,
+    oldChunks.map((c) => c.id),
+    oldChunks.map((c) => c.hash),
+  );
+
   await kb.db
     .delete(knowledgeChunks)
     .where(eq(knowledgeChunks.documentId, id));

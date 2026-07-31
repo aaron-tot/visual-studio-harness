@@ -1,282 +1,439 @@
-# Crash & Memory Audit
+# Prompt System & .md System — Architecture Audit
 
-**Date:** 2026-07-29  
-**Binary:** VSH standalone (Bun v1.3.14)  
-**Uptime at crash:** ~28 min (1,684,414ms)  
-**RSS at crash:** 1.59 GB (Peak: 1.28 GB, Machine: 33.34 GB)  
-**Crash:** `panic(main thread): Bus error at address 0x7F0BFE407000`
+**Date**: 2026-07-31  
+**Scope**: Backend source under `_backend/src/` and seed files under `seeds/`  
+**Purpose**: Map all subsystems, identify naming collisions, boundary leaks, structural debt, and scope-coverage gaps
 
 ---
 
-## Root Cause Analysis
+## 1. System Prompt Builder
 
-### Primary Cause: `ts-morph` Project Memory Accumulation
+**Location**: `_backend/src/features/system-prompt/`  
+**Architecture**: Section-based orchestrator
 
-**File:** `_backend/src/core/workspaceGraph/parser/project.ts:1-25`
-
-A singleton `ts-morph.Project` is created at module level with `useInMemoryFileSystem: true` and `skipAddingFilesFromTsConfig: true`. This project is never reset — only grows.
-
-**File:** `_backend/src/core/workspaceGraph/parser/parse-file.ts:13-56`
-
-Every `parseWorkspaceFile()` call:
-1. Creates a `SourceFile` in the global project via `project.createSourceFile(path, sourceText, { overwrite: true })`
-2. Extracts symbols, imports, exports
-3. Calls `project.removeSourceFile(sourceFile)` — **does not actually free the memory**
-
-**Why this leaks:** The TypeScript compiler `Program` (created lazily by `ts-morph`'s Project) retains all SourceFiles in its `getSourceFiles()` cache. The binder, checker, and scanner all hold references to compiler nodes. `removeSourceFile()` removes the file from ts-morph's own list but does NOT invalidate the compiler program's internal SymbolTable, Type nodes, or AST cache. Each SourceFile's full AST, symbol table, and type information remain in memory.
-
-**Trigger chain:**
-1. App starts → `WorkspaceGraphManager.initializeFromSessions()` calls `reindexWorkspace()` → scans ~115+ files → parses each via `parseWorkspaceFile()` → **leaks all 115+ ASTs**
-2. Watcher fires on file changes → `processWatcherBatch()` → `reindexWorkspace()` → **scans + parses all files again** → **leaks another 115+ ASTs**
-3. Crash log shows: `[workspace-graph] watcher batch: 1 file(s) updated` — concurrent with LLM fetch
-4. After ~28 min of operation with multiple turns, watcher cycles, and LLM calls → **1.59 GB RSS**
-
-**Address evidence:** `0x7F0BFE407000` is a 4KB-aligned address in the mmap region. The ts-morph Project allocates many small objects (AST nodes, Symbols, Types) that end up on mmap'd heap pages. When these pages are freed by the C++ allocator but later accessed by dangling pointers in the compiler program, SIGBUS occurs.
-
----
-
-### Contributing Cause #2: Workspace Scanner Reads All Files Twice
-
-**File:** `_backend/src/core/workspaceGraph/scanner/scan.ts:88-101`
-
-```typescript
-const sourceText = await readFile(fullPath, "utf-8");     // 1st read
-const fileHash = await computeFileHash(fullPath);            // 2nd read
-```
-
-**File:** `_backend/src/core/workspaceGraph/scanner/hash.ts:18-23`
-
-```typescript
-const content = await file.arrayBuffer();    // reads entire file again
-return Bun.hash(new Uint8Array(content)).toString(36);
-```
-
-Each file is read **twice** during scanning:
-- First: `readFile(…, "utf-8")` returns full text as string → stored in `ScannedFile.sourceText`
-- Second: `computeFileHash()` → `Bun.file(filePath).arrayBuffer()` → reads entire file content again as `ArrayBuffer`
-
-For ~115 files averaging ~5 KB each, that's:
-- ~575 KB of source text in memory (one copy in the ScannedFile array)
-- ~575 KB of ArrayBuffer for hash computation (transient)
-- Plus the ts-morph SourceFile which keeps another copy of the source text
-
-The `sourceText` field on `ScannedFile` is retained through the entire `reindexWorkspace()` call and is only freed when the `scanResult.created`/`modified` arrays go out of scope. During the watcher-triggered reindex (which runs concurrently with LLM streaming), this adds sudden memory pressure spikes.
-
----
-
-### Contributing Cause #3: Raw Capture Buffers Entire LLM Response
-
-**File:** `_backend/src/features/chat/raw-capture-fetch.ts:37-68`
-
-```typescript
-const chunks: Uint8Array[] = [];
-// ...
-const capture = new TransformStream<Uint8Array, Uint8Array>({
-  transform(chunk, controller) {
-    chunks.push(chunk);       // accumulates EVERY chunk
-    controller.enqueue(chunk);
-  },
-  flush() { finishCapture(); },
-  cancel() { finishCapture(); },
-});
-```
-
-The entire LLM streaming response is captured in memory before forwarding. For a response of 100 KB+ (the crash shows 73 KB request → likely even larger response), the full body is duplicated:
-- Once in the `chunks` array
-- Once being passed through the stream to the AI SDK consumer
-
-This is held until the stream finishes AND `rawCaptureDone` resolves (up to 3 second timeout).
-
----
-
-### Memory Leak #1: Auto-Continue Attempt Maps (Unbounded)
-
-**File:** `_backend/src/features/chat/ws-chat.ts:36-37`
-
-```typescript
-const toolContinueAttempts = new Map<string, number[]>();
-const thinkingContinueAttempts = new Map<string, number[]>();
-```
-
-**File:** `_backend/src/features/subagents/spawn.ts:28-29`
-
-```typescript
-const subagentToolContinueAttempts = new Map<string, number[]>();
-const subagentThinkingContinueAttempts = new Map<string, number[]>();
-```
-
-These are **module-level** maps that accumulate timestamps by session ID. They are never pruned. `canAutoContinue()` filters expired timestamps but never removes the session key when the array becomes empty. Every session that ever triggers auto-continue leaves an entry in these maps forever.
-
-**Impact:** With `autoContinueOnToolEnd` or `autoContinueOnThinkingEnd` enabled (default), every session gets an entry. Over dozens of sessions with continuation chains of 5+ iterations, each with 5 timestamp entries, this is minor but unbounded.
-
----
-
-### Memory Leak #2: Pending Continue Map
-
-**File:** `_backend/src/features/chat/session-abort.ts:32`
-
-```typescript
-const pendingContinueMap = new Map<string, { content: string; agentName: string }>();
-```
-
-Entries are only consumed by `consumePendingContinue()` or cleared by `clearPendingContinue()`/`cancelSession()`. If a session is abandoned without a cancel message (e.g., socket closes while `switch_continue` is pending), the entry leaks. Each entry holds a prompt string (potentially large).
-
----
-
-### Memory Leak #3: Bash PTY Session Buffer
-
-**File:** `_backend/src/features/tools/host/pty-session.ts:16-17`
-
-```typescript
-interface Session {
-  buffer: string;     // grows unboundedly
-  waiters: Array<...>;
-}
-```
-
-The `session.buffer` accumulates ALL stdout/stderr output during the bash session's lifetime. It is only cleared when a waiter's marker is found — but the buffer retains ALL output before the marker. For long-running bash sessions with many commands, this can grow substantially. The buffer is only freed when the session exits or is killed.
-
----
-
-### Memory Concern #4: SQLite Connections Cached
-
-**File:** `_backend/src/db/client.ts:10`
-
-```typescript
-const dbs = new Map<string, DrizzleDb>();
-```
-
-**File:** `_backend/src/core/workspaceGraph/storage/db.ts:9`
-
-```typescript
-const dbs = new Map<string, WorkspaceGraphDb>();
-```
-
-Both SQLite connection caches are module-level maps keyed by file path. Each entry holds a `Database` handle (mmap'd pages + page cache). `closeWorkspaceGraphDb()` only removes the entry from the map but does NOT call `sqlite.close()` on the underlying Bun SQLite Database. The SQLite memory-mapped data and page cache remain allocated.
-
----
-
-### Memory Concern #5: Workspace Watcher Events Queue
-
-**File:** `_backend/src/core/workspaceGraph/watcher/debounce-queue.ts:13`
-
-```typescript
-let buffer: WorkspaceFsEvent[] = [];
-```
-
-During rapid file changes (e.g., git operations, npm installs), the buffer can accumulate many events before the debounce timer fires. If `onFlush` takes a long time (reindex is slow), new events pile up. While typically small, under bursty FS activity this could grow.
-
----
-
-### Memory Concern #6: Module-Level Event Registrations in Hooks
-
-**File:** `_backend/src/features/hooks/bus.ts:29`
-
-```typescript
-private handlers = new Map<HookName, RegisteredHandler[]>();
-```
-
-The `HookBus` handler map is module-level and persists for the app lifetime. While handlers are properly deduplicated by ID, there is no mechanism to unregister handlers when sessions end. If external extensions or dynamic features register handlers per-session, they accumulate.
-
-Current code only registers handlers at startup via the `system.ts` module, so this is not currently leaking, but it's an architectural concern.
-
----
-
-### Performance Issue #1: Full Session History Projected Every Turn
-
-**File:** `_backend/src/features/chat/project-chat.ts:13-97`
-
-`projectSessionChat()` loads ALL turns from SQLite, ALL step parts for each turn, parses each JSON data blob, and assembles full `Message[]` arrays. This runs:
-- On every `request_session_state` WebSocket message
-- On every `sendSessionState()` call (which is at session ready + turn start)
-
-**File:** `_backend/src/features/chat/run-turn/index.ts:278`
-
-`buildModelMessagesFromContext()` loads every prior turn's text parts from SQLite, parsing each JSON blob. For sessions with many turns (e.g., 20+ turns with long assistant responses), this reconstructs the entire conversation from the DB each time.
-
-This is not cached, so every LLM call re-reads and re-parses the same data from SQLite.
-
----
-
-### Performance Issue #2: Workspace Graph Watcher Re-Scans All Files
-
-**File:** `_backend/src/core/workspaceGraph/index.ts:152-166`
-
-The watcher batch handler calls `reindexWorkspace()` with `mode: "startup"`, which:
-1. Scans ALL files in the workspace (reads each file's source text + hash computation)
-2. Diffs against the existing index
-3. PARSES every changed file via ts-morph (creating ASTs in the global project)
-
-For a single file change, this reads and re-checks all ~115+ files. The scan is not incremental — only the parse step is incremental (only changed files are parsed).
-
-This is the operation that was running concurrently with the LLM fetch in the crash log (`[workspace-graph] watcher batch: 1 file(s) updated`). The concurrent memory pressure from re-reading all files + the LLM response capture + the existing ts-morph leak pushed memory past a critical threshold.
-
----
-
-## Crash Sequence Reconstruction
+### File Layout
 
 ```
-Time    Event                                              Memory Delta
-────    ─────                                              ────────────
-T+0     App starts, reindexWorkspace()                    +~10-20 MB (ts-morph ASTs)
-T+0     workspaceGraph watcher starts  
-T+0     SQLite db opened  
-T+~1m   User sends first message → LLM call  
-        buildModelMessagesFromContext() reads prior turns  +~2-5 MB (messages)
-        streamChat() with streaming  
-        createVerboseFetch() captures response             +~100-500 KB
-T+~5m   Watcher fires (file change)  
-        reindexWorkspace() → scan + parse all files        +~10-20 MB (more leaked ASTs)
-T+~10m  Multiple auto-continue turns  
-        maps accumulate entries, more messages             +~5-10 MB
-T+~15m  Watcher fires again                                +~10-20 MB
-        ... repeats ...
-T+~28m  1.59 GB RSS (Peak was 1.28 GB — still climbing)
-        One more watcher batch triggered during LLM call  
-        ts-morph internal pointer into freed page  
-        → SIGBUS at 0x7F0BFE407000                         💥 CRASH
+system-prompt/
+  builder.ts           ← Orchestrator: iterate 8 sections, wrap-with-joiners
+  constants.ts         ← BuildSystemBlockInput, SystemPromptJoiners defaults, TAG_PRE/TAG_POST maps
+  sections/
+    types.ts           ← SectionContext interface
+    global.section.ts  ← reads data/{mode}/mds/systemPromptBase.md
+    agent-md.section.ts  ← reads agentMd (inline | existing path)
+    skills.section.ts  ← reads skillMds[]
+    project.section.ts ← reads {workspaceRoot}/{agents,AGENTS}.md
+    runtime.section.ts ← formatRuntimeInfo (mode, workspace_root, session_id, datetime)
+    todo-list.section.ts ← formatTodoList from session_todos
+    workspace-manifest.section.ts ← graph service -> tree
+    extras.section.ts  ← joins extras[] from config
 ```
 
+### Data Flow
+
+```
+run-turn/index.ts
+  → buildSystemBlock(BuildSystemBlockInput)
+    → ensureGlobalAgentsFile()    [idempotent: seeds file if missing]
+    → for each section:
+        → build(ctx) → string | null
+        → wrapWithJoiners(content, tag, joiners)
+    → join blocks with "\n\n"
+  → messagesForModel(sessionMessages, systemBlock)
+  → assertExactlyOneSystemMessage(messages)
+```
+
+### Seed Chain for `systemPromptBase.md`
+
+```
+1. data/{mode}/mds/systemPromptBase.md exists? → return
+2. Legacy mds/global/agents.md exists? → copy to systemPromptBase.md
+3. seeds/{subdir}/mds/systemPromptBase.md exists? → copy from seed
+4. Fallback to hardcoded buildDefaultGlobalAgentsMarkdown()
+```
+
+**Two seed files exist** (identical content):
+- `seeds/dev/mds/systemPromptBase.md`
+- `seeds/packageAndProd/mds/systemPromptBase.md`
+
 ---
 
-## Key Files to Investigate
+## 2. Agents System (Legacy & Active)
 
-| File | Issue |
-|------|-------|
-| `_backend/src/core/workspaceGraph/parser/project.ts:5` | Singleton `Project` with no lifecycle |
-| `_backend/src/core/workspaceGraph/parser/parse-file.ts:18-54` | `createSourceFile` + `removeSourceFile` doesn't free |
-| `_backend/src/core/workspaceGraph/scanner/scan.ts:88,89` | Reads each file twice |
-| `_backend/src/core/workspaceGraph/scanner/hash.ts:18-23` | `computeFileHash` re-reads entire file |
-| `_backend/src/features/chat/raw-capture-fetch.ts:41` | `chunks` accumulates entire stream |
-| `_backend/src/features/chat/ws-chat.ts:36-37` | Module-level maps never pruned |
-| `_backend/src/features/subagents/spawn.ts:28-29` | Module-level maps never pruned |
-| `_backend/src/features/chat/session-abort.ts:32` | `pendingContinueMap` entries leak |
-| `_backend/src/features/tools/host/pty-session.ts:36` | `buffer` grows unboundedly |
-| `_backend/src/core/workspaceGraph/storage/db.ts:26-31` | `closeWorkspaceGraphDb` doesn't close SQLite |
-| `_backend/src/core/workspaceGraph/index.ts:152-166` | Watcher re-scans all files for single change |
+### Barrel Layers
+
+```
+_shared/types/config.ts   ← AgentSettings, AgentMdConfig, SkillMdConfig
+  ↓
+_backend/src/features/agents/  ← real implementation
+  system-prompt.ts  ← re-exports + ensureGlobalAgentsFile + messagesForModel + assertExactlyOneSystemMessage
+  md-utils.ts       ← readAgentsFile, listAgentsMdAtRoot, resolveAgentMd, resolveSkillMds
+  paths.ts          ← globalAgentsPath, legacyGlobalAgentsPath, seedsDir, projectAgentsPath, seedConfigPath, seedJoinersDefaultsPath
+  constants.ts      ← AGENTS_MD_NAMES = ["agents.md", "AGENTS.md"]
+  agents.default.ts ← buildDefaultGlobalAgentsMarkdown() — hardcoded fallback
+  format.ts         ← formatRuntimeInfo
+  todo-list-format.ts ← formatTodoList
+  runtime-settings.ts  ← getAgentSettings, resolveRuntimeFromSettings, resolveSessionRuntime
+  rest.ts           ← listAgents, readAgent, writeAgent, deleteAgentFile
+  ↓
+_backend/src/agent/  ← re-export barrel (NO new logic)
+  system-prompt.ts   → re-exports from features/agents/system-prompt and features/system-prompt/builder
+  agents.default.ts  → re-exports (but also has an independent copy!)
+  runtime-settings.ts → re-exports from features/agents/runtime-settings
+  turn.ts            → re-exports
+```
+
+> **Finding**: `_backend/src/agent/agents.default.ts` is a near-duplicate of `_backend/src/features/agents/agents.default.ts` with a different comment. Only `features/agents/` one is imported. The barrel file in `_backend/src/agent/` re-exports with zero added logic — every consumer must go through this barrel for no benefit.
 
 ---
 
-## Recommendations (No Changes — Audit Only)
+## 3. The "MDS" REST System
 
-### Critical
+**File**: `_backend/src/rest/mds.ts` (340 lines)
 
-1. **Fix the ts-morph memory leak:** Replace global singleton `Project` with per-reindex-scoped projects that are fully garbage-collected after each reindex. Reset `_project = null` after reindex completes and force GC. Or avoid ts-morph entirely for workspace graph parsing — use a simpler parser (e.g., regex-based symbol extraction) since the graph only needs basic symbol/import/export info.
+### What it manages
 
-2. **Eliminate double file reads:** Cache the file text from the first `readFile` and reuse it for hash computation. The hash can be computed from the already-read `sourceText` string using `Bun.hash(new TextEncoder().encode(sourceText))`.
+All `.md` files in two locations:
 
-### High
+| Key | Location | Scan Mode | Example |
+|---|---|---|---|
+| `data.{mode}` | `data/{mode}/mds/` | Recursive (subdirectories) | `systemPromptBase.md`, `global/agents.md` |
+| `workspace` | `{workspaceRoot}/` | Flat (root only) | `AGENTS.md`, `PLAN.md` |
 
-3. **Prune auto-continue maps:** After auto-continue completes (success or failure), delete the session's entry from the attempt maps.
+### API Endpoints
 
-4. **Close SQLite in `closeWorkspaceGraphDb`:** Call `sqlite.close()` on the underlying Database before removing from the map.
+| Method | Path | Action |
+|---|---|---|
+| GET | `/api/mds` | List + reconcile on-disk with metadata |
+| GET | `/api/mds/read?path=` | Read file content |
+| POST | `/api/mds/create` | Write file + update `mdMeta.json` |
+| PUT | `/api/mds/update` | Edit/rename + update metadata |
+| DELETE | `/api/mds/delete?path=` | Delete file + clean metadata |
 
-5. **Bound bash PTY session buffer:** Cap the buffer size or periodically trim old output.
+### Metadata
 
-### Medium
+`data/{mode}/mds/mdMeta.json` stores tags, `lastEdited`, compute stats (chars, words, lines, tokens) per entry.
 
-6. **Add memory pressure logging:** Log RSS at key points (startup, after reindex, after each LLM call) so future crashes can be correlated with specific operations.
+### Problems
 
-7. **Make watcher reindex incremental:** Only re-read files that have changed, not the entire workspace. The scan already diffs against the existing index — extend this to skip unchanged files entirely.
+- **Brittle scope detection**: `const mode = resolve(dataDir).split("/").pop()` — assumes path structure, fragile
+- **No scope filtering**: All files mixed into one flat list, no `global`/`project`/`session` distinction
+- **No validation**: No schema validation for uploaded `.md` content
+- **Stats computed inline**: `calculateStats()` is duplicated knowledge (tokens = chars/4 is an LLM-ism)
+- **Hardcoded tag**: `global/agents.md` gets auto-tagged `"global"` — but this is the old legacy path name
+- **Name is misleading**: "mds" describes file format (.md), not purpose. Everything in `dataDir/mds/` is prompt-related: `systemPromptBase.md` (base system prompt), `skill/` (skill definitions), `global/agents.md` (legacy), `system/` (agent configs). The name obscures that this is a **prompt file** management system.
 
-8. **Add a `resetParserProject()` call after watcher reindex:** Currently `resetParserProject()` exists but is never called. Calling it after each reindex would free accumulated ts-morph memory (though the next reindex would rebuild the project, which has its own cost).
+---
+
+## 4. Skill System
+
+**File**: `_backend/src/features/tools/builtins/skill.ts` (94 lines)
+
+### Load Order
+
+```
+skillRoots = [
+  .visual-studio-harness/skills/,
+  source/skills/,
+  data/{mode}/skills/
+]
+```
+
+Resolution: directory with `SKILL.md` → name is directory name; flat `*.md` → name is basename without `.md`
+
+### Problems
+
+- **Duplicate listing logic**: `listSkillNames()` and `registerSkillsRoutes` both scan for skill discovery, but scan **different directories**:
+  - `rest/skills.ts` → scans `data/{mode}/mds/skill/` for the frontend
+  - `builtins/skill.ts` → scans `skillRoots` from runtime config for the agent
+  - These sets are **non-overlapping**. Skills in `dataDir/skills/` are invisible to the frontend. Skills in `dataDir/mds/skill/` are invisible to the agent tool unless also in `skillRoots`.
+- **No `/api/skills/read` endpoint** — frontend can't fetch skill content
+- **32KB max**: Hardcoded constant `MAX_SKILL_BYTES`
+
+---
+
+## 5. Knowledge Base System
+
+**Location**: `_backend/src/features/knowledge-base/`
+
+### Data Flow
+
+```
+KnowledgeBaseService
+  → ingestion pipeline (watcher)
+  → chunking + embedding
+  → hybrid search (FTS5 + vector)
+  → CRUD tools: knowledge_document_create, _edit, _delete, knowledge_search, knowledge_ingest, knowledge_list, knowledge_open
+```
+
+### Scope Support
+
+Knowledge base has its own scope enum (`KbScope`) but **only global scope is implemented**. Project and session scopes are defined in the type but have no storage paths or resolution logic.
+
+### Problems
+
+- **Has its own ingest/watcher pipeline** that overlaps with `mds/` REST system. Both ingest `.md` files but KB does it with chunking+embeddings while MDS just tracks metadata. No cross-reference between them.
+- **`CONFIG_FILENAME_PREFIX = "agentCreate_"`** — agent-created docs get this prefix, but there's no mechanism to prevent conflicts or display it cleanly.
+
+---
+
+## 6. Notes System
+
+**File**: `_backend/src/rest/notes.ts` (307 lines) — CRUD REST + 5 builtin tool wrappers
+
+### Storage
+
+Each note = a directory with `note.json`:
+
+```
+data/{mode}/notes/{name}/note.json                ← global scope
+{workspace}/.agentHarness/notes/{name}/note.json  ← project scope
+data/{mode}/session/{sessionId}/notes/{name}/note.json  ← session scope
+```
+
+### Problems
+
+- **Same scope pattern redefined** (third copy of `"global" | "project" | "session"`)
+- **`.agentHarness` directory** in workspace root is a side-effect for project-scoped data — no cleanup mechanism
+- **Notes cannot be edited by agent tool** — only created, archived, listed. `notes_update` tool exists but modifies metadata (archived flag) not content
+
+---
+
+## 7. Audit System
+
+**Location**: `_backend/src/features/tools/builtins/audit_*.ts` (8 files), `rest/audits.ts`, `rest/audit-prompts.ts`
+
+### Storage
+
+```
+data/{mode}/audits/{name}/audit.json                  ← global
+{workspace}/.agentHarness/audits/{name}/audit.json    ← project
+data/{mode}/session/{sid}/audits/{name}/audit.json    ← session
+```
+
+**Audit prompts** are separate and **global-only**:
+```
+data/{mode}/audit-prompts/{id}/prompt.json
+```
+
+### Problems
+
+- **Eight tool files** for one domain, each ~20-40 lines of boilerplate wrapping REST calls
+- **`.agentHarness` directory** appears again for project-scoped audits
+- **Audit prompts seeded from code** (`audit-prompt-seeds.ts`) — 12 hardcoded prompts, cannot be customized without code changes
+- **No dedup with Notes** — both store structured JSON with metadata, yet have completely separate implementations
+- **Audit prompts have no scope support** — only global, no project or session
+
+---
+
+## 8. Design (Spec/Plan) System
+
+**Location**: `_backend/src/features/tools/builtins/design_*.ts` (5 files), `rest/plans.ts` (429 lines)
+
+### Storage
+
+```
+data/{mode}/designs/{name}/specV1.json, planV1.json        ← global
+{workspace}/.agentHarness/designs/{name}/...                ← project
+data/{mode}/session/{sid}/designs/{name}/...                ← session
+```
+
+### Problems
+
+- **Largest REST file** at 429 lines — does too much (create, read, edit, list, abandon)
+- **`.agentHarness`** directory again
+- **Duplicate scope resolution pattern** (4th copy)
+
+---
+
+## 9. Cross-Cutting Issues
+
+### 9.1 Naming Collision: "agents.md" Means Two Things
+
+| File | Purpose |
+|---|---|
+| `data/{mode}/mds/systemPromptBase.md` | Global prompt base (formerly `mds/global/agents.md`) |
+| `{workspaceRoot}/agents.md` | Project-level rules for the LLM agent |
+
+The global file has migrated **from** `agents.md` **to** `systemPromptBase.md`, but the migration is incomplete:
+- `_backend/src/agent/agents.default.ts` still says "# agents" in comments
+- `ensureGlobalAgentsFile` method name references "agents"
+- `AGENTS_MD_NAMES = ["agents.md", "AGENTS.md"]` still used for both global and project
+
+### 9.2 Scope Enum is Copy-Pasted 5 Times
+
+Each system redefines `"global" | "project" | "session"` as a local type:
+
+| File | Type Name |
+|---|---|
+| `rest/audits.ts` | `AuditScope` |
+| `rest/notes.ts` | `NotesScope` |
+| `rest/plans.ts` | `DesignsScope` |
+| `rest/research.ts` | `ResearchScope` |
+| `features/knowledge-base/db.ts` | `KbScope` |
+
+### 9.3 `.agentHarness` Directory Proliferation
+
+Project-scoped data for notes, audits, and designs all write to `{workspaceRoot}/.agentHarness/{type}/`. No single manager or cleanup mechanism.
+
+### 9.4 SystemPromptJoiners Has 20 Fields
+
+`SystemPromptJoiners` in `_shared/types/config.ts` has 20 mandatory string fields (`preGlobal`, `postGlobal`, `preAgent`, etc.). Any schema change requires updating:
+- Type definition
+- Default constants
+- Seed JSON
+- `loadSeedJoinersDefaults` parser
+- `TAG_PRE` / `TAG_POST` maps
+- Joiner key type
+
+### 9.5 Tool Prefix Inconsistency
+
+| System | Prefix | Count |
+|---|---|---|
+| Knowledge | `knowledge_` | 7 |
+| Audit (docs) | `audit_` | 5 |
+| Audit (prompts) | `audit_prompt_` | 5 |
+| Notes | `notes_` | 5 |
+| Design | `design_` | 5 |
+
+### 9.6 Agent Settings Have Two Storage Layers
+
+- JSON files at `data/{mode}/agents/{key}.json` — source of truth for agent presets
+- Session metadata stores ephemeral overrides (model, provider, thinking effort)
+- Agent settings carry `agentMd` and `skillMds` (nested MD configs), but these are not propagated through the session → runtime path cleanly
+
+### 9.7 No Centralized Path Resolution
+
+Each REST module has its own `resolve*Dir` function. There is no shared path mapping.
+
+### 9.8 Two `agents.default.ts` Files
+
+| File | Used? |
+|---|---|
+| `_backend/src/agent/agents.default.ts` | **NOT imported anywhere** |
+| `_backend/src/features/agents/agents.default.ts` | **IS imported** from `features/agents/system-prompt.ts` |
+
+---
+
+## 10. Scope Resolution Analysis: Which Systems Actually Support the 3-Scope Pattern
+
+The established scope resolution pattern is:
+
+| Scope | Base Dir | Resolver Logic |
+|---|---|---|
+| `global` | `{dataDir}/` | `join(dataDir, "<subsystem>")` |
+| `project` | `{workspaceRoot}/.agentHarness/` | `join(resolve(workspaceRoot), ".agentHarness", "<subsystem>")` |
+| `session` | `{dataDir}/session/{id}/` | `join(dataDir, "session", sessionId, "<subsystem>")` |
+
+### Scope Coverage by System
+
+| System | Global | Project | Session | Storage Format |
+|--------|--------|---------|---------|---------------|
+| Notes | ✅ | ✅ | ✅ | `note.json` |
+| Audits | ✅ | ✅ | ✅ | `audit.json` |
+| Research | ✅ | ✅ | ✅ | JSON |
+| Designs | ✅ | ✅ | ✅ | `specV1.json`, `planV1.json` |
+| Knowledge Base | ✅ (only) | ❌ defined but dead | ❌ defined but dead | SQLite + source files |
+| **Prompts (mds/)** | ✅ `dataDir/mds/` | ❌ | ❌ | `.md` files |
+| **Skills** | ✅ `dataDir/mds/skill/` | ❌ | ❌ | `.md` files |
+| **Agents (presets)** | ✅ `dataDir/agents/` | ❌ | ❌ | `.json` files |
+| **Audit Prompts** | ✅ `dataDir/audit-prompts/` | ❌ | ❌ | `prompt.json` |
+
+Three prompt-related subsystems (mds, skills, agents) lack project and session scope entirely — they are global-only, which is inconsistent with the rest of the system.
+
+### Section-Level Scope Gaps in the Prompt Builder
+
+The `SectionContext` passed to each section builder carries `dataDir`, `workspaceRoot`, `sessionId`, and `mode` — all the necessary info for scope resolution. But each section resolves differently:
+
+| Section | What It Reads | Scope Used |
+|---------|--------------|------------|
+| `global.section.ts` | `dataDir/mds/systemPromptBase.md` | global only |
+| `project.section.ts` | `{workspaceRoot}/{agents,AGENTS}.md` | workspace root only (semi-project) |
+| `agent-md.section.ts` | `agentSettings.agentMd` (path or inline) | caller-dependent |
+| `skills.section.ts` | `agentSettings.skillMds` (path array) | caller-dependent |
+
+The "project" section reads from the workspace root directly (`agents.md`), not from `.agentHarness/mds/`. There is no `.agentHarness/mds/` concept at all today.
+
+---
+
+## 11. Three Competing Skills Directories
+
+| Directory | Scanned By | Status |
+|-----------|-----------|--------|
+| `dataDir/mds/skill/` | REST API (`rest/skills.ts`) → frontend listing | ✅ Live |
+| `dataDir/skills/` | Agent tool (`builtins/skill.ts`) via `skillRoots` from runtime config | ❌ Orphaned — no system writes here, no seed mechanism targets it |
+| `seeds/dev/skills/` | Seed source only (one skill: `testing/SKILL.md`) | ✅ Seed only |
+
+The agent tool and the REST API scan **non-overlapping** directories:
+- Agent searches `skillRoots` → includes `dataDir/skills/`, `.visual-studio-harness/skills/`, `source/skills/`
+- REST scans `dataDir/mds/skill/`
+- Skills in one are invisible to the other
+
+The `seeds/dev/skills/testing/SKILL.md` shows intent to seed skills, but no seeding mechanism copies from `seeds/` to either skills target directory. The only seeding that runs is `ensureGlobalAgentsFile()` for `systemPromptBase.md`.
+
+---
+
+## 12. Seeds Directory Structure vs. What 3-Scope Support Would Require
+
+### Current Seeds
+
+```
+seeds/dev/
+  config/joinerDefaults.json
+  mcp/default.json
+  mds/systemPromptBase.md
+  skills/testing/SKILL.md
+seeds/packageAndProd/
+  config/joinerDefaults.json
+  mcp/default.json
+  mds/systemPromptBase.md
+```
+
+### Current Seed Mechanism
+
+The only seeding logic is `ensureGlobalAgentsFile()`:
+1. Checks `dataDir/mds/systemPromptBase.md` exists → return
+2. Legacy migration from `dataDir/mds/global/agents.md`
+3. Copy from `seeds/{modeSubdir}/mds/systemPromptBase.md`
+4. Hardcoded fallback
+
+Skills are NOT seeded. The `skills/testing/SKILL.md` directory under `seeds/dev/` exists but has no ingestion path into either `dataDir/mds/skill/` or `dataDir/skills/`.
+
+There is no seed structure for project-level or session-level prompts.
+
+---
+
+## 13. Directory Map of All Subsystems
+
+```
+data/{mode}/
+├── mds/                        ← Raw .md files (MDS REST system)
+│   ├── systemPromptBase.md     ← Global prompt base
+│   ├── skill/                  ← Skills discovered by frontend REST
+│   ├── global/agents.md        ← Legacy (migration target → systemPromptBase.md)
+│   └── system/                 ← System agent configs
+├── agents/                     ← Agent presets (*.json)
+├── sessions/
+├── notes/                      ← Notes (JSON) — has 3-scope
+├── audits/                     ← Audit documents (JSON) — has 3-scope
+├── audit-prompts/              ← Audit prompt presets (JSON) — global only
+├── designs/                    ← Specs & plans (JSON) — has 3-scope
+├── research/                   ← Research documents (JSON) — has 3-scope
+├── knowledge/                  ← KB with embeddings — global only
+└── skills/                     ← Skills (scanned by agent tool) — global only, orphaned
+
+{workspace}/
+└── .agentHarness/              ← Project-scoped data (notes, audits, designs)
+    ├── notes/
+    ├── audits/
+    └── designs/
+```
+
+### Key Observations
+
+1. **Six subsystems write to `dataDir/` directly** (mds, agents, notes, audits, designs, knowledge) — three have scope support, three don't
+2. **Three subsystems write to `.agentHarness/`** (notes, audits, designs) — all with the same scope pattern copy-pasted
+3. **Only ONE subsystem uses session scope** (notes, audits, designs) — mds/prompts/skills don't
+4. **`dataDir/skills/` is orphaned** — no seeding into it, no REST visibility from it, yet it's in `skillRoots`
+5. **Seeds directory has a skill that never gets copied anywhere**
+6. **The MDS REST system is the only UI for managing prompt files** — and it only sees `dataDir/mds/` and `{workspaceRoot}/`, not `.agentHarness/mds/` or session-level mds

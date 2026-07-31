@@ -64,7 +64,9 @@ export const knowledgeEmbeddingMeta = sqliteTable("knowledge_embedding_meta", {
   dimensions: integer("dimensions").notNull(),
   tokenCount: integer("token_count").notNull().default(0),
   createdAt: text("created_at").notNull(),
-});
+}, (t) => ({
+  hashModelUq: uniqueIndex("idx_meta_hash_model").on(t.chunkHash, t.model),
+}));
 
 // ── Relationships ──────────────────────────────────────────────────
 

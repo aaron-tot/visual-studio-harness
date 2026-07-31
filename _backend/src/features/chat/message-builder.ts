@@ -232,11 +232,12 @@ export async function buildModelMessages(
     }
   }
 
-  // 4. Prepend system prompt once
-  const finalMessages: CoreMessage[] = [
-    { role: "system", content: systemBlock },
-    ...messages,
-  ];
+  // 4. Prepend system prompt once (only if it has content)
+  const finalMessages: CoreMessage[] = [];
+  if (systemBlock.trim()) {
+    finalMessages.push({ role: "system", content: systemBlock });
+  }
+  finalMessages.push(...messages);
 
   // 5. Append current user message
   finalMessages.push({ role: "user", content: options.currentUserMessage });

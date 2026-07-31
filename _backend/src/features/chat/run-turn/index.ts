@@ -174,7 +174,6 @@ export async function runTurn(
   // ── Context refs ─────────────────────────────────────────────────
   const includeFailedTurns = config.includeFailedTurnsInHistory ?? true;
   const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns });
-  insertTurnContext(traceTurnId, contextTurnIds, dataDir);
 
   await bus?.emit("message.user_persisted", hookCtx, { message: userMessage, sessionId });
   const session = await getSession(dataDir, sessionId);

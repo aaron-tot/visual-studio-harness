@@ -282,6 +282,7 @@ export async function runTurn(
         includeToolResults: config.includeToolResultsInHistory ?? true,
         includeReasoningParts: config.includeReasoningInHistory ?? false,
         includePatchParts: config.includePatchesInHistory ?? false,
+        includeOtherParts: config.includeOtherPartsInHistory ?? false,
         maxTurns: config.contextMaxTurns,
         currentTurnNumber: turnNumber,
         currentUserMessage: input.content,

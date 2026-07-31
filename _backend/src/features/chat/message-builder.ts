@@ -15,6 +15,7 @@ export interface BuildModelMessagesOptions {
   includeToolResults: boolean;
   includeReasoningParts: boolean;
   includePatchParts: boolean;
+  includeOtherParts: boolean;
   maxTurns?: number;
   currentTurnNumber: number;
   currentUserMessage: string;
@@ -172,19 +173,15 @@ export async function buildModelMessages(
             }
             break;
           }
-          case "tool_call": {
-            if (options.includeToolCalls) {
+          case "tool": {
+            if (part.status === "running" && options.includeToolCalls) {
               contentParts.push({
                 type: "tool-call",
                 toolCallId: part.toolCallId ?? "",
                 toolName: part.toolName ?? "",
                 args: data.args ?? {},
               });
-            }
-            break;
-          }
-          case "tool_result": {
-            if (options.includeToolResults) {
+            } else if (part.status === "completed" && options.includeToolResults) {
               toolResultMessages.push({
                 role: "tool",
                 content: [
@@ -216,6 +213,13 @@ export async function buildModelMessages(
                 type: "text",
                 text: typeof data.patch === "string" ? data.patch : JSON.stringify(data.patch),
               });
+            }
+            break;
+          }
+          default: {
+            if (options.includeOtherParts) {
+              const text = typeof data.content === "string" ? data.content : JSON.stringify(data);
+              if (text) contentParts.push({ type: "text", text });
             }
             break;
           }

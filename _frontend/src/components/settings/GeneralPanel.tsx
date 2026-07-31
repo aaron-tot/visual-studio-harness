@@ -362,6 +362,23 @@ export function GeneralPanel() {
             </div>
           </label>
 
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={(config.includeOtherPartsInHistory as boolean) ?? false}
+              onChange={(e) => patch({ includeOtherPartsInHistory: e.target.checked })}
+              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+            />
+            <div>
+              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+                Include other parts in history
+              </div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                When enabled, other part types (snapshots, errors, questions, etc.) from previous turns are sent to the model.
+              </div>
+            </div>
+          </label>
+
           <div className="space-y-2">
             <label className="text-xs text-zinc-500">Max history turns</label>
             <input

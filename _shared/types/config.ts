@@ -190,6 +190,8 @@ export interface ConfigFile {
   includeReasoningInHistory?: boolean;
   /** Include patches/diffs from previous turns in SDK messages (default: false) */
   includePatchesInHistory?: boolean;
+  /** Include other part types (snapshot, error, question, etc.) from previous turns in SDK messages (default: false) */
+  includeOtherPartsInHistory?: boolean;
   /** Maximum number of historical turns to include (context window) */
   contextMaxTurns?: number;
   /** Error message substring (case-insensitive) that triggers a streaming retry. */

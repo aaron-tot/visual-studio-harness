@@ -87,13 +87,21 @@ export class KnowledgeBaseService {
     workspaceRoot?: string,
     sessionId?: string,
   ): Promise<{ results: SearchResult[]; hybrid: boolean }> {
-    if (!this.config) return { results: [], hybrid: false };
+    // If no config was provided (knowledge section missing from config.json),
+    // use a default config with no embedding provider so keyword-only search still works.
+    const cfg = this.config || {
+      enabled: true,
+      sourcesPath: "",
+      dbPath: "",
+      embedding: { providerId: "", model: "nomic-embed-text-v1.5", batchSize: 10 },
+      search: { vectorWeight: 0.5, keywordWeight: 0.5, metadataWeight: 0.0, topK: 10, reranking: false },
+    };
     const { results, hybrid } = await searchKnowledge(
       this.dataDir,
       scope,
       query,
       opts || {},
-      this.config,
+      cfg,
       this.providers,
       workspaceRoot,
       sessionId,

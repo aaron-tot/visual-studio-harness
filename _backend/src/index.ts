@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { join, resolve } from "node:path";
-import { mkdir, appendFile, readFile } from "node:fs/promises";
+import { mkdir, appendFile, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { initConfigWatcher } from "./config/load";
 import { registerConfigRoutes } from "./rest/config";
@@ -79,6 +79,8 @@ function ensureTerminal(): void {
 }
 
 ensureTerminal();
+
+const STARTED_AT = Date.now();
 
 const MODE = getMode();
 const PORT = getPort();
@@ -239,6 +241,13 @@ async function main() {
 
   app.get("/api/health", async () => ({ status: "ok", mode: MODE, dataDir: DATA_DIR }));
 
+  // Reload signal for coordinated full-stack refresh (dev mode).
+  // startedAt is the process start time — it only changes on backend restart,
+  // so the frontend can detect restarts without a reload loop.
+  if (MODE === "dev") {
+    app.get("/api/reload-signal", async () => ({ startedAt: STARTED_AT }));
+  }
+
   // App info: build timestamp (baked in at compile time) + install timestamp (written by installer)
   app.get("/api/app-info", async () => {
     const buildTimestamp: string | undefined = (process.env as Record<string, string | undefined>).BUILD_TIMESTAMP;
@@ -263,6 +272,26 @@ async function main() {
   });
 
   // Dev-only: run master e2e test in headed mode
+  const MASTER_TEST_RESULT_FILE = join(DATA_DIR, "master-test-result.json");
+
+  async function storeMasterTestResult(passed: boolean, exitCode: number) {
+    const data = { passed, exitCode, timestamp: new Date().toISOString() };
+    await writeFile(MASTER_TEST_RESULT_FILE, JSON.stringify(data), "utf-8");
+  }
+
+  async function readMasterTestResult(): Promise<{
+    passed: boolean | null;
+    exitCode: number | null;
+    timestamp: string | null;
+  }> {
+    try {
+      const raw = await readFile(MASTER_TEST_RESULT_FILE, "utf-8");
+      return JSON.parse(raw);
+    } catch {
+      return { passed: null, exitCode: null, timestamp: null };
+    }
+  }
+
   app.post("/api/run-master-test", async () => {
     if (MODE !== "dev") {
       return { ok: false, error: "Only available in dev mode" };
@@ -275,7 +304,22 @@ async function main() {
       cwd: repoDir,
       stdio: ["ignore", "inherit", "inherit"],
     });
+
+    // Don't block — store result when process finishes
+    proc.exited.then(async (exitCode) => {
+      try {
+        await storeMasterTestResult(exitCode === 0, exitCode);
+        console.log(`[master-test] finished with exit code ${exitCode}`);
+      } catch (err) {
+        console.error("[master-test] failed to store result:", err);
+      }
+    });
+
     return { ok: true, pid: proc.pid };
+  });
+
+  app.get("/api/master-test-result", async () => {
+    return readMasterTestResult();
   });
 
   // Prod binary serves embedded frontend; dev uses Vite on :3100

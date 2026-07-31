@@ -140,16 +140,48 @@ export function projectStreamingContent(sessionId: string, dataDir?: string): st
 
 // ── Model history from context refs ───────────────────────────────────
 
-export function resolveContextTurnIds(sessionId: string, dataDir?: string): number[] {
-  // Default: all successful prior turns
+export function resolveContextTurnIds(
+  sessionId: string,
+  dataDir?: string,
+  opts?: { includeFailedTurns?: boolean },
+): number[] {
   const db = dbFor(dataDir);
-  const rows = db
+  const includeFailed = opts?.includeFailedTurns ?? true;
+
+  // Get the latest turn for this session
+  const latestTurn = db
     .select({ id: turns.id })
     .from(turns)
-    .where(and(eq(turns.sessionId, sessionId), eq(turns.success, true)))
-    .orderBy(turns.turnNumber)
+    .where(eq(turns.sessionId, sessionId))
+    .orderBy(desc(turns.turnNumber))
+    .limit(1)
+    .get();
+
+  if (!latestTurn) return [];
+
+  // Read the latest turn's context (turn_context entries for the previous turn)
+  const contextRows = db
+    .select({ contextTurnId: turnContext.contextTurnId })
+    .from(turnContext)
+    .where(eq(turnContext.turnId, latestTurn.id))
+    .orderBy(turnContext.position)
     .all();
-  return rows.map((r) => r.id);
+
+  let contextTurnIds = contextRows.map(r => r.contextTurnId);
+
+  if (!includeFailed) {
+    // Filter out failed/aborted turns - only keep successful ones
+    const successfulTurns = db
+      .select({ id: turns.id })
+      .from(turns)
+      .where(and(eq(turns.sessionId, sessionId), eq(turns.success, true)))
+      .all();
+    const successfulIds = new Set(successfulTurns.map(t => t.id));
+    contextTurnIds = contextTurnIds.filter(id => successfulIds.has(id));
+  }
+
+  // Include the latest turn itself in the context for the next turn
+  return [...contextTurnIds, latestTurn.id];
 }
 
 export function buildModelMessagesFromContext(

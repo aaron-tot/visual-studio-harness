@@ -4,7 +4,7 @@
   "type": "module",
   "workspaces": ["_backend", "_frontend", "_shared"],
   "scripts": {
-    "dev": "MODE=dev BACKEND_PORT=3101 bun run scripts/kill-port.ts 3101 && bun run scripts/kill-port.ts 3100 && concurrently -n backend,frontend -c blue,green \"bun run --filter _backend --elide-lines=0 dev\" \"bun run --filter _frontend --elide-lines=0 dev\"",
+    "dev": "bun pm cache rm && MODE=dev BACKEND_PORT=3101 bun run scripts/kill-port.ts 3101 && bun run scripts/kill-port.ts 3100 && concurrently -n backend,frontend -c blue,green \"bun run --filter _backend --elide-lines=0 dev\" \"bun run --filter _frontend --elide-lines=0 dev\"",
     "test:e2e": "playwright test --config testing/playwright.config.ts",
     "test:components": "playwright test --config testing/playwright.config.ts component-tests/",
     "test:integration": "playwright test --config testing/playwright.config.ts integration/",

@@ -19,6 +19,7 @@ _backend/20*/
 _backend/index
 _backend/.watch-stamp
 _backend/notes.txt
+logs/
 AGENT_CHANGE_IMPLEMENTATION_AUDIT.md
 *.bak
 *.swp

@@ -9,6 +9,7 @@ import { SlotBusyModal } from "./components/tools/SlotBusyModal";
 import { useChatStore } from "./stores/chat";
 import { useConfigStore } from "./stores/config";
 import { wsClient } from "./lib/ws";
+import { useBackendReload } from "./hooks/useBackendReload";
 
 
 function SessionIdCopy({ id }: { id: string }) {
@@ -37,6 +38,7 @@ function SessionIdCopy({ id }: { id: string }) {
 type SettingsTab = "providers" | "agents" | "global" | "mds";
 
 function App() {
+  useBackendReload();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("providers");
   const [search, setSearch] = useState("");

@@ -78,9 +78,9 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   const { instructions, messages: chatMessages } = splitSystemInstructions(messages);
 
-  const debugMessages = instructions ? [{ role: "system" as const, content: instructions }, ...chatMessages] : chatMessages;
   const debugRequestBody: Record<string, unknown> = {
-    model, messages: debugMessages,
+    model, messages: chatMessages,
+    ...(instructions ? { instructions } : {}),
     ...(hasTools ? { tools: serializeToolsForDebug(tools!), tool_choice: "auto" } : {}),
     stream: true,
     ...(temperature !== undefined ? { temperature } : {}),

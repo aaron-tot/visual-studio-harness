@@ -274,6 +274,25 @@ export function GeneralPanel() {
               </div>
             </div>
           </label>
+
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={(config.includeFailedTurnsInHistory as boolean) ?? true}
+              onChange={(e) => patch({ includeFailedTurnsInHistory: e.target.checked })}
+              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+            />
+            <div>
+              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+                Include failed/aborted turns in history
+              </div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                When enabled, turns that errored or were aborted are included in the
+                conversation history sent to the model. When disabled, only successful
+                turns are included. Default: on.
+              </div>
+            </div>
+          </label>
         </div>
 
         <div className="border border-zinc-800 rounded-lg p-3 opacity-60 select-none">

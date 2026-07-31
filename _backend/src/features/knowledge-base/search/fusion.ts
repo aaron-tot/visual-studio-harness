@@ -6,7 +6,7 @@ import { DEFAULT_FUSION_WEIGHTS } from "./types";
  *
  * Algorithm:
  * 1. Normalize vector scores to [0,1]: score = 1 / (1 + distance)
- * 2. Normalize keyword scores to [0,1] via min-max over the result set
+ * 2. Normalize keyword scores to [0,1] via min-max over the result set (using .score)
  * 3. Build dedup map by chunkId
  * 4. finalScore = vectorWeight * normVectorScore + keywordWeight * normKeywordScore
  * 5. finalScore += metadataWeight * metadataBoost
@@ -20,15 +20,16 @@ export function fuseResults(
 ): SearchResult[] {
   const map = new Map<string, SearchResult>();
 
-  // Normalize keyword scores via min-max (only if we have results)
+  // Normalize keyword scores via min-max (using .score which is positive: higher = better)
   let keywordMax = 0;
   let keywordMin = Infinity;
   for (const r of keywordResults) {
-    if (r.rank !== undefined) {
-      if (r.rank > keywordMax) keywordMax = r.rank;
-      if (r.rank < keywordMin) keywordMin = r.rank;
+    if (r.score !== undefined && r.score !== null) {
+      if (r.score > keywordMax) keywordMax = r.score;
+      if (r.score < keywordMin) keywordMin = r.score;
     }
   }
+  // Single result or all-equal scores: everything is the best match → normalize to 1
   const keywordRange = keywordMax - keywordMin || 1;
 
   // Add vector results
@@ -40,8 +41,14 @@ export function fuseResults(
   }
 
   // Add/merge keyword results
+  const allEqual = keywordMax === keywordMin;
   for (const r of keywordResults) {
-    const normKeywordScore = r.rank !== undefined ? (r.rank - keywordMin) / keywordRange : 0;
+    const normKeywordScore =
+      r.score !== undefined && r.score !== null
+        ? allEqual
+          ? 1
+          : (r.score - keywordMin) / keywordRange
+        : 0;
     const existing = map.get(r.chunkId);
     if (existing) {
       existing.score += weights.keyword * normKeywordScore;

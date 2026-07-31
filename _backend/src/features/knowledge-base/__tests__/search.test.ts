@@ -126,6 +126,17 @@ describe("search system", () => {
     expect(fused.some((r) => r.chunkId === "c3")).toBe(true);
   });
 
+  it("fuseResults keeps a nonzero score for a single keyword result", () => {
+    const keywordResults: SearchResult[] = [
+      { chunkId: "c1", documentId: "d1", filename: "a.md", section: "Document", content: "a", score: 1.000001, rank: -0.000001 },
+    ];
+
+    const fused = fuseResults([], keywordResults, { vector: 0.6, keyword: 0.3, metadata: 0.1 }, 5);
+    const c1 = fused.find((r) => r.chunkId === "c1");
+    expect(c1).toBeTruthy();
+    expect(c1!.score).toBeGreaterThan(0);
+  });
+
   it("fuseResults applies metadata boost for structured sections", () => {
     const results: SearchResult[] = [
       { chunkId: "c1", documentId: "d1", filename: "a.md", section: "Doc", content: "a", score: 0 },

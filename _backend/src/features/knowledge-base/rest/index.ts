@@ -57,6 +57,18 @@ export function registerKnowledgeRoutes(
     return doc;
   });
 
+  // ── Document embeddings ──────────────────────────────────────────
+  app.get("/api/knowledge/documents/:id/embeddings", async (request, reply) => {
+    const params = request.params as { id: string };
+    const q = request.query as { scope?: string };
+    const scope = (q.scope as KbScope) || "global";
+    const { getDocumentEmbeddings } = await import("../service-queries");
+    const kbDb = await import("../db").then(m => m.openKnowledgeDb(kb.baseDataDir, scope));
+    if (!kbDb) return reply.code(500).send({ error: "Cannot open knowledge DB" });
+    const embeddings = await getDocumentEmbeddings(kbDb, params.id);
+    return { embeddings };
+  });
+
   // ── Create document ─────────────────────────────────────────────
   app.post<{
     Body: {

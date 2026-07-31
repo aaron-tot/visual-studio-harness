@@ -9,8 +9,7 @@ import { MdManager } from "../settings/MdManager";
 import { ToolsPanel } from "../settings/ToolsPanel";
 import { GeneralPanel } from "../settings/GeneralPanel";
 import { SystemPromptPanel } from "../settings/SystemPromptPanel";
-import { ShortcutsPanel } from "../settings/ShortcutsPanel";
-import { TestModelsPanel } from "../settings/TestModelsPanel";
+import { KnowledgeSettingsPanel } from "../settings/KnowledgeSettingsPanel";
 import { McpServersPanel } from "../settings/McpServersPanel";
 import { McpServerEditor } from "../settings/McpServerEditor";
 import { useConfigStore } from "../../stores/config";
@@ -18,7 +17,7 @@ import { PRECONFIGURED_PROVIDERS } from "../../../../_shared/provider-registry";
 
 const TEMPLATE_NAMES = PRECONFIGURED_PROVIDERS.map((d) => d.name);
 
-type Tab = "general" | "providers" | "mcp" | "agents" | "mds" | "tools" | "system" | "shortcuts" | "test-models";
+type Tab = "general" | "providers" | "mcp" | "agents" | "mds" | "tools" | "system" | "shortcuts" | "test-models" | "knowledge";
 
 interface SettingsModalProps {
   open: boolean;
@@ -83,6 +82,7 @@ export function SettingsModal({
           {tabBtn("system", "System Prompt")}
           {tabBtn("shortcuts", "Shortcuts")}
           {tabBtn("test-models", "Test Models")}
+          {tabBtn("knowledge", "Knowledge")}
           <button
             onClick={onClose}
             className="ml-auto text-zinc-400 hover:text-zinc-200 p-1"
@@ -179,6 +179,12 @@ export function SettingsModal({
           {tab === "test-models" && (
             <div key={`test-models-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
               <TestModelsPanel />
+            </div>
+          )}
+
+          {tab === "knowledge" && (
+            <div key={`knowledge-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
+              <KnowledgeSettingsPanel />
             </div>
           )}
         </div>

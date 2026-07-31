@@ -1,7 +1,8 @@
-import { eq, like, and, sql } from "drizzle-orm";
+import { eq, like, and, sql, desc } from "drizzle-orm";
 import { openKnowledgeDb, resolveKnowledgeDir, type KbScope } from "./db";
 import { knowledgeDocuments, knowledgeChunks, knowledgeDocumentVersions, knowledgeGroups, knowledgeGroupDocuments } from "./schema";
 import type { DocumentMeta, DocumentContent } from "./types";
+import type { Database } from "bun:sqlite";
 
 /**
  * List documents with optional filters.
@@ -178,4 +179,68 @@ export async function getGroup(
   if (!group) return null;
   const docIds = await listGroupDocumentIds(dataDir, scope, groupId, workspaceRoot, sessionId);
   return { ...group, documentIds: docIds };
+}
+
+/**
+ * Get embedding info for all chunks of a document
+ */
+export async function getDocumentEmbeddings(kb: { db: any; sqlite: Database }, docId: string): Promise<Array<{
+  id: string;
+  chunkIndex: number;
+  embeddingModel: string | null;
+  dimensions: number | null;
+  hasEmbedding: boolean;
+  content: string;
+  section: string;
+  tokenCount: number;
+}>> {
+  const chunks = await kb.db
+    .select({
+      id: knowledgeChunks.id,
+      chunkIndex: knowledgeChunks.chunkIndex,
+      embeddingModel: knowledgeChunks.embeddingModel,
+      content: knowledgeChunks.content,
+      section: knowledgeChunks.section,
+      hash: knowledgeChunks.hash,
+      tokenCount: knowledgeChunks.tokenCount,
+    })
+    .from(knowledgeChunks)
+    .where(eq(knowledgeChunks.documentId, docId))
+    .orderBy(knowledgeChunks.chunkIndex)
+    .all();
+
+  // Check vec0 table for actual embeddings
+  const vecCheck = kb.sqlite
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_embeddings'")
+    .get();
+
+  const chunkEmbeddings: Record<string, boolean> = {};
+  if (vecCheck) {
+    const rows = kb.sqlite
+      .prepare("SELECT chunk_id FROM knowledge_embeddings")
+      .all() as { chunk_id: string }[];
+    for (const r of rows) chunkEmbeddings[r.chunk_id] = true;
+  }
+
+  // Get embedding metadata (by chunk_hash)
+  // Get embedding metadata (by chunk_hash)
+  const metaRows = kb.sqlite
+    .prepare("SELECT chunk_hash, model, dimensions FROM knowledge_embedding_meta WHERE chunk_hash IN (" + chunks.map(() => "?").join(",") + ")")
+    .all(...chunks.map(c => c.hash)) as { chunk_hash: string; model: string; dimensions: number }[];
+
+  const metaMap = new Map(metaRows.map(m => [m.chunk_hash, m]));
+
+  return chunks.map(c => {
+    const meta = metaMap.get(c.hash);
+    return {
+      id: c.id,
+      chunkIndex: c.chunkIndex,
+      embeddingModel: meta?.model || null,
+      dimensions: meta?.dimensions || null,
+      hasEmbedding: chunkEmbeddings[c.id] === true,
+      content: c.content,
+      section: c.section || "Document",
+      tokenCount: c.tokenCount || 0,
+    };
+  });
 }

@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useKnowledgeStore } from "./store";
 import { EmptyState } from "../info-panel/components/ui";
+import { FileText } from "lucide-react";
 import type { PlanScope } from "../info-panel/types";
+import { knowledgeOpenDocument, knowledgeGetEmbeddings } from "../../lib/api";
 
 export function KnowledgeTab({ scope }: { scope: PlanScope }) {
   const {
@@ -21,6 +23,7 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [detailDocId, setDetailDocId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDocuments(scope);
@@ -41,7 +44,6 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     uploadFiles(Array.from(files), scope);
-    // Reset so same file can be picked again
     e.target.value = "";
   };
 
@@ -49,7 +51,6 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -59,7 +60,6 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
         className="hidden"
       />
 
-      {/* Search bar with add button */}
       <div className="p-3 border-b border-zinc-800/50 space-y-2">
         <div className="flex gap-1">
           <input
@@ -83,27 +83,18 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
             className="p-1 text-zinc-400 hover:text-zinc-200 disabled:opacity-40 hover:bg-zinc-700/50 rounded transition-colors"
             title={uploading ? "Uploading..." : "Add files to knowledge base"}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="w-4 h-4"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
               <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
             </svg>
           </button>
         </div>
         {showSearch && (
-          <button
-            onClick={handleClearSearch}
-            className="text-xs text-zinc-500 hover:text-zinc-300"
-          >
+          <button onClick={handleClearSearch} className="text-xs text-zinc-500 hover:text-zinc-300">
             &larr; Back to documents
           </button>
         )}
       </div>
 
-      {/* Content area */}
       <div className="flex-1 overflow-y-auto">
         {error && (
           <div className="mx-3 mt-2 p-2 text-xs text-red-400 bg-red-900/20 rounded border border-red-800/30">
@@ -111,35 +102,20 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
           </div>
         )}
 
-        {loading && (
-          <div className="p-6 text-center text-sm text-zinc-500">Loading...</div>
-        )}
+        {loading && <div className="p-6 text-center text-sm text-zinc-500">Loading...</div>}
 
-        {!loading && !error && results !== null && results.length === 0 && (
-          <EmptyState>No results found</EmptyState>
-        )}
+        {!loading && !error && results !== null && results.length === 0 && <EmptyState>No results found</EmptyState>}
 
         {!loading && !error && results !== null && results.length > 0 && (
           <div className="p-3 space-y-2">
-            <div className="text-xs text-zinc-500 mb-1">
-              {results.length} result(s)
-            </div>
+            <div className="text-xs text-zinc-500 mb-1">{results.length} result(s)</div>
             {results.map((r) => (
-              <div
-                key={r.chunkId}
-                className="p-2 bg-zinc-800/30 rounded border border-zinc-700/30 text-xs"
-              >
+              <div key={r.chunkId} className="p-2 bg-zinc-800/30 rounded border border-zinc-700/30 text-xs">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-zinc-300 font-medium truncate">
-                    {r.filename}
-                  </span>
-                  <span className="text-zinc-500 shrink-0">
-                    [{r.score.toFixed(2)}]
-                  </span>
+                  <span className="text-zinc-300 font-medium truncate">{r.filename}</span>
+                  <span className="text-zinc-500 shrink-0">[{r.score.toFixed(2)}]</span>
                 </div>
-                {r.section && r.section !== "Document" && (
-                  <div className="text-zinc-500 truncate mb-1">{r.section}</div>
-                )}
+                {r.section && r.section !== "Document" && <div className="text-zinc-500 truncate mb-1">{r.section}</div>}
                 <div className="text-zinc-400 line-clamp-3">{r.content}</div>
               </div>
             ))}
@@ -148,18 +124,14 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
 
         {!loading && !error && results === null && documents.length === 0 && (
           <EmptyState>
-            No documents yet. Add files to the knowledge sources directory or
-            create a document.
+            No documents yet. Add files to the knowledge sources directory or create a document.
           </EmptyState>
         )}
 
         {!loading && !error && results === null && documents.length > 0 && (
           <div className="p-3 space-y-1">
             {documents.map((doc) => (
-              <div
-                key={doc.id}
-                className="flex items-center justify-between p-2 bg-zinc-800/20 rounded text-xs hover:bg-zinc-800/40 group"
-              >
+              <div key={doc.id} className="flex items-center justify-between p-2 bg-zinc-800/20 rounded text-xs hover:bg-zinc-800/40 group">
                 <div className="flex-1 min-w-0">
                   <div className="text-zinc-300 truncate">{doc.filename}</div>
                   <div className="text-zinc-500 mt-0.5">
@@ -168,20 +140,28 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
                     {doc.chunkCount > 0 && ` \u00b7 ${doc.chunkCount} chunk(s)`}
                   </div>
                 </div>
-                <button
-                  onClick={() => deleteDocument(doc.id, { scope })}
-                  className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity ml-2 shrink-0"
-                  title="Delete"
-                >
-                  &times;
-                </button>
+                <div className="flex items-center gap-1 ml-2 shrink-0">
+                  <button
+                    onClick={() => setDetailDocId(doc.id)}
+                    className="text-zinc-400 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-zinc-700/50"
+                    title="View details"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => deleteDocument(doc.id, { scope })}
+                    className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-zinc-700/50"
+                    title="Delete"
+                  >
+                    &times;
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Bottom actions */}
       <div className="p-3 border-t border-zinc-800/50">
         <button
           onClick={() => ingest(scope)}
@@ -190,6 +170,114 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
         >
           {loading ? "Re-indexing..." : "Re-index sources"}
         </button>
+      </div>
+
+      {detailDocId && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setDetailDocId(null)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+              <h3 className="text-sm font-medium text-zinc-100">Document Details</h3>
+              <button onClick={() => setDetailDocId(null)} className="text-zinc-400 hover:text-zinc-200 p-1">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <DocumentDetail docId={detailDocId} scope={scope} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DocumentDetail({ docId, scope }: { docId: string; scope: PlanScope }) {
+  const [doc, setDoc] = useState<any>(null);
+  const [embeddings, setEmbeddings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetch() {
+      setLoading(true);
+      try {
+        const [docRes, embRes] = await Promise.all([
+          knowledgeOpenDocument(docId, { scope, maxChars: 50000 }),
+          knowledgeGetEmbeddings(docId, { scope }),
+        ]);
+        setDoc(docRes);
+        setEmbeddings(embRes?.embeddings || []);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetch();
+  }, [docId, scope]);
+
+  if (loading) return <div className="p-6 text-center text-zinc-500">Loading...</div>;
+  if (!doc) return <div className="p-6 text-center text-red-400">Failed to load document</div>;
+
+  const embeddedChunks = embeddings.filter((e: any) => e.embedding?.length > 0).length;
+  const totalChunks = embeddings.length || (doc.chunkCount || 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-zinc-300 font-medium truncate">{doc.filename}</div>
+          <div className="text-xs text-zinc-500 mt-1 flex flex-wrap gap-4">
+            <span>{doc.status}</span>
+            <span>{totalChunks} chunk(s)</span>
+            <span>{embeddedChunks}/{totalChunks} embedded</span>
+            <span>{(doc.fileSize || 0)} bytes</span>
+          </div>
+        </div>
+        <span className="px-2 py-0.5 text-xs bg-zinc-800 rounded text-zinc-400 shrink-0">{doc.extension || "txt"}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div><span className="text-zinc-500">ID:</span> <span className="text-zinc-300 font-mono truncate block">{doc.id}</span></div>
+        <div><span className="text-zinc-500">Created:</span> <span className="text-zinc-300">{new Date(doc.createdAt).toLocaleString()}</span></div>
+        <div><span className="text-zinc-500">Updated:</span> <span className="text-zinc-300">{new Date(doc.updatedAt).toLocaleString()}</span></div>
+        <div><span className="text-zinc-500">Created by:</span> <span className="text-zinc-300">{doc.createdBy}</span></div>
+        <div className="col-span-2"><span className="text-zinc-500">Topics:</span> <span className="text-zinc-300">{doc.topics?.join(", ") || "—"}</span></div>
+        <div className="col-span-2"><span className="text-zinc-500">Summary:</span> <span className="text-zinc-300">{doc.summary || "—"}</span></div>
+      </div>
+
+      {embeddings.length > 0 && (
+        <div className="border-t border-zinc-800 pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-medium text-zinc-100">Chunk Embeddings ({embeddedChunks}/{totalChunks})</h4>
+            <span className="text-xs text-zinc-500">Model: {embeddings[0]?.model || "—"} • Dim: {embeddings[0]?.dimensions || "—"}</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto space-y-1">
+            {embeddings.map((e: any) => (
+              <div key={e.id} className="flex items-center gap-2 text-[10px] p-1.5 bg-zinc-800/50 rounded hover:bg-zinc-800">
+                <span className="font-mono text-zinc-400 truncate w-20">{e.id.slice(0, 12)}...</span>
+                <span className={e.embedding?.length > 0 ? "text-green-400" : "text-red-400"}>
+                  {e.embedding?.length > 0 ? "● embedded" : "○ pending"}
+                </span>
+                <span className="text-zinc-500">{e.tokenCount || 0} tok</span>
+                {e.embedding && e.embedding.length > 0 && (
+                  <details className="ml-auto">
+                    <summary className="text-zinc-500 hover:text-zinc-300 cursor-pointer">show vector</summary>
+                    <pre className="mt-1 text-[9px] text-zinc-400 bg-zinc-900/50 p-1 rounded overflow-x-auto max-w-xs">
+                      [{e.embedding.slice(0, 8).join(", ")}... ({e.embedding.length} dims)]
+                    </pre>
+                  </details>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="border-t border-zinc-800 pt-4">
+        <h4 className="text-sm font-medium text-zinc-100 mb-2">File Content</h4>
+        <pre className="bg-zinc-900/50 border border-zinc-800 rounded p-3 text-xs text-zinc-300 overflow-x-auto max-h-64 whitespace-pre-wrap font-mono">
+          {doc.content}
+        </pre>
       </div>
     </div>
   );

@@ -907,11 +907,21 @@ export function deleteResearchViaApi(body: {
   });
 }
 
+export interface MasterTestResult {
+  passed: boolean | null;
+  exitCode: number | null;
+  timestamp: string | null;
+}
+
 export function runMasterTest() {
   return fetchJson<{ ok: boolean; pid?: number; error?: string }>(
     `${BASE}/run-master-test`,
     { method: "POST" }
   );
+}
+
+export function getMasterTestResult() {
+  return fetchJson<MasterTestResult>(`${BASE}/master-test-result`);
 }
 
 // ── Knowledge Base API ──────────────────────────────────────────────
@@ -978,6 +988,21 @@ export function knowledgeOpenDocument(id: string, opts?: { scope?: string; maxCh
   if (opts?.scope) params.set("scope", opts.scope);
   if (opts?.maxChars) params.set("maxChars", String(opts.maxChars));
   return fetchJson<KnowledgeDocumentContent>(`${BASE}/knowledge/documents/${id}?${params}`);
+}
+
+export interface KnowledgeChunkEmbedding {
+  chunkId: string;
+  documentId: string;
+  tokenCount: number;
+  model?: string;
+  dimensions?: number;
+  embedding?: number[];
+}
+
+export function knowledgeGetEmbeddings(id: string, opts?: { scope?: string }) {
+  const params = new URLSearchParams();
+  if (opts?.scope) params.set("scope", opts.scope);
+  return fetchJson<{ embeddings: KnowledgeChunkEmbedding[] }>(`${BASE}/knowledge/documents/${id}/embeddings?${params}`);
 }
 
 export function knowledgeCreateDocument(body: {

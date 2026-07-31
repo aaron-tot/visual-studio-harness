@@ -180,6 +180,8 @@ export interface ConfigFile {
   messagePanelFullWidth?: boolean;
   messagePanelPinnedDefault?: boolean;
   showSessionName?: boolean;
+  /** Include failed/aborted turns in conversation history for context (default: true) */
+  includeFailedTurnsInHistory?: boolean;
   /** Error message substring (case-insensitive) that triggers a streaming retry. */
   streamRetryErrorName?: string;
   /** Maximum number of retries for the streamRetryErrorName error. */

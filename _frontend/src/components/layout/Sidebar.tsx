@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { TestingV3Tab } from "../../features/info-panel/components/testing-v3/TestingV3Tab";
 import { useProximityPanel } from "../../hooks/useProximityPanel";
 import { ProximityRail } from "./ProximityRail";
-import { getAppInfo, runMasterTest, type AppInfo } from "../../lib/api";
+import { getAppInfo, runMasterTest, getMasterTestResult, type AppInfo, type MasterTestResult } from "../../lib/api";
 
 interface SidebarProps {
   search: string;
@@ -39,9 +39,16 @@ export function Sidebar({ search }: SidebarProps) {
   const [resizing, setResizing] = useState(false);
   const resizingRef = useRef(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [masterTestResult, setMasterTestResult] = useState<MasterTestResult | null>(null);
+  const testRunningRef = useRef(false);
 
   useEffect(() => {
     getAppInfo().then(setAppInfo).catch(() => {});
+  }, []);
+
+  // Load last master test result on mount
+  useEffect(() => {
+    getMasterTestResult().then(setMasterTestResult).catch(() => {});
   }, []);
 
   const panel = useProximityPanel({
@@ -104,7 +111,23 @@ export function Sidebar({ search }: SidebarProps) {
           <span>0.0.1-alpha (Pre-Release)</span>
           {import.meta.env.DEV && (
             <button
-              onClick={() => { runMasterTest().catch(() => {}); }}
+              onClick={async () => {
+                if (testRunningRef.current) return;
+                testRunningRef.current = true;
+                try {
+                  await runMasterTest();
+                  const startedAt = masterTestResult?.timestamp ?? null;
+                  for (let i = 0; i < 120; i++) {
+                    await new Promise((r) => setTimeout(r, 2000));
+                    const res = await getMasterTestResult().catch(() => null);
+                    if (res && res.timestamp !== startedAt && res.passed !== null) {
+                      setMasterTestResult(res);
+                      break;
+                    }
+                  }
+                } catch { /* ignore */ }
+                testRunningRef.current = false;
+              }}
               title="Run master e2e test (headed)"
               className="inline-flex items-center justify-center size-3.5 rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
             >
@@ -113,6 +136,21 @@ export function Sidebar({ search }: SidebarProps) {
                 <path d="M3 2.5v11l10-5.5L3 2.5Z" />
               </svg>
             </button>
+          )}
+          {/* Master test result indicator — always visible, dev or prod */}
+          {masterTestResult?.passed === true && (
+            <span
+              title={`Master test passed at ${formatDateTime(masterTestResult.timestamp!)}`}
+              className="text-green-400 select-none"
+              style={{ fontSize: "7px", lineHeight: "1" }}
+            >✓</span>
+          )}
+          {masterTestResult?.passed === false && (
+            <span
+              title={`Master test failed at ${formatDateTime(masterTestResult.timestamp!)} (exit code ${masterTestResult.exitCode})`}
+              className="text-red-400 select-none"
+              style={{ fontSize: "7px", lineHeight: "1" }}
+            >✕</span>
           )}
           <div className="hidden group-hover/version:block absolute bottom-full left-0 mb-1 z-50 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[10px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
             {import.meta.env.DEV ? (

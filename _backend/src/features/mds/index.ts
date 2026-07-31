@@ -12,6 +12,7 @@ export {
 } from "./paths";
 export {
   listAgentsMdAtRoot,
+  listAgentsMdAtScopedRoot,
   readAgentsFile,
   readAgentsFromRoot,
   resolveAgentMd,

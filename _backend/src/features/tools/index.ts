@@ -18,14 +18,13 @@ import { designCreateTool } from "./builtins/design_create";
 import { designReadTool } from "./builtins/design_read";
 import { designEditTool } from "./builtins/design_edit";
 import { designAbandonTool } from "./builtins/design_abandon";
-import { designsListTool } from "./builtins/designs_list";
-import { notesListTool } from "./builtins/notes_list";
+import { listTool } from "./builtins/list";
 import { notesReadTool } from "./builtins/notes_read";
 import { notesCreateTool } from "./builtins/notes_create";
 import { notesUpdateTool } from "./builtins/notes_update";
 import { notesArchiveTool } from "./builtins/notes_archive";
 import { auditCreateTool } from "./builtins/audit_create";
-import { auditListTool } from "./builtins/audit_list";
+
 import { auditReadTool } from "./builtins/audit_read";
 import { auditDeleteTool } from "./builtins/audit_delete";
 import { auditEditTool } from "./builtins/audit_edit";
@@ -43,7 +42,7 @@ import { graphManifestTool } from "./builtins/graph_manifest";
 import { graphStatusTool } from "./builtins/graph_status";
 import { knowledgeSearchTool } from "./builtins/knowledge_search";
 import { knowledgeOpenTool } from "./builtins/knowledge_open";
-import { knowledgeListTool } from "./builtins/knowledge_list";
+
 import { knowledgeIngestTool } from "./builtins/knowledge_ingest";
 import { knowledgeDocumentCreateTool } from "./builtins/knowledge_document_create";
 import { knowledgeDocumentEditTool } from "./builtins/knowledge_document_edit";
@@ -72,15 +71,13 @@ const ALL_TOOLS: ToolDef[] = [
   designCreateTool,
   designReadTool,
   designEditTool,
-  designsListTool,
   designAbandonTool,
-  notesListTool,
+  listTool,
   notesReadTool,
   notesCreateTool,
   notesUpdateTool,
   notesArchiveTool,
   auditCreateTool,
-  auditListTool,
   auditReadTool,
   auditDeleteTool,
   auditEditTool,
@@ -98,7 +95,6 @@ const ALL_TOOLS: ToolDef[] = [
   graphStatusTool,
   knowledgeSearchTool,
   knowledgeOpenTool,
-  knowledgeListTool,
   knowledgeIngestTool,
   knowledgeDocumentCreateTool,
   knowledgeDocumentEditTool,

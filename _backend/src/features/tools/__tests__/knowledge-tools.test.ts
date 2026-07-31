@@ -4,7 +4,6 @@ import { createDefaultRegistry } from "../index";
 const KNOWLEDGE_TOOL_NAMES = [
   "knowledge_search",
   "knowledge_open",
-  "knowledge_list",
   "knowledge_ingest",
   "knowledge_document_create",
   "knowledge_document_edit",
@@ -19,7 +18,7 @@ describe("knowledge tools registration", () => {
     const names = knowledgeTools.map((t) => t.name).sort();
 
     expect(names).toEqual(KNOWLEDGE_TOOL_NAMES.sort());
-    expect(knowledgeTools.length).toBe(7);
+    expect(knowledgeTools.length).toBe(6);
   });
 
   it("each knowledge tool has name, description, inputSchema, and execute", () => {
@@ -41,7 +40,7 @@ describe("knowledge tools registration", () => {
     const tools = registry.list();
     const knowledgeTools = tools.filter((t) => t.name.startsWith("knowledge_"));
 
-    expect(knowledgeTools.length).toBe(7);
+    expect(knowledgeTools.length).toBe(6);
     for (const t of knowledgeTools) {
       expect(t.permissionDefault).toBe("allow");
     }
@@ -94,13 +93,22 @@ describe("knowledge tools registration", () => {
     expect(result.success).toBe(true);
   });
 
-  it("knowledge_list output includes ID: prefix", () => {
+  it("unified list tool with feature=knowledge accepts its schema", () => {
     const registry = createDefaultRegistry();
     const tools = registry.list();
-    const listTool = tools.find((t) => t.name === "knowledge_list");
+    const tool = tools.find((t) => t.name === "list");
+    expect(tool).toBeDefined();
 
-    // The schema should accept scope without requiring ID
-    const result = listTool!.inputSchema.safeParse({ scope: "global" });
-    expect(result.success).toBe(true);
+    // Should accept feature=knowledge with optional scope and configs
+    const basic = tool!.inputSchema.safeParse({ feature: "knowledge", scope: "global" });
+    expect(basic.success).toBe(true);
+
+    // Should accept knowledge configs (extension, status, createdBy)
+    const withConfigs = tool!.inputSchema.safeParse({
+      feature: "knowledge",
+      scope: "global",
+      configs: [{ extension: ".md", status: "ready", createdBy: "user" }],
+    });
+    expect(withConfigs.success).toBe(true);
   });
 });

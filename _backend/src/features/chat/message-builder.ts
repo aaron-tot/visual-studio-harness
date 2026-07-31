@@ -1,4 +1,4 @@
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
 import { turns, stepParts } from "../../db/schema";
 import type { CoreMessage } from "ai";
@@ -27,36 +27,12 @@ export interface BuildModelMessagesResult {
   systemBlock: string;
 }
 
-interface StepPartRow {
-  turnId: number;
-  type: string;
-  data: string;
-  seq: number;
-  toolCallId: string | null;
-  toolName: string | null;
-  status: string | null;
-}
-
-interface TurnRow {
-  id: number;
-  turnNumber: number;
-  userContent: string;
-  userTimestamp: string;
-  status: string;
-  success: number | null;
-}
-
 function parsePartData(data: string): Record<string, unknown> {
   try {
     return JSON.parse(data);
   } catch {
     return { content: data };
   }
-}
-
-function isTurnCompleted(turn: TurnRow, includeIncomplete: boolean): boolean {
-  if (includeIncomplete) return true;
-  return turn.success === 1 && turn.status === "success";
 }
 
 export async function buildModelMessages(
@@ -191,7 +167,6 @@ export async function buildModelMessages(
                     toolCallId: part.toolCallId ?? "",
                     toolName: part.toolName ?? "",
                     output: { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) },
-                    isError: false,
                   },
                 ],
               });
@@ -203,7 +178,6 @@ export async function buildModelMessages(
               contentParts.push({
                 type: "reasoning",
                 text: typeof data.content === "string" ? data.content : "",
-                signature: data.signature,
               });
             }
             break;

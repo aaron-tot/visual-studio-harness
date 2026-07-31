@@ -1,10 +1,3 @@
-/**
- * Hardcoded factory defaults for GLOBAL agents.md only.
- *
- * Used exclusively to WRITE data/{mode}/mds/global/agents.md when it is missing
- * (or on explicit reset later). buildSystemBlock never injects this string
- * directly — it always reads the on-disk file after ensure.
- */
 export function buildDefaultGlobalAgentsMarkdown(): string {
   return `Core Directive: execute tasks with surgical precision, enforce safety, and deliver sustainable, long-term solutions.
 

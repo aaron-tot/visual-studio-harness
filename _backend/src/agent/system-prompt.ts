@@ -1,15 +1,10 @@
-export {
-  AGENTS_MD_NAMES,
-  DEFAULT_SYSTEM_PROMPT_JOINERS,
-  globalAgentsPath,
-  projectAgentsPath,
-  ensureGlobalAgentsFile,
-  listAgentsMdAtRoot,
-  formatRuntimeInfo,
-  resolveAgentMd,
-  resolveSkillMds,
-  buildSystemBlock,
-  messagesForModel,
-  assertExactlyOneSystemMessage,
-} from "../features/agents/system-prompt";
-export type { BuildSystemBlockInput } from "../features/agents/system-prompt";
+export { AGENTS_MD_NAMES } from "../features/mds/constants";
+export type { BuildSystemBlockInput } from "../features/system-prompt/constants";
+export { DEFAULT_SYSTEM_PROMPT_JOINERS } from "../features/system-prompt/constants";
+export { globalAgentsPath, projectAgentsPath } from "../features/mds/paths";
+export { ensureGlobalAgentsFile } from "../features/mds/seeder";
+export { listAgentsMdAtRoot } from "../features/mds/reader";
+export { formatRuntimeInfo } from "../features/mds/runtime-format";
+export { resolveAgentMd, resolveSkillMds } from "../features/mds/reader";
+export { buildSystemBlock } from "../features/system-prompt/builder";
+export { messagesForModel, assertExactlyOneSystemMessage } from "../features/mds/messages";

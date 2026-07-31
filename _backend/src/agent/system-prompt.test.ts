@@ -11,7 +11,7 @@ import {
   resolveAgentMd,
   resolveSkillMds,
 } from "./system-prompt";
-import { buildDefaultGlobalAgentsMarkdown } from "./agents.default";
+import { buildDefaultGlobalAgentsMarkdown } from "../features/mds/defaults";
 import type { Message } from "../../../_shared/types";
 
 function msg(role: Message["role"], content: string): Message {

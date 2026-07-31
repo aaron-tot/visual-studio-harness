@@ -1,3 +1,1 @@
-import type { AgentSettings, SkillMdConfig } from "../../../_shared/types";
-
-export const AGENTS_MD_NAMES = ["agents.md", "AGENTS.md"] as const;
+export { AGENTS_MD_NAMES } from "../mds/constants";

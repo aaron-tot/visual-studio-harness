@@ -6,7 +6,7 @@ import { thinkingToProviderOptions } from "../../llm/thinking";
 import { classifyLlmError, LlmError, isAbortError } from "../../llm/errors";
 import { isStopTurnResult } from "../tools";
 import { splitSystemInstructions } from "../../llm/prompt-messages";
-import { assertExactlyOneSystemMessage } from "../agents/system-prompt";
+import { assertExactlyOneSystemMessage } from "../mds";
 import { getDescriptorByDisplayName } from "../../../../_shared/provider-registry";
 import { serverOriginFromBaseUrl } from "../../llm/slots";
 import { createMockFullStream } from "../../llm/mock-models";

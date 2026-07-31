@@ -1,5 +1,5 @@
 import type { SectionContext } from "./types";
-import { formatRuntimeInfo } from "../../agents/format";
+import { formatRuntimeInfo } from "../../mds";
 
 export async function buildSection(ctx: SectionContext): Promise<string | null> {
   return formatRuntimeInfo({

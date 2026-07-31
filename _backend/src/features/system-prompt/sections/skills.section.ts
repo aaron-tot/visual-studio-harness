@@ -1,5 +1,5 @@
 import type { SectionContext } from "./types";
-import { resolveSkillMds } from "../../agents/md-utils";
+import { resolveSkillMds } from "../../mds";
 
 export async function buildSection(ctx: SectionContext): Promise<string | null> {
   if (!ctx.agentSettings) return null;

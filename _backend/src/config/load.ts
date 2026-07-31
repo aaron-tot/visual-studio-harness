@@ -6,7 +6,7 @@ import { PRECONFIGURED_PROVIDERS } from "../../../_shared/provider-registry";
 import { loadConfig, saveConfig } from "../storage/config";
 import { migrateConfig } from "./migrate";
 import { listAgents, writeAgent } from "../rest/agents";
-import { loadSeedJoinersDefaults } from "../features/agents/system-prompt";
+import { loadSeedJoinersDefaults } from "../features/mds/paths";
 
 export interface ConfigWatcher {
   config: ConfigFile;

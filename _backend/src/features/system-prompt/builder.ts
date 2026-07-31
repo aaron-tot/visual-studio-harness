@@ -1,5 +1,5 @@
 import type { SystemPromptJoiners } from "../../../_shared/types";
-import { ensureGlobalAgentsFile } from "../agents/system-prompt";
+import { ensureGlobalAgentsFile } from "../mds";
 import {
   DEFAULT_SYSTEM_PROMPT_JOINERS,
   TAG_PRE,

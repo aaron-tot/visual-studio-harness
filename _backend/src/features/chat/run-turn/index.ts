@@ -30,11 +30,11 @@ import {
 } from "../../hooks";
 import { resolveRuntimeFromSettings, getAgentSettings, resolveSessionRuntime, type ResolvedRuntime } from "../../agents/runtime-settings";
 import { readAgent } from "../../agents/rest";
+import { buildSystemBlock } from "../../system-prompt/builder";
 import {
   assertExactlyOneSystemMessage,
-  buildSystemBlock,
   messagesForModel,
-} from "../../agents/system-prompt";
+} from "../../mds";
 import { getMode } from "../../../paths";
 import { getWorkspaceGraphManager } from "../../../core/workspaceGraph/service-singleton";
 import type { WorkspaceGraphService } from "../../../core/workspaceGraph/api/types";

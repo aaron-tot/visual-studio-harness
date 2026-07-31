@@ -148,115 +148,19 @@ export function resolveContextTurnIds(
   const db = dbFor(dataDir);
   const includeFailed = opts?.includeFailedTurns ?? true;
 
-  // Get the latest turn for this session
-  const latestTurn = db
+  // Query completed turns directly from turns table (no turnContext dependency)
+  const whereClause = includeFailed
+    ? eq(turns.sessionId, sessionId)
+    : and(eq(turns.sessionId, sessionId), eq(turns.success, true));
+
+  const rows = db
     .select({ id: turns.id })
     .from(turns)
-    .where(eq(turns.sessionId, sessionId))
-    .orderBy(desc(turns.turnNumber))
-    .limit(1)
-    .get();
-
-  if (!latestTurn) return [];
-
-  // Read the latest turn's context (turn_context entries for the previous turn)
-  const contextRows = db
-    .select({ contextTurnId: turnContext.contextTurnId })
-    .from(turnContext)
-    .where(eq(turnContext.turnId, latestTurn.id))
-    .orderBy(turnContext.position)
+    .where(whereClause)
+    .orderBy(turns.turnNumber)
     .all();
 
-  let contextTurnIds = contextRows.map(r => r.contextTurnId);
-
-  if (!includeFailed) {
-    // Filter out failed/aborted turns - only keep successful ones
-    const successfulTurns = db
-      .select({ id: turns.id })
-      .from(turns)
-      .where(and(eq(turns.sessionId, sessionId), eq(turns.success, true)))
-      .all();
-    const successfulIds = new Set(successfulTurns.map(t => t.id));
-    contextTurnIds = contextTurnIds.filter(id => successfulIds.has(id));
-  }
-
-  // Include the latest turn itself in the context for the next turn
-  return [...contextTurnIds, latestTurn.id];
-}
-
-export function buildModelMessagesFromContext(
-  contextTurnIds: number[],
-  systemBlock: string,
-  dataDir?: string,
-): Message[] {
-  const db = dbFor(dataDir);
-  if (contextTurnIds.length === 0) {
-    const content = systemBlock.trim();
-    return content ? [{ role: "system", content, timestamp: new Date().toISOString() }] : [];
-  }
-
-  // Batch fetch all turns
-  const turnRows = db
-    .select()
-    .from(turns)
-    .where(inArray(turns.id, contextTurnIds))
-    .all();
-  const turnById = new Map(turnRows.map((t) => [t.id, t]));
-
-  // Batch fetch all text stepParts for these turns
-  const allTextParts = db
-    .select({ turnId: stepParts.turnId, data: stepParts.data, seq: stepParts.seq })
-    .from(stepParts)
-    .where(and(inArray(stepParts.turnId, contextTurnIds), eq(stepParts.type, "text")))
-    .orderBy(stepParts.seq)
-    .all();
-
-  const partsByTurnId = new Map<number, typeof allTextParts>();
-  for (const p of allTextParts) {
-    const list = partsByTurnId.get(p.turnId);
-    if (list) {
-      list.push(p);
-    } else {
-      partsByTurnId.set(p.turnId, [p]);
-    }
-  }
-
-  const history: Message[] = [];
-  for (const ctxId of contextTurnIds) {
-    const t = turnById.get(ctxId);
-    if (!t) continue;
-
-    history.push({
-      role: "user",
-      content: t.userContent,
-      timestamp: t.userTimestamp,
-      turnId: t.turnNumber,
-    });
-
-    const textParts = partsByTurnId.get(ctxId) ?? [];
-    const assistantText = textParts
-      .map((p) => {
-        try {
-          const d = JSON.parse(p.data);
-          return typeof d.content === "string" ? d.content : "";
-        } catch {
-          return "";
-        }
-      })
-      .join("");
-
-    history.push({
-      role: "assistant",
-      content: assistantText,
-      timestamp: t.completedAt ?? t.startedAt,
-      turnId: t.turnNumber,
-      success: true,
-    });
-  }
-
-  const content = systemBlock.trim();
-  if (!content) return history;
-  return [{ role: "system", content, timestamp: new Date().toISOString() }, ...history];
+  return rows.map((r) => r.id);
 }
 
 // ── Turn summary/detail projections ───────────────────────────────────

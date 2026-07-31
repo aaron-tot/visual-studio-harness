@@ -105,7 +105,7 @@ export async function createAudit(
 }
 
 export async function editAudit(
-  params: CreateAuditParams & { name: string }
+  params: CreateAuditParams
 ): Promise<{ path: string }> {
   // Re-use createAudit — same dir resolution, write overwrites file
   return createAudit(params);

@@ -130,7 +130,7 @@ export async function runInPersistentBash(opts: {
 
   // Run command, print exit code, then marker on its own line
   const script = [
-    `cd ${shellQuote(opts.cwd)} 2>/dev/null || true`,
+    `cd ${shellQuote(opts.cwd)} 2>&1 || { echo "__VSH_EXIT:1"; echo "${marker}"; exit 1; }`,
     opts.command,
     `echo "__VSH_EXIT:$?"`,
     `echo "${marker}"`,

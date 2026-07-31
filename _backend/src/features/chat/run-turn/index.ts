@@ -31,10 +31,6 @@ import {
 import { resolveRuntimeFromSettings, getAgentSettings, resolveSessionRuntime, type ResolvedRuntime } from "../../agents/runtime-settings";
 import { readAgent } from "../../agents/rest";
 import { buildSystemBlock } from "../../system-prompt/builder";
-import {
-  assertExactlyOneSystemMessage,
-  messagesForModel,
-} from "../../mds";
 import { getMode } from "../../../paths";
 import { getWorkspaceGraphManager } from "../../../core/workspaceGraph/service-singleton";
 import type { WorkspaceGraphService } from "../../../core/workspaceGraph/api/types";
@@ -54,7 +50,8 @@ import {
   abortTurnTrace,
   updateTurnRawCapture,
 } from "../db-trace";
-import { resolveContextTurnIds, buildModelMessagesFromContext } from "../project-chat";
+import { resolveContextTurnIds } from "../project-chat";
+import { buildModelMessages } from "../message-builder";
 import type { TurnCreateMeta, TurnInput, TurnEvents, TurnResult } from "../types";
 import { generateId, autoTitle, isAbortError } from "./util";
 export { isAbortError } from "./util";
@@ -274,10 +271,28 @@ export async function runTurn(
       graphService,
     });
 
-    // Build model messages from trace context turns
-    const contextMessages = buildModelMessagesFromContext(contextTurnIds, systemBlock, dataDir);
-    const modelMessages = [...contextMessages, { ...userMessage, turnId: turnNumber }];
-    assertExactlyOneSystemMessage(modelMessages);
+    // Build model messages (UNIFIED - includes system, history, current user)
+    const { messages, contextTurnIds: usedTurnIds } = await buildModelMessages(
+      sessionId,
+      systemBlock,
+      {
+        contextTurnIds,
+        includeIncompleteTurns: config.includeFailedTurnsInHistory ?? true,
+        includeTextParts: true,
+        includeToolCalls: config.includeToolCallsInHistory ?? true,
+        includeToolResults: config.includeToolResultsInHistory ?? true,
+        includeReasoningParts: config.includeReasoningInHistory ?? false,
+        includePatchParts: config.includePatchesInHistory ?? false,
+        maxTurns: config.contextMaxTurns,
+        currentTurnNumber: turnNumber,
+        currentUserMessage: input.content,
+      },
+      dataDir,
+    );
+
+    // Store which turns were actually used (audit trail)
+    insertTurnContext(traceTurnId, usedTurnIds, dataDir);
+
     await writeSessionSystemPrompt(dataDir, sessionId, systemBlock);
 
     let resolvedThinkingEffort = runtime.thinkingEffort;
@@ -328,7 +343,7 @@ export async function runTurn(
     let _streamResult: Awaited<ReturnType<typeof streamChat>> | undefined;
     try {
       const streamResult = await streamChat({
-        provider, model: model.modelName, messages: modelMessages, tools,
+        provider, model: model.modelName, messages, tools,
         maxSteps: runtime.maxSteps, temperature: runtime.temperature,
         thinkingEffort: resolvedThinkingEffort,
         onRetryAttempt: () => {

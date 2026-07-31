@@ -30,8 +30,6 @@ export function seedsDir(): string | null {
 export function projectAgentsMdPath(workspaceRoot: string): string {
   return join(resolve(workspaceRoot), AGENTS_MD_NAMES[0]);
 }
-  return join(resolve(workspaceRoot), AGENTS_MD_NAMES[0]);
-}
 
 /** Returns the `.agentHarness/mds/` directory under workspace root (scoped project MDs). */
 export function projectScopedMdsDir(workspaceRoot: string): string {

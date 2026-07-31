@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ToolDef } from "../types";
 import { getKbService } from "./knowledge_common";
+import type { SearchResult } from "../../knowledge-base/search/types";
 
 /**
  * Search the Knowledge Base for relevant documents using hybrid retrieval.
@@ -58,7 +59,7 @@ export const knowledgeSearchTool: ToolDef = {
     }
 
     const lines = results.map(
-      (r: any) =>
+      (r: SearchResult) =>
         `  [${r.score.toFixed(2)}] ${r.filename} → ${r.section}\n` +
         `       ${r.content.slice(0, 200)}...`,
     );

@@ -42,9 +42,6 @@ export const webfetchTool: ToolDef = {
         isError: true,
       };
     }
-    if (url.startsWith("http://")) {
-      url = "https://" + url.slice("http://".length);
-    }
     if (!url.startsWith("https://") && !url.startsWith("http://")) {
       return {
         title: "webfetch",

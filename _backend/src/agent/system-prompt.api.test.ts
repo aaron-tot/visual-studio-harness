@@ -30,7 +30,7 @@ const { registerMessageRoutes } = await import("../rest/messages");
 const { registerSessionRoutes } = await import("../rest/sessions");
 const { setHooksSystem, createHooksSystem } = await import("../features/hooks");
 const { ensureGlobal } = await import("../features/tools/perms/store");
-const { ensureGlobalAgentsFile } = await import("./system-prompt");
+const { ensureGlobalSystemPromptFile } = await import("./system-prompt");
 
 describe("API system prompt audit log", () => {
   let dataDir: string;
@@ -74,7 +74,7 @@ describe("API system prompt audit log", () => {
       JSON.stringify(config, null, 2) + "\n"
     );
     await ensureGlobal(dataDir);
-    await ensureGlobalAgentsFile(dataDir, "dev");
+    await ensureGlobalSystemPromptFile(dataDir, "dev");
     await writeFile(join(workspaceRoot, "agents.md"), "# project agents\n- use bun\n");
 
     setHooksSystem(createHooksSystem());

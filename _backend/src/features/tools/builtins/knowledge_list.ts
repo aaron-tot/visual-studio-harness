@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ToolDef } from "../types";
 import { getKbService } from "./knowledge_common";
+import type { DocumentMeta } from "../../knowledge-base/types";
 
 export const knowledgeListTool: ToolDef = {
   name: "knowledge_list",
@@ -30,8 +31,8 @@ export const knowledgeListTool: ToolDef = {
       return { title: "No knowledge documents", output: "No documents found.", metadata: { count: 0 } };
     }
 
-    const lines = docs.map((d: any) =>
-      `  ID:${d.id}  ${d.filename}  (${d.extension}, ${d.fileSize} bytes, status: ${d.status}` +
+    const lines = docs.map((d: DocumentMeta) =>
+      `  ID:${d.id}  ${d.filename}  (${d.extension ?? ""}, ${d.fileSize} bytes, status: ${d.status}` +
       `${d.tags?.length ? `, tags: ${d.tags.join(", ")}` : ""}` +
       `${d.createdBy ? `, by: ${d.createdBy}` : ""})`,
     );

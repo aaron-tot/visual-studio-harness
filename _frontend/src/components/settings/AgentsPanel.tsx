@@ -135,8 +135,8 @@ export function AgentsPanel() {
       <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-[11px] text-zinc-500 space-y-1.5">
         <p>
           <span className="font-medium text-zinc-400">System block</span> — rebuilt every
-          model call from the agent's config: global agents.md + agentMd + skillMds + project
-          agents.md + runtime info.
+          model call from the agent's config: global system prompt base (systemPromptBase.md)
+          + agent definition (agentMd) + skillMds + project AGENTS.md + runtime info.
         </p>
         <p>
           <span className="font-medium text-zinc-400">Subagents</span> — the task tool lists

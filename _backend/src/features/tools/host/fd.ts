@@ -32,6 +32,7 @@ export async function runFd(opts: {
       cwd: opts.cwd,
       stdout: "pipe",
       stderr: "pipe",
+      signal: opts.abortSignal,
     });
     const stdout = await new Response(proc.stdout).text();
     const stderr = await new Response(proc.stderr).text();
@@ -55,6 +56,7 @@ export async function runFd(opts: {
       cwd: opts.cwd,
       stdout: "pipe",
       stderr: "pipe",
+      signal: opts.abortSignal,
     });
     const stdout = await new Response(proc.stdout).text();
     const code = await proc.exited;
@@ -74,7 +76,9 @@ export async function runFd(opts: {
   // JS fallback
   const root = opts.path ?? opts.cwd;
   const files: string[] = [];
-  await walkMatch(root, opts.cwd, opts.pattern, files, opts.headLimit + 1);
+  const limit = opts.headLimit + 1;
+  const abortSignal = opts.abortSignal;
+  await walkMatch(root, opts.cwd, opts.pattern, files, limit, abortSignal);
   const truncated = files.length > opts.headLimit;
   return { files: files.slice(0, opts.headLimit), truncated };
 }
@@ -84,9 +88,11 @@ async function walkMatch(
   cwd: string,
   pattern: string,
   out: string[],
-  limit: number
+  limit: number,
+  abortSignal?: AbortSignal,
 ): Promise<void> {
   if (out.length >= limit) return;
+  if (abortSignal?.aborted) return;
   let st;
   try {
     st = await stat(base);
@@ -108,7 +114,7 @@ async function walkMatch(
   for (const e of entries) {
     if (out.length >= limit) return;
     if (e.name === "node_modules" || e.name === ".git" || e.name === "dist") continue;
-    await walkMatch(join(base, e.name), cwd, pattern, out, limit);
+    await walkMatch(join(base, e.name), cwd, pattern, out, limit, abortSignal);
   }
 }
 

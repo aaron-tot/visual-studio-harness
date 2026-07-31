@@ -1,16 +1,12 @@
 import { z } from "zod";
-import type { ToolDef } from "../tool-types";
+import type { ToolDef } from "../types";
 import { editAudit } from "../../../rest/audits";
 import { AUDIT_CATEGORIES } from "../../../../../_shared/types/audit";
-
-const AuditCategorySchema = z.enum(
-  AUDIT_CATEGORIES as [string, ...string[]]
-) as z.ZodEnum<[string, ...string[]]>;
 
 export const auditEditTool: ToolDef = {
   name: "audit_edit",
   description: "Edit (overwrite) an existing audit document on disk",
-  permissionDefault: "allowed",
+  permissionDefault: "allow",
 
   inputSchema: z.object({
     name: z.string().describe("Audit name (directory name, e.g. 'code-review-42')"),
@@ -18,7 +14,7 @@ export const auditEditTool: ToolDef = {
       meta: z.object({
         id: z.string().describe("Unique identifier slug"),
         title: z.string().describe("Human-readable title"),
-        auditType: AuditCategorySchema.describe("Audit category"),
+        auditType: z.enum(AUDIT_CATEGORIES).describe("Audit category"),
         endGoal: z.string().optional().describe("What question this audit answers (general_audit)"),
         createdAt: z.string().describe("ISO 8601 timestamp"),
         createdBy: z.string().describe("Who created this (usually 'agent')"),
@@ -86,30 +82,34 @@ export const auditEditTool: ToolDef = {
       .describe("Scope level"),
   }),
 
-  outputSchema: z.object({
-    path: z.string(),
-    isError: z.boolean().optional(),
-    message: z.string().optional(),
-  }),
+  outputFields: [
+    { name: "updated", type: "boolean", description: "Whether the audit was updated", required: true },
+    { name: "name", type: "string", description: "Audit directory name", required: false },
+    { name: "path", type: "string", description: "Filesystem path to the audit directory", required: false },
+  ],
 
-  async execute(args, context) {
-    const { name, document, scope } = args;
-    const scopeVal = scope || "global";
+  async execute(args, ctx) {
+    const scope = (args.scope || "global") as "global" | "project" | "session";
     try {
       const result = await editAudit({
-        name,
-        document,
-        dataDir: context.dataDir,
-        scope: scopeVal as "global" | "project" | "session",
-        workspaceRoot: context.workspaceRoot || undefined,
-        sessionId: context.sessionId || undefined,
+        name: args.name,
+        document: args.document,
+        dataDir: ctx.dataDir,
+        scope,
+        workspaceRoot: ctx.workspaceRoot,
+        sessionId: ctx.sessionId,
       });
-      return { path: result.path };
+      return {
+        title: "Audit updated",
+        output: `Updated audit "${args.name}" in ${scope} scope.`,
+        metadata: { updated: true, name: args.name, path: result.path },
+      };
     } catch (err) {
       return {
-        path: "",
+        title: "Failed to update audit",
+        output: `Error updating audit "${args.name}": ${(err as Error).message}`,
+        metadata: { updated: false, name: args.name, path: "" },
         isError: true,
-        message: `Failed to edit audit: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
   },

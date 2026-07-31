@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { atomicWriteFile } from "../tools/host/atomic-write";
 import { buildDefaultGlobalSystemPrompt } from "./defaults";
 import { globalSystemPromptPath, legacyGlobalAgentsPath, seedsDir, seedSubdirForMode } from "./paths";
-import { readAgentsFile } from "./reader";
+
 
 async function fileExists(path: string): Promise<boolean> {
   try { await import("node:fs/promises").then(fs => fs.access(path)); return true; } catch { return false; }

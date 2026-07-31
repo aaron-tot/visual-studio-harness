@@ -59,6 +59,7 @@ async function runRgBinary(
     cwd: opts.cwd,
     stdout: "pipe",
     stderr: "pipe",
+    signal: opts.abortSignal,
   });
 
   const stdout = await new Response(proc.stdout).text();

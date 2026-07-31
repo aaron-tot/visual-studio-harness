@@ -11,11 +11,7 @@ import {
 const BINARY_SNIFF_BYTES = 8192;
 
 function looksBinary(buf: Buffer): boolean {
-  const n = Math.min(buf.length, BINARY_SNIFF_BYTES);
-  for (let i = 0; i < n; i++) {
-    if (buf[i] === 0) return true;
-  }
-  return false;
+  return buf.indexOf(0, 0, BINARY_SNIFF_BYTES) !== -1;
 }
 
 export const readTool: ToolDef = {

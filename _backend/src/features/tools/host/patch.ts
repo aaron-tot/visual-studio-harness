@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { atomicWriteFile } from "./atomic-write";
 import { SandboxError } from "../sandbox";
+import { countOccurrences } from "../format";
 
 /**
  * Minimal OpenCode-style patch format:
@@ -130,17 +131,4 @@ export async function applyPatchText(
     touched,
     summary: `Applied patch to ${touched.length} path(s): ${touched.join(", ")}`,
   };
-}
-
-function countOccurrences(haystack: string, needle: string): number {
-  if (!needle) return 0;
-  let count = 0;
-  let pos = 0;
-  while (true) {
-    const idx = haystack.indexOf(needle, pos);
-    if (idx === -1) break;
-    count++;
-    pos = idx + needle.length;
-  }
-  return count;
 }

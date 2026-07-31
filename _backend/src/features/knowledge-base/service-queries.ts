@@ -63,6 +63,48 @@ export async function listDocuments(
 }
 
 /**
+ * Resolve a document by filename. Returns null if not found.
+ */
+export async function resolveDocumentByFilename(
+  dataDir: string,
+  scope: KbScope,
+  filename: string,
+  workspaceRoot?: string,
+  sessionId?: string,
+): Promise<DocumentMeta | null> {
+  const kb = await openKnowledgeDb(dataDir, scope, workspaceRoot, sessionId);
+  if (!kb) return null;
+
+  const row = await kb.db
+    .select()
+    .from(knowledgeDocuments)
+    .where(and(eq(knowledgeDocuments.filename, filename), eq(knowledgeDocuments.scope, scope)))
+    .get();
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    filename: row.filename,
+    filepath: row.filepath,
+    title: row.title,
+    topics: safeJsonParse(row.topics),
+    summary: row.summary,
+    contentType: row.contentType,
+    fileHash: row.fileHash,
+    fileSize: row.fileSize,
+    status: row.status,
+    createdBy: row.createdBy,
+    scope: row.scope,
+    tags: safeJsonParse(row.tags),
+    chunkCount: row.chunkCount,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    extension: row.filename.includes(".") ? row.filename.split(".").pop() || "" : "",
+  };
+}
+
+/**
  * Open a document's full content by reading the latest version.
  */
 export async function openDocument(
@@ -108,6 +150,71 @@ export async function openDocument(
     contentTruncated,
   };
 }
+
+/**
+ * Open a document by ID (UUID) or filename in a single query.
+ * Avoids the double-query penalty when resolving by filename.
+ */
+export async function openDocumentByIdOrFilename(
+  dataDir: string,
+  scope: KbScope,
+  idOrFilename: string,
+  maxChars?: number,
+  workspaceRoot?: string,
+  sessionId?: string,
+): Promise<DocumentContent | null> {
+  const kb = await openKnowledgeDb(dataDir, scope, workspaceRoot, sessionId);
+  if (!kb) return null;
+
+  const isUuid = UUID_RE.test(idOrFilename);
+
+  // Single query with join to get document + latest version content
+  const row = await kb.db
+    .select({
+      id: knowledgeDocuments.id,
+      filename: knowledgeDocuments.filename,
+      title: knowledgeDocuments.title,
+      content: knowledgeDocumentVersions.content,
+    })
+    .from(knowledgeDocuments)
+    .leftJoin(
+      knowledgeDocumentVersions,
+      and(
+        eq(knowledgeDocumentVersions.documentId, knowledgeDocuments.id),
+        eq(knowledgeDocumentVersions.versionNumber, sql`(
+          SELECT MAX(version_number)
+          FROM knowledge_document_versions
+          WHERE document_id = knowledge_documents.id
+        )`)
+      )
+    )
+    .where(
+      isUuid
+        ? eq(knowledgeDocuments.id, idOrFilename)
+        : and(eq(knowledgeDocuments.filename, idOrFilename), eq(knowledgeDocuments.scope, scope))
+    )
+    .get();
+
+  if (!row) return null;
+
+  let content = row.content || "";
+  let contentTruncated = false;
+
+  if (maxChars && content.length > maxChars) {
+    content = content.slice(0, maxChars);
+    contentTruncated = true;
+  }
+
+  return {
+    id: row.id,
+    filename: row.filename,
+    title: row.title,
+    content,
+    contentTruncated,
+  };
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function safeJsonParse(value: string): string[] {
   try {

@@ -36,12 +36,13 @@ export class ToolRegistry {
       const resolved = await resolveToolPermissionDetailed(def.name, resolveCtx);
       if (resolved.mode === "deny") continue;
 
+      const preResolved = resolved.mode === "ask" ? undefined : resolved.mode;
       out[def.name] = tool({
         description: def.description,
         inputSchema: def.inputSchema,
         execute: async (args, options) => {
           const ctx = ctxFactory(options.toolCallId);
-          return executor.run(def, args, ctx);
+          return executor.run(def, args, ctx, preResolved);
         },
       });
     }

@@ -74,43 +74,7 @@ export function insertTurnContext(
   const db = dbFor(dataDir);
   if (contextTurnIds.length === 0) return;
 
-  // Validate: load current turn to check sessionId and turnNumber
-  const currentTurn = db
-    .select({ sessionId: turns.sessionId, turnNumber: turns.turnNumber })
-    .from(turns)
-    .where(eq(turns.id, turnId))
-    .get();
-
-  if (!currentTurn) {
-    console.warn(`insertTurnContext: turn ${turnId} not found, skipping`);
-    return;
-  }
-
-  const validContextIds: number[] = [];
-  for (const ctxId of contextTurnIds) {
-    const ctxTurn = db
-      .select({ sessionId: turns.sessionId, turnNumber: turns.turnNumber })
-      .from(turns)
-      .where(eq(turns.id, ctxId))
-      .get();
-
-    if (!ctxTurn) {
-      console.warn(`insertTurnContext: contextTurnId ${ctxId} not found, skipping`);
-      continue;
-    }
-    if (ctxTurn.sessionId !== currentTurn.sessionId) {
-      console.warn(`insertTurnContext: contextTurnId ${ctxId} belongs to session ${ctxTurn.sessionId}, not ${currentTurn.sessionId}, skipping`);
-      continue;
-    }
-    if (ctxTurn.turnNumber >= currentTurn.turnNumber) {
-      console.warn(`insertTurnContext: contextTurnId ${ctxId} has turnNumber ${ctxTurn.turnNumber} >= current ${currentTurn.turnNumber}, skipping`);
-      continue;
-    }
-    validContextIds.push(ctxId);
-  }
-
-  if (validContextIds.length === 0) return;
-  const values = validContextIds.map((ctxId, i) => ({
+  const values = contextTurnIds.map((ctxId, i) => ({
     turnId,
     contextTurnId: ctxId,
     position: i,

@@ -182,6 +182,16 @@ export interface ConfigFile {
   showSessionName?: boolean;
   /** Include failed/aborted turns in conversation history for context (default: true) */
   includeFailedTurnsInHistory?: boolean;
+  /** Include tool calls from previous turns in SDK messages (default: true) */
+  includeToolCallsInHistory?: boolean;
+  /** Include tool results from previous turns in SDK messages (default: true) */
+  includeToolResultsInHistory?: boolean;
+  /** Include reasoning/thinking from previous turns in SDK messages (default: false) */
+  includeReasoningInHistory?: boolean;
+  /** Include patches/diffs from previous turns in SDK messages (default: false) */
+  includePatchesInHistory?: boolean;
+  /** Maximum number of historical turns to include (context window) */
+  contextMaxTurns?: number;
   /** Error message substring (case-insensitive) that triggers a streaming retry. */
   streamRetryErrorName?: string;
   /** Maximum number of retries for the streamRetryErrorName error. */

@@ -5,7 +5,6 @@ import { getBus } from "../hooks";
 import { thinkingToProviderOptions } from "../../llm/thinking";
 import { classifyLlmError, LlmError, isAbortError } from "../../llm/errors";
 import { isStopTurnResult } from "../tools";
-import { splitSystemInstructions } from "../../llm/prompt-messages";
 import { assertExactlyOneSystemMessage } from "../mds";
 import { getDescriptorByDisplayName } from "../../../../_shared/provider-registry";
 import { serverOriginFromBaseUrl } from "../../llm/slots";
@@ -76,11 +75,8 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   assertExactlyOneSystemMessage(messages);
 
-  const { instructions, messages: chatMessages } = splitSystemInstructions(messages);
-
   const debugRequestBody: Record<string, unknown> = {
-    model, messages: chatMessages,
-    ...(instructions ? { instructions } : {}),
+    model, messages,
     ...(hasTools ? { tools: serializeToolsForDebug(tools!), tool_choice: "auto" } : {}),
     stream: true,
     ...(temperature !== undefined ? { temperature } : {}),
@@ -90,8 +86,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   const rawRequest: Record<string, unknown> = {
     model,
-    ...(instructions ? { instructions } : {}),
-    messages: chatMessages,
+    messages,
     ...(hasTools ? { tools: Object.keys(tools!) } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(providerOptions ? { providerOptions } : {}),
@@ -118,8 +113,9 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
       }
       if (DEBUG_CHAT_MESSAGES) {
         const ts = new Date().toISOString().slice(11, 19);
-        console.log(`\n\n[${ts}] DEBUG: instructions`, instructions, "\n");
-        console.log(`[${ts}] DEBUG: chatMessages`, chatMessages, "\n");
+        const systemMsg = messages.find(m => m.role === "system");
+        console.log(`\n\n[${ts}] DEBUG: instructions`, systemMsg?.content, "\n");
+        console.log(`[${ts}] DEBUG: chatMessages`, messages.filter(m => m.role !== "system"), "\n");
       }
 
       try {
@@ -136,8 +132,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           ? { fullStream: createMockFullStream(model, signal, options.modelSpeed, options.workspaceRoot) }
           : streamText({
               model: sdkProvider!(model),
-              ...(instructions ? { instructions } : {}),
-              messages: chatMessages,
+              messages,
               abortSignal: signal,
               maxRetries: 0,
               ...(temperature !== undefined ? { temperature } : {}),

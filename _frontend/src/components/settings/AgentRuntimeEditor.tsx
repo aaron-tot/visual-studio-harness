@@ -39,7 +39,7 @@ export function AgentRuntimeEditor({
 
   const sessionId = useSessionStore((s) => s.activeId ?? s.sessions[0]?.id);
   const [roots, setRoots] = useState<{ mds: string; workspace: string } | null>(null);
-  const [globalAgentsMd, setGlobalAgentsMd] = useState<string | null>(null);
+  const [globalSystemPromptBasePath, setGlobalSystemPromptBasePath] = useState<string | null>(null);
   const [workspaceAgentsMd, setWorkspaceAgentsMd] = useState<string | null>(null);
   const [agentTaggedMds, setAgentTaggedMds] = useState<{ path: string; fullPath: string }[]>([]);
   const [skillTaggedMds, setSkillTaggedMds] = useState<{ path: string; fullPath: string }[]>([]);
@@ -71,7 +71,7 @@ export function AgentRuntimeEditor({
       for (const [section, entries] of Object.entries(result.entries)) {
         for (const entry of entries) {
           const name = entry.path.split("/").pop()?.toLowerCase();
-          if (name === "agents.md" || name === "agends.md") {
+          if (name === "agents.md") {
             if (section === "workspace") {
               workspace = entry.fullPath ?? entry.path;
             } else {
@@ -80,7 +80,7 @@ export function AgentRuntimeEditor({
           }
         }
       }
-      setGlobalAgentsMd(global);
+      setGlobalSystemPromptBasePath(global);
       setWorkspaceAgentsMd(workspace);
       const agentTagged: { path: string; fullPath: string }[] = [];
       for (const entries of Object.values(result.entries)) {
@@ -290,24 +290,24 @@ export function AgentRuntimeEditor({
           tokens, old system messages are stripped as stale and redundant.
         </p>
 
-        {/* Global agents.md */}
+        {/* Global system prompt base (systemPromptBase.md) */}
         <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
               <div className="min-w-0">
-                <p className="text-xs font-medium text-zinc-300">Global system message</p>
+                <p className="text-xs font-medium text-zinc-300">Global system prompt base</p>
                 <p className="truncate text-[11px] text-zinc-500">
-                  {globalAgentsMd ?? "Not found"}
+                  {globalSystemPromptBasePath ?? "Not found"}
                 </p>
               </div>
             </div>
-            {globalAgentsMd && (
+            {globalSystemPromptBasePath && (
               <button
                 onClick={async () => {
                   try {
-                    const { content } = await readMd(sessionId, globalAgentsMd);
-                    setEditingMd({ path: globalAgentsMd, tag: "agent", content, source: "global" });
+                    const { content } = await readMd(sessionId, globalSystemPromptBasePath);
+                    setEditingMd({ path: globalSystemPromptBasePath, tag: "agent", content, source: "global" });
                   } catch {}
                 }}
                 className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
@@ -318,22 +318,23 @@ export function AgentRuntimeEditor({
             )}
           </div>
           <p className="mt-1.5 text-[11px] text-zinc-500">
-            This system message stays the same regardless of session or workspace.
+            The global "constitution" (systemPromptBase.md) — applies to every agent regardless of
+            session or workspace. Not an AGENTS.md file.
           </p>
         </div>
 
-        {/* Workspace agents.md */}
+        {/* Project AGENTS.md (workspace root) */}
         <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
               <div className="min-w-0">
-                <p className="text-xs font-medium text-zinc-300">Workspace system message</p>
+                <p className="text-xs font-medium text-zinc-300">Project AGENTS.md</p>
                 {workspaceAgentsMd ? (
                   <p className="truncate text-[11px] text-zinc-500">{workspaceAgentsMd}</p>
                 ) : (
                   <p className="text-[11px] text-zinc-500">
-                    No agents.md found in workspace root{roots ? ` (${roots.workspace})` : ""}
+                    No agents.md / AGENTS.md found in workspace root{roots ? ` (${roots.workspace})` : ""}
                   </p>
                 )}
               </div>
@@ -354,8 +355,8 @@ export function AgentRuntimeEditor({
             )}
           </div>
           <p className="mt-1.5 text-[11px] text-zinc-500">
-            This system message is tied to the current workspace. A session in a different
-            workspace will use its own workspace&apos;s agents.md.
+            Project-level rules from AGENTS.md at the workspace root. Tied to the current
+            workspace — a session in a different workspace uses its own AGENTS.md.
           </p>
         </div>
       </div>
@@ -505,7 +506,7 @@ export function AgentRuntimeEditor({
               for (const [section, entries] of Object.entries(result.entries)) {
                 for (const entry of entries) {
                   const name = entry.path.split("/").pop()?.toLowerCase();
-                  if (name === "agents.md" || name === "agends.md") {
+                  if (name === "agents.md") {
                     if (section === "workspace") {
                       workspace = entry.fullPath ?? entry.path;
                     } else {
@@ -514,7 +515,7 @@ export function AgentRuntimeEditor({
                   }
                 }
               }
-              setGlobalAgentsMd(global);
+              setGlobalSystemPromptBasePath(global);
               setWorkspaceAgentsMd(workspace);
             }).catch(() => {});
           }}

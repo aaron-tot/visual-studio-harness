@@ -7,6 +7,11 @@ async function fileExists(path: string): Promise<boolean> {
   try { await access(path, constants.F_OK); return true; } catch { return false; }
 }
 
+/**
+ * Lists AGENTS.md files directly in rootDir (non-recursive).
+ * These are project-level rules files, NOT system prompt base or agent definitions.
+ * Prefers lowercase `agents.md` over uppercase `AGENTS.md` when both exist.
+ */
 export async function listAgentsMdAtRoot(rootDir: string): Promise<string[]> {
   const root = resolve(rootDir);
   let entries;

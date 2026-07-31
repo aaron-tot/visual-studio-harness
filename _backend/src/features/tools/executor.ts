@@ -1,4 +1,4 @@
-import type { BaseToolContext, ToolDef, ToolResult } from "./types";
+import type { BaseToolContext, ToolDef, ToolResult, PermissionMode } from "./types";
 import { toolResultForSdk } from "./registry";
 import { SandboxError } from "./sandbox";
 import { getBus } from "../hooks/get-bus";
@@ -14,12 +14,14 @@ export class ToolExecutor {
   async run(
     def: ToolDef,
     args: unknown,
-    ctx: BaseToolContext
+    ctx: BaseToolContext,
+    /** Pre-resolved permission mode — skips disk resolution when provided */
+    preResolvedMode?: PermissionMode,
   ): Promise<string | ToolResult> {
     let toolArgs: unknown = args;
     try {
-      // 1. Permission resolve
-      const mode = await resolveToolPermission(def.name, {
+      // 1. Permission resolve (skip disk I/O if pre-resolved)
+      const mode = preResolvedMode ?? await resolveToolPermission(def.name, {
         dataDir: ctx.dataDir,
         sessionId: ctx.sessionId,
         workspaceRoot: ctx.workspaceRoot,

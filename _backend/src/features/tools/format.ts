@@ -20,6 +20,22 @@ export function truncateText(text: string, maxBytes: number): { text: string; tr
   };
 }
 
+/**
+ * Count non-overlapping occurrences of `needle` in `haystack`.
+ */
+export function countOccurrences(haystack: string, needle: string): number {
+  if (!needle) return 0;
+  let count = 0;
+  let pos = 0;
+  while (true) {
+    const idx = haystack.indexOf(needle, pos);
+    if (idx === -1) break;
+    count++;
+    pos = idx + needle.length;
+  }
+  return count;
+}
+
 /** 1-based line numbers, cat -n style */
 export function formatNumberedLines(
   lines: string[],

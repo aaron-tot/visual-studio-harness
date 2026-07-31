@@ -5,13 +5,13 @@ import { tmpdir } from "node:os";
 import {
   assertExactlyOneSystemMessage,
   buildSystemBlock,
-  ensureGlobalAgentsFile,
-  globalAgentsPath,
+  ensureGlobalSystemPromptFile,
+  globalSystemPromptPath,
   messagesForModel,
   resolveAgentMd,
   resolveSkillMds,
 } from "./system-prompt";
-import { buildDefaultGlobalAgentsMarkdown } from "../features/mds/defaults";
+import { buildDefaultGlobalSystemPrompt } from "../features/mds/defaults";
 import type { Message } from "../../../_shared/types";
 
 function msg(role: Message["role"], content: string): Message {
@@ -37,21 +37,21 @@ describe("system-prompt assembly", () => {
     await rm(join(dataDir, ".."), { recursive: true, force: true });
   });
 
-  test("ensureGlobalAgentsFile creates from defaults when missing", async () => {
-    const path = globalAgentsPath(dataDir);
-    await ensureGlobalAgentsFile(dataDir, "dev");
+  test("ensureGlobalSystemPromptFile creates from defaults when missing", async () => {
+    const path = globalSystemPromptPath(dataDir);
+    await ensureGlobalSystemPromptFile(dataDir, "dev");
     const onDisk = await readFile(path, "utf-8");
-    expect(onDisk).toBe(buildDefaultGlobalAgentsMarkdown());
+    expect(onDisk).toBe(buildDefaultGlobalSystemPrompt());
   });
 
-  test("ensureGlobalAgentsFile does not overwrite existing file", async () => {
-    const path = globalAgentsPath(dataDir);
+  test("ensureGlobalSystemPromptFile does not overwrite existing file", async () => {
+    const path = globalSystemPromptPath(dataDir);
     await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "# Custom global\n\n- user rule\n");
-    await ensureGlobalAgentsFile(dataDir, "dev");
+    await ensureGlobalSystemPromptFile(dataDir, "dev");
     const onDisk = await readFile(path, "utf-8");
     expect(onDisk).toContain("user rule");
-    expect(onDisk).not.toBe(buildDefaultGlobalAgentsMarkdown());
+    expect(onDisk).not.toBe(buildDefaultGlobalSystemPrompt());
   });
 
   test("buildSystemBlock uses disk global after create, not defaults string directly", async () => {
@@ -64,7 +64,7 @@ describe("system-prompt assembly", () => {
       now: fixed,
     });
 
-    const diskGlobal = await readFile(globalAgentsPath(dataDir), "utf-8");
+    const diskGlobal = await readFile(globalSystemPromptPath(dataDir), "utf-8");
     expect(block).toContain(diskGlobal.trim());
     expect(block).toContain("## Runtime");
     expect(block).toContain(`- workspace_root: ${workspaceRoot}`);
@@ -78,8 +78,8 @@ describe("system-prompt assembly", () => {
   });
 
   test("edited global file is used; defaults are not re-injected", async () => {
-    await ensureGlobalAgentsFile(dataDir, "dev");
-    await writeFile(globalAgentsPath(dataDir), "# Edited global\n\n- never force-push\n");
+    await ensureGlobalSystemPromptFile(dataDir, "dev");
+    await writeFile(globalSystemPromptPath(dataDir), "# Edited global\n\n- never force-push\n");
 
     const block = await buildSystemBlock({
       dataDir,
@@ -159,8 +159,8 @@ describe("system-prompt assembly", () => {
   });
 
   test("appends global root agents.md then project root agents.md", async () => {
-    await mkdir(join(globalAgentsPath(dataDir), ".."), { recursive: true });
-    await writeFile(globalAgentsPath(dataDir), "# GLOBAL_ROOT\n");
+    await mkdir(join(globalSystemPromptPath(dataDir), ".."), { recursive: true });
+    await writeFile(globalSystemPromptPath(dataDir), "# GLOBAL_ROOT\n");
     await writeFile(join(workspaceRoot, "agents.md"), "# PROJECT_ROOT\n");
 
     const block = await buildSystemBlock({
@@ -192,8 +192,8 @@ describe("system-prompt assembly", () => {
 
   test("does not cap large agents files", async () => {
     const huge = "x".repeat(100_000);
-    await mkdir(join(globalAgentsPath(dataDir), ".."), { recursive: true });
-    await writeFile(globalAgentsPath(dataDir), huge);
+    await mkdir(join(globalSystemPromptPath(dataDir), ".."), { recursive: true });
+    await writeFile(globalSystemPromptPath(dataDir), huge);
 
     const block = await buildSystemBlock({
       dataDir,
@@ -373,8 +373,8 @@ describe("resolveSkillMds", () => {
 
 describe("buildSystemBlock with agentSettings", () => {
   test("appends inline agent MD after global before project", async () => {
-    await mkdir(join(globalAgentsPath(dataDir), ".."), { recursive: true });
-    await writeFile(globalAgentsPath(dataDir), "# GLOBAL\n");
+    await mkdir(join(globalSystemPromptPath(dataDir), ".."), { recursive: true });
+    await writeFile(globalSystemPromptPath(dataDir), "# GLOBAL\n");
     await writeFile(join(workspaceRoot, "agents.md"), "# PROJECT\n");
 
     const block = await buildSystemBlock({
@@ -400,8 +400,8 @@ describe("buildSystemBlock with agentSettings", () => {
   test("appends resolved skill MDs after agent MD", async () => {
     const skillFile = join(dataDir, "my-skill.md");
     await writeFile(skillFile, "# My Skill\n\nContent.\n");
-    await mkdir(join(globalAgentsPath(dataDir), ".."), { recursive: true });
-    await writeFile(globalAgentsPath(dataDir), "# GLOBAL\n");
+    await mkdir(join(globalSystemPromptPath(dataDir), ".."), { recursive: true });
+    await writeFile(globalSystemPromptPath(dataDir), "# GLOBAL\n");
 
     const block = await buildSystemBlock({
       dataDir,
@@ -421,8 +421,8 @@ describe("buildSystemBlock with agentSettings", () => {
   });
 
   test("omits agent MD when agentMd is null", async () => {
-    await mkdir(join(globalAgentsPath(dataDir), ".."), { recursive: true });
-    await writeFile(globalAgentsPath(dataDir), "# GLOBAL\n");
+    await mkdir(join(globalSystemPromptPath(dataDir), ".."), { recursive: true });
+    await writeFile(globalSystemPromptPath(dataDir), "# GLOBAL\n");
 
     const block = await buildSystemBlock({
       dataDir,

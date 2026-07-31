@@ -10,7 +10,7 @@ import { searchKnowledge } from "./search";
 import { EmbeddingQueue } from "./embedding/queue";
 import { resolveEmbeddingProvider } from "./embedding/resolve";
 import type { SearchFilters, SearchResult } from "./search/types";
-import { listDocuments, openDocument } from "./service-queries";
+import { listDocuments, openDocument, resolveDocumentByFilename } from "./service-queries";
 import { createDocument, editDocument, deleteDocument } from "./service-mutations";
 import type { DocumentMeta, DocumentContent, IngestResult, CreateDocumentInput, DeleteResult } from "./types";
 
@@ -143,6 +143,15 @@ export class KnowledgeBaseService {
     sessionId?: string,
   ): Promise<DocumentContent | null> {
     return openDocument(this.dataDir, scope, id, maxChars, workspaceRoot, sessionId);
+  }
+
+  async resolveFilename(
+    scope: KbScope,
+    filename: string,
+    workspaceRoot?: string,
+    sessionId?: string,
+  ): Promise<DocumentMeta | null> {
+    return resolveDocumentByFilename(this.dataDir, scope, filename, workspaceRoot, sessionId);
   }
 
   async listDocuments(

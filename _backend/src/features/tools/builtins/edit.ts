@@ -4,19 +4,7 @@ import type { ToolDef, ToolFieldDef } from "../types";
 import { SandboxError } from "../sandbox";
 import { resolveAccessiblePath } from "../path-access";
 import { atomicWriteFile } from "../host/atomic-write";
-
-function countOccurrences(haystack: string, needle: string): number {
-  if (!needle) return 0;
-  let count = 0;
-  let pos = 0;
-  while (true) {
-    const idx = haystack.indexOf(needle, pos);
-    if (idx === -1) break;
-    count++;
-    pos = idx + needle.length;
-  }
-  return count;
-}
+import { countOccurrences } from "../format";
 
 export const editTool: ToolDef = {
   name: "edit",

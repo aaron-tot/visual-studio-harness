@@ -179,9 +179,10 @@ export async function buildModelMessages(
                 type: "tool-call",
                 toolCallId: part.toolCallId ?? "",
                 toolName: part.toolName ?? "",
-                args: data.args ?? {},
+                input: data.args ?? {},
               });
             } else if (part.status === "completed" && options.includeToolResults) {
+              const rawOutput = data.result ?? data.output ?? "";
               toolResultMessages.push({
                 role: "tool",
                 content: [
@@ -189,8 +190,8 @@ export async function buildModelMessages(
                     type: "tool-result",
                     toolCallId: part.toolCallId ?? "",
                     toolName: part.toolName ?? "",
-                    result: data.result ?? data.output ?? "",
-                    isError: part.status === "error",
+                    output: { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) },
+                    isError: false,
                   },
                 ],
               });

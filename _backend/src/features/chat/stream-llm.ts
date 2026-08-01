@@ -35,7 +35,8 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
     delayMs: options.streamRetryDelayMs ?? DEFAULT_STREAM_RETRY_CONFIG.delayMs,
   };
   const cap = createVerboseFetch();
-  const { fetch: verboseFetch, captureDone: rawCaptureDone, getResponse: getRawResponse } = cap;
+  const { fetch: verboseFetch, captureDone: rawCaptureDone, getResponse: getRawResponse, getRequest: getRawRequest } = cap;
+  let rawRequest: Record<string, unknown> | undefined;
   let rawResponse: Record<string, unknown> | undefined;
 
   const sdkProvider = provider.displayName === "Test" ? null : createOpenAICompatible({
@@ -75,15 +76,6 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   assertExactlyOneSystemMessage(messages);
 
-  const providerRequestBody: Record<string, unknown> = {
-    model, messages,
-    ...(hasTools ? { tools: serializeToolsForDebug(tools!), tool_choice: "auto" } : {}),
-    stream: true,
-    ...(temperature !== undefined ? { temperature } : {}),
-    ...(providerOptions ? { providerOptions } : {}),
-  };
-  const debugUrl = `${provider.baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
-
   const sdkRequest: Record<string, unknown> = {
     model,
     messages,
@@ -91,11 +83,6 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
     ...(temperature !== undefined ? { temperature } : {}),
     ...(providerOptions ? { providerOptions } : {}),
     maxSteps,
-  };
-
-  const rawRequest: Record<string, unknown> = {
-    sdk: sdkRequest,
-    provider: providerRequestBody,
   };
 
   const DEBUG_CHAT_MESSAGES = process.env.VISUAL_STUDIO_HARNESS_DEBUG_CHAT === "1";
@@ -320,6 +307,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   await Promise.race([rawCaptureDone, new Promise<void>((r) => setTimeout(r, 3000))]);
   rawResponse = getRawResponse();
+  rawRequest = { sdk: sdkRequest, provider: getRawRequest() ?? undefined };
 
   const totalUsage = streamTotalUsage ?? (steps.length > 0
     ? {

@@ -28,8 +28,9 @@ export function parseCapturedBody(rawText: string): Record<string, unknown> {
   }
 }
 
-export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promise<void>; getResponse: () => Record<string, unknown> | undefined } {
+export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promise<void>; getResponse: () => Record<string, unknown> | undefined; getRequest: () => Record<string, unknown> | undefined } {
   const MAX_CAPTURE_SIZE_BYTES = 500 * 1024; // 500 KB (reduced from 10 MB to lower memory per turn)
+  let rawRequest: Record<string, unknown> | undefined;
   let rawResponse: Record<string, unknown> | undefined;
   let resolveCapture!: () => void;
   let settled = false;
@@ -38,6 +39,12 @@ export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promis
   const captureDone = new Promise<void>((r) => { resolveCapture = () => { if (!settled) { settled = true; r(); } }; });
 
   const verboseFetch: typeof fetch = async (input, init) => {
+    // Capture the exact HTTP request body the SDK sends
+    if (init && typeof init.body === "string") {
+      try {
+        rawRequest = JSON.parse(init.body);
+      } catch {}
+    }
     const res = await fetch(input, { ...init, verbose: true } as RequestInit & { verbose: boolean });
     if (!res.body) return res;
 
@@ -79,5 +86,5 @@ export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promis
     });
   };
 
-  return { fetch: verboseFetch, captureDone, getResponse: () => rawResponse };
+  return { fetch: verboseFetch, captureDone, getResponse: () => rawResponse, getRequest: () => rawRequest };
 }

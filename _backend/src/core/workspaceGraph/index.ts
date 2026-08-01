@@ -172,6 +172,6 @@ async function processWatcherBatch(
 
   if (report.reindexedPaths.length > 0) {
     console.log(`[workspace-graph] watcher batch: ${report.reindexedPaths.length} file(s) updated`);
+    logMemory("after watcher reindex");
   }
-  logMemory("after watcher reindex");
 }

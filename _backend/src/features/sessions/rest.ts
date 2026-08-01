@@ -31,6 +31,7 @@ import {
   getSessionModelConfigJson,
   setSessionModelConfigJson,
 } from "./db";
+import { getWorkspaceGraphManager } from "../../core/workspaceGraph/service-singleton";
 
 export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
   app.get("/api/sessions", async (request) => {
@@ -121,8 +122,27 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
 
   app.delete("/api/sessions/:id", async (request) => {
     const { id } = request.params as { id: string };
+    const session = await getSession(dataDir, id);
+    const workspaceRoot = session?.meta?.workspaceRoot;
     cancelSession(id, dataDir);
     await deleteSession(dataDir, id);
+
+    // Stop workspace graph if no remaining non-archived sessions use this root
+    if (workspaceRoot?.trim()) {
+      const all = await listSessions(dataDir);
+      const hasOther = all.some(
+        (s) => s.id !== id && s.workspaceRoot === workspaceRoot
+      );
+      if (!hasOther) {
+        const manager = getWorkspaceGraphManager();
+        if (manager) {
+          manager.stop(workspaceRoot).catch((err) => {
+            console.error(`[workspace-graph] error stopping for ${workspaceRoot}:`, err);
+          });
+        }
+      }
+    }
+
     return { ok: true };
   });
 

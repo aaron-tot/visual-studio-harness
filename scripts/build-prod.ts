@@ -171,11 +171,9 @@ async function main() {
 
   // 2b. Embed sqlite-vec native extension so it works in compiled binaries
   const VEC0_EMBED_PATH = join(ROOT, "_backend", "src", "generated", "vec0-embed.ts");
-  let vec0Source: string | null = null;
-  try {
-    vec0Source = Bun.resolveSync("sqlite-vec-linux-x64/vec0.so", join(ROOT, "_backend", "src"));
-  } catch { /* not found */ }
-  if (vec0Source) {
+  const vecPkg = Bun.resolveSync("sqlite-vec/package.json", join(ROOT, "_backend", "src"));
+  const vec0Source = join(dirname(vecPkg), "..", "sqlite-vec-linux-x64", "vec0.so");
+  if (existsSync(vec0Source)) {
     const vec0Buf = await readFile(vec0Source);
     const vec0B64 = vec0Buf.toString("base64");
     await writeFile(
@@ -190,7 +188,7 @@ export const VEC0_SO_FILENAME = "vec0.so";
     );
     console.log(`Embedded vec0.so (${(vec0Buf.length / 1024).toFixed(0)} KB)`);
   } else {
-    console.warn("vec0.so not found — vector search unavailable in compiled binary");
+    throw new Error("vec0.so not found — vector search will be broken in compiled binary. Install sqlite-vec-linux-x64 or check node_modules.");
   }
 
   // Derive output filename with target + type

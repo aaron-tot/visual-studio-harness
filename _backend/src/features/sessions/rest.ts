@@ -234,8 +234,10 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       promptSnapshotId?: number;
       toolsSnapshotId?: number;
     }
-    const configSnap: ConfigSnap = turnRow.configSnapshotJson ? JSON.parse(turnRow.configSnapshotJson) : {};
-    const includeFailed = configSnap.includeFailedTurnsInHistory ?? true;
+    if (!turnRow.configSnapshotJson) {
+      return { sdkRequest: null, providerRequest: null };
+    }
+    const configSnap: ConfigSnap = JSON.parse(turnRow.configSnapshotJson);
 
     // Load system prompt from snapshot
     let systemBlock = "";
@@ -253,7 +255,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       systemBlock,
       {
         contextTurnIds: ctxIds,
-        includeIncompleteTurns: includeFailed,
+        includeIncompleteTurns: configSnap.includeFailedTurnsInHistory,
         includeTextParts: true,
         includeToolCalls: configSnap.includeToolCallsInHistory ?? true,
         includeToolResults: configSnap.includeToolResultsInHistory ?? true,

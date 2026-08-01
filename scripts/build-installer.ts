@@ -148,17 +148,15 @@ export const PORTABLE_SIZE = ${portableBuf.length};
   console.log(`Wrote embedded portable: ${generatedPath} (${(portableBuf.length / 1024 / 1024).toFixed(1)} MB)`);
 
   // Embed sqlite-vec native extension for install-time extraction
-  let vec0Source: string | null = null;
-  try {
-    vec0Source = Bun.resolveSync("sqlite-vec-linux-x64/vec0.so", join(ROOT, "scripts"));
-  } catch { /* not found */ }
+  const vecPkg = Bun.resolveSync("sqlite-vec/package.json", join(ROOT, "_backend", "src"));
+  const vec0Source = join(dirname(vecPkg), "..", "sqlite-vec-linux-x64", "vec0.so");
   let vec0Embed = "";
-  if (vec0Source) {
+  if (existsSync(vec0Source)) {
     const vec0Buf = await readFile(vec0Source);
     vec0Embed = vec0Buf.toString("base64");
     console.log(`Embedded vec0.so (${(vec0Buf.length / 1024).toFixed(0)} KB)`);
   } else {
-    console.warn("vec0.so not found — installer will not pre-extract it");
+    throw new Error("vec0.so not found — vector search will be broken in installer. Build portable first so node_modules are available.");
   }
   const vec0GenPath = join(GENERATED_DIR, "embedded-vec0.ts");
   await writeFile(

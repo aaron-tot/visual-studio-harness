@@ -280,8 +280,7 @@ export async function runTurn(
         contextTurnIds,
         includeIncompleteTurns: config.includeFailedTurnsInHistory ?? true,
         includeTextParts: true,
-        includeToolCalls: config.includeToolCallsInHistory ?? true,
-        includeToolResults: config.includeToolResultsInHistory ?? true,
+        includeTools: config.includeToolCallsInHistory ?? true,
         includeReasoningParts: config.includeReasoningInHistory ?? false,
         includePatchParts: config.includePatchesInHistory ?? false,
         includeOtherParts: config.includeOtherPartsInHistory ?? false,
@@ -343,7 +342,6 @@ export async function runTurn(
     updateTurnConfigSnapshot(traceTurnId, {
       includeFailedTurnsInHistory: config.includeFailedTurnsInHistory ?? true,
       includeToolCallsInHistory: config.includeToolCallsInHistory ?? true,
-      includeToolResultsInHistory: config.includeToolResultsInHistory ?? true,
       includeReasoningInHistory: config.includeReasoningInHistory ?? false,
       includePatchesInHistory: config.includePatchesInHistory ?? false,
       includeOtherPartsInHistory: config.includeOtherPartsInHistory ?? false,

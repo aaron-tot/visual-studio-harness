@@ -11,8 +11,7 @@ export interface BuildModelMessagesOptions {
   contextTurnIds: number[];
   includeIncompleteTurns: boolean;
   includeTextParts: boolean;
-  includeToolCalls: boolean;
-  includeToolResults: boolean;
+  includeTools: boolean;
   includeReasoningParts: boolean;
   includePatchParts: boolean;
   includeOtherParts: boolean;
@@ -150,7 +149,7 @@ export async function buildModelMessages(
             break;
           }
           case "tool": {
-            if (options.includeToolCalls && part.toolCallId) {
+            if (options.includeTools && part.toolCallId) {
               const args = data.args ?? {};
               contentParts.push({
                 type: "tool-call",
@@ -158,8 +157,6 @@ export async function buildModelMessages(
                 toolName: part.toolName ?? "",
                 input: args,
               });
-            }
-            if (options.includeToolResults && part.status === "completed" && part.toolCallId) {
               const rawOutput = data.result ?? data.output ?? "";
               toolResultMessages.push({
                 role: "tool",
@@ -168,7 +165,10 @@ export async function buildModelMessages(
                     type: "tool-result",
                     toolCallId: part.toolCallId,
                     toolName: part.toolName ?? "",
-                    output: { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) },
+                    output:
+                      part.status === "completed"
+                        ? { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) }
+                        : { type: "error-text", value: `Tool call ${part.status} before returning a result` },
                   },
                 ],
               });

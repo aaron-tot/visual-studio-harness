@@ -21,6 +21,7 @@ import {
   getTurnRawCaptureByNumber,
   getStepWithParts,
   getSessionUsage,
+  getTurnStepRawCapture,
 } from "../chat/project-chat";
 import { buildUsageTree } from "../chat/usage-tree";
 import { sessionHasTurns, getTurnByNumber, listContextTurnIds } from "../chat/db-trace";
@@ -204,8 +205,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     if (!session) return reply.code(404).send({ error: "session not found" });
     const numTurnId = parseInt(turnId, 10);
     if (isNaN(numTurnId)) return reply.code(400).send({ error: "invalid turn id" });
-    const raw = getTurnRawCaptureByNumber(id, numTurnId, dataDir);
-    if (!raw) return { rawRequest: null, rawResponse: null };
+    const raw = await getTurnStepRawCapture(id, numTurnId, dataDir);
+    if (!raw) return { rawRequest: null, rawResponse: null, steps: [] };
     return raw;
   });
 
@@ -226,7 +227,6 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     interface ConfigSnap {
       includeFailedTurnsInHistory: boolean;
       includeToolCallsInHistory: boolean;
-      includeToolResultsInHistory: boolean;
       includeReasoningInHistory: boolean;
       includePatchesInHistory: boolean;
       includeOtherPartsInHistory: boolean;
@@ -257,8 +257,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
         contextTurnIds: ctxIds,
         includeIncompleteTurns: configSnap.includeFailedTurnsInHistory,
         includeTextParts: true,
-        includeToolCalls: configSnap.includeToolCallsInHistory ?? true,
-        includeToolResults: configSnap.includeToolResultsInHistory ?? true,
+        includeTools: configSnap.includeToolCallsInHistory ?? true,
         includeReasoningParts: configSnap.includeReasoningInHistory ?? false,
         includePatchParts: configSnap.includePatchesInHistory ?? false,
         includeOtherParts: configSnap.includeOtherPartsInHistory ?? false,

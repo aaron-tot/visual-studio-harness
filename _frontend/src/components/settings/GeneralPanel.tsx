@@ -303,27 +303,12 @@ export function GeneralPanel() {
             />
             <div>
               <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
-                Include tool calls in history
+                Include tool calls and results in history
               </div>
               <div className="text-xs text-zinc-500 mt-0.5">
-                When enabled, tool calls from previous turns are sent to the model.
-              </div>
-            </div>
-          </label>
-
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={(config.includeToolResultsInHistory as boolean) ?? true}
-              onChange={(e) => patch({ includeToolResultsInHistory: e.target.checked })}
-              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-            />
-            <div>
-              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
-                Include tool results in history
-              </div>
-              <div className="text-xs text-zinc-500 mt-0.5">
-                When enabled, tool results from previous turns are sent to the model.
+                When enabled, tool calls and their results from previous turns are sent
+                to the model. Disabled turns with incomplete tool calls are reported as
+                failed. Default: on.
               </div>
             </div>
           </label>

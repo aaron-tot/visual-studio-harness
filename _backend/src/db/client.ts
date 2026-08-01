@@ -36,7 +36,8 @@ function ensureSchema(sqlite: Database): void {
       cached_input_tokens INTEGER,
       cached_output_tokens INTEGER,
       cached_total_tokens INTEGER,
-      cached_turn_count INTEGER
+      cached_turn_count INTEGER,
+      starred INTEGER NOT NULL DEFAULT 0
     );
   `);
 
@@ -240,6 +241,7 @@ function ensureSchema(sqlite: Database): void {
     `ALTER TABLE sessions ADD COLUMN todos_json TEXT`,
     `ALTER TABLE sessions ADD COLUMN model_config_json TEXT`,
     `ALTER TABLE sessions ADD COLUMN session_perms_json TEXT`,
+    `ALTER TABLE sessions ADD COLUMN starred INTEGER NOT NULL DEFAULT 0`,
   ];
   for (const sql of alters) {
     try {

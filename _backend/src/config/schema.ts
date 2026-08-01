@@ -185,7 +185,6 @@ export const ConfigFileSchema = z.object({
   showSessionName: z.boolean().default(false),
   includeFailedTurnsInHistory: z.boolean().default(true),
   includeToolCallsInHistory: z.boolean().default(true),
-  includeToolResultsInHistory: z.boolean().default(true),
   includeReasoningInHistory: z.boolean().default(false),
   includePatchesInHistory: z.boolean().default(false),
   includeOtherPartsInHistory: z.boolean().default(false),

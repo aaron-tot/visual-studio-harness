@@ -66,6 +66,10 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   assertExactlyOneSystemMessage(messages);
 
+  // SDK v7 requires system messages as instructions param, not in messages array
+  const instructions = messages[0]?.role === "system" ? messages[0].content : undefined;
+  const chatMessages = instructions ? messages.slice(1) : messages;
+
   const DEBUG_CHAT_MESSAGES = process.env.VISUAL_STUDIO_HARNESS_DEBUG_CHAT === "1";
   const DEBUG_STREAM_EVENTS = false; // Set true for per-event verbose logging
 
@@ -85,9 +89,8 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
       }
       if (DEBUG_CHAT_MESSAGES) {
         const ts = new Date().toISOString().slice(11, 19);
-        const systemMsg = messages.find(m => m.role === "system");
-        console.log(`\n\n[${ts}] DEBUG: instructions`, systemMsg?.content, "\n");
-        console.log(`[${ts}] DEBUG: chatMessages`, messages.filter(m => m.role !== "system"), "\n");
+        console.log(`\n\n[${ts}] DEBUG: instructions`, instructions, "\n");
+        console.log(`[${ts}] DEBUG: chatMessages`, chatMessages, "\n");
       }
 
       try {
@@ -104,7 +107,8 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           ? { fullStream: createMockFullStream(model, signal, options.modelSpeed, options.workspaceRoot) }
           : streamText({
               model: sdkProvider!(model),
-              messages,
+              ...(instructions ? { instructions } : {}),
+              messages: chatMessages,
               abortSignal: signal,
               maxRetries: 0,
               ...(temperature !== undefined ? { temperature } : {}),

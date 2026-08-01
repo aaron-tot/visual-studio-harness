@@ -2,6 +2,17 @@ import { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { TurnDetail, StepSummary } from "../../../_shared/types/trace";
 import { getTurn, getTurnRaw } from "../../lib/api";
+
+function rawDisplayValue(
+  tab: "sdk" | "provider" | "output",
+  data: { rawRequest: unknown; rawResponse: unknown },
+): unknown {
+  if (tab === "output") return data.rawResponse;
+  const req = data.rawRequest as Record<string, unknown> | null | undefined;
+  if (tab === "sdk") return req?.sdk ?? req;
+  if (tab === "provider") return req?.provider ?? req;
+  return req;
+}
 import { ToolCacheGroups } from "./ToolCacheGroups";
 
 interface TurnInspectorModalProps {
@@ -123,7 +134,7 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
   const [rawData, setRawData] = useState<{ rawRequest: unknown; rawResponse: unknown } | null>(null);
   const [rawLoading, setRawLoading] = useState(true);
   const [rawError, setRawError] = useState<string | null>(null);
-  const [rawTab, setRawTab] = useState<"input" | "output">("input");
+  const [rawTab, setRawTab] = useState<"sdk" | "provider" | "output">("sdk");
 
   useEffect(() => {
     let cancelled = false;
@@ -333,10 +344,17 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
               <div className="flex items-center gap-1 mb-2">
                 <button
                   type="button"
-                  className={`text-xs px-2 py-1 rounded ${rawTab === "input" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
-                  onClick={() => setRawTab("input")}
+                  className={`text-xs px-2 py-1 rounded ${rawTab === "sdk" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+                  onClick={() => setRawTab("sdk")}
                 >
-                  Request
+                  Request to SDK
+                </button>
+                <button
+                  type="button"
+                  className={`text-xs px-2 py-1 rounded ${rawTab === "provider" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+                  onClick={() => setRawTab("provider")}
+                >
+                  Request to Provider
                 </button>
                 <button
                   type="button"
@@ -354,7 +372,7 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
               )}
               {!rawLoading && !rawError && rawData && (
                 <pre className="text-xs text-zinc-300 font-mono whitespace-pre-wrap break-all bg-zinc-950 rounded p-3 max-h-[40vh] overflow-auto">
-                  <JsonValue value={rawTab === "input" ? rawData.rawRequest : rawData.rawResponse} />
+                  <JsonValue value={rawDisplayValue(rawTab, rawData)} />
                 </pre>
               )}
               {!rawLoading && !rawError && !rawData && (

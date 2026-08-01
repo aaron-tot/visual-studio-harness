@@ -75,7 +75,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   assertExactlyOneSystemMessage(messages);
 
-  const debugRequestBody: Record<string, unknown> = {
+  const providerRequestBody: Record<string, unknown> = {
     model, messages,
     ...(hasTools ? { tools: serializeToolsForDebug(tools!), tool_choice: "auto" } : {}),
     stream: true,
@@ -84,14 +84,18 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   };
   const debugUrl = `${provider.baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
 
-  const rawRequest: Record<string, unknown> = {
+  const sdkRequest: Record<string, unknown> = {
     model,
     messages,
     ...(hasTools ? { tools: Object.keys(tools!) } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(providerOptions ? { providerOptions } : {}),
     maxSteps,
-    httpBody: debugRequestBody,
+  };
+
+  const rawRequest: Record<string, unknown> = {
+    sdk: sdkRequest,
+    provider: providerRequestBody,
   };
 
   const DEBUG_CHAT_MESSAGES = process.env.VISUAL_STUDIO_HARNESS_DEBUG_CHAT === "1";

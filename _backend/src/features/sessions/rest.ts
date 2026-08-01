@@ -26,7 +26,7 @@ import { buildUsageTree } from "../chat/usage-tree";
 import { sessionHasTurns, getTurnByNumber, listContextTurnIds } from "../chat/db-trace";
 import { cancelSession } from "../chat/session-abort";
 import { buildModelMessages } from "../chat/message-builder";
-import { promptSnapshots, turns } from "../../db/schema";
+import { promptSnapshots, turns, toolsSnapshots } from "../../db/schema";
 import { getDbForDataDir } from "../../db/client";
 import { eq, and } from "drizzle-orm";
 import {
@@ -268,16 +268,32 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     );
 
     // Build SDK request object (exact object passed to streamText)
-    const sdkRequest = {
+    const sdkRequest: Record<string, unknown> = {
       model: turnRow.modelName ?? "unknown",
       messages: reconstructedMessages,
       temperature: turnRow.temperature ?? undefined,
       maxSteps: turnRow.maxSteps ?? undefined,
     };
 
-    // Get provider request from raw capture
-    const raw = getTurnRawCaptureByNumber(id, numTurnId, dataDir);
-    const providerRequest = raw?.rawRequest ?? null;
+    // Load tool definitions from snapshot to reconstruct provider request
+    let providerTools: unknown[] | undefined;
+    if (configSnap.toolsSnapshotId) {
+      const ts = db.select({ toolsJson: toolsSnapshots.toolsJson }).from(toolsSnapshots).where(eq(toolsSnapshots.id, configSnap.toolsSnapshotId)).get();
+      if (ts?.toolsJson) {
+        try {
+          providerTools = JSON.parse(ts.toolsJson);
+        } catch {}
+      }
+    }
+
+    // Build provider request (what the SDK serializes and sends over the wire)
+    const providerRequest: Record<string, unknown> = {
+      model: turnRow.modelName ?? "unknown",
+      messages: reconstructedMessages,
+      ...(providerTools ? { tools: providerTools, tool_choice: "auto" } : {}),
+      stream: true,
+      ...(turnRow.temperature !== null ? { temperature: turnRow.temperature } : {}),
+    };
 
     return { sdkRequest, providerRequest };
   });

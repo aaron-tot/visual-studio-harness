@@ -216,6 +216,12 @@ export function getTurnRaw(sessionId: string, turnId: number) {
   );
 }
 
+export function getReconstructedRequests(sessionId: string, turnId: number) {
+  return fetchJson<{ sdkRequest: unknown; providerRequest: unknown }>(
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}/turns/${turnId}/reconstructed-requests`
+  );
+}
+
 export function getTurnFull(sessionId: string, turnId: number) {
   return fetchJson<{ messages: import("../../../_shared/types").Message[]; parts: import("../../../_shared/types").MessagePartType[] }>(
     `${BASE}/sessions/${encodeURIComponent(sessionId)}/turns/${turnId}/full`

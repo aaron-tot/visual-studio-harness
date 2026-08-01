@@ -1,19 +1,13 @@
 import { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { TurnDetail, StepSummary } from "../../../_shared/types/trace";
-import { getTurn, getTurnRaw } from "../../lib/api";
-
-function rawDisplayValue(
-  tab: "sdk" | "provider" | "output",
-  data: { rawRequest: unknown; rawResponse: unknown },
-): unknown {
-  if (tab === "output") return data.rawResponse;
-  const req = data.rawRequest as Record<string, unknown> | null | undefined;
-  if (tab === "sdk") return req?.sdk ?? req;
-  if (tab === "provider") return req?.provider ?? req;
-  return req;
-}
+import { getTurn, getReconstructedRequests } from "../../lib/api";
 import { ToolCacheGroups } from "./ToolCacheGroups";
+
+interface ReconstructedData {
+  sdkRequest: unknown;
+  providerRequest: unknown;
+}
 
 interface TurnInspectorModalProps {
   sessionId: string;
@@ -131,9 +125,10 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
   const [turn, setTurn] = useState<TurnDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [rawData, setRawData] = useState<{ rawRequest: unknown; rawResponse: unknown } | null>(null);
+  const [reconstructed, setReconstructed] = useState<ReconstructedData | null>(null);
   const [rawLoading, setRawLoading] = useState(true);
   const [rawError, setRawError] = useState<string | null>(null);
+  const [rawResponse, setRawResponse] = useState<unknown>(null);
   const [rawTab, setRawTab] = useState<"sdk" | "provider" | "output">("sdk");
 
   useEffect(() => {
@@ -157,16 +152,18 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
     let cancelled = false;
     setRawLoading(true);
     setRawError(null);
-    getTurnRaw(sessionId, turnNumber)
-      .then((data) => {
-        if (!cancelled) setRawData(data);
-      })
-      .catch((err) => {
-        if (!cancelled) setRawError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (!cancelled) setRawLoading(false);
-      });
+    Promise.all([
+      getReconstructedRequests(sessionId, turnNumber).catch(() => null),
+      import("../../lib/api").then(m => m.getTurnRaw(sessionId, turnNumber)).catch(() => null),
+    ]).then(([rec, raw]) => {
+      if (cancelled) return;
+      setReconstructed(rec);
+      setRawResponse(raw?.rawResponse ?? null);
+    }).catch(() => {
+      if (!cancelled) setRawError("Failed to load raw capture");
+    }).finally(() => {
+      if (!cancelled) setRawLoading(false);
+    });
     return () => { cancelled = true; };
   }, [sessionId, turnNumber]);
 
@@ -370,13 +367,22 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
               {rawError && (
                 <div className="text-xs text-red-400 py-4 text-center">{rawError}</div>
               )}
-              {!rawLoading && !rawError && rawData && (
+              {!rawLoading && !rawError && (
                 <pre className="text-xs text-zinc-300 font-mono whitespace-pre-wrap break-all bg-zinc-950 rounded p-3 max-h-[40vh] overflow-auto">
-                  <JsonValue value={rawDisplayValue(rawTab, rawData)} />
+                  {rawTab === "output" ? (
+                    <JsonValue value={rawResponse} />
+                  ) : rawTab === "sdk" ? (
+                    <JsonValue value={reconstructed?.sdkRequest ?? null} />
+                  ) : (
+                    <JsonValue value={reconstructed?.providerRequest ?? null} />
+                  )}
                 </pre>
               )}
-              {!rawLoading && !rawError && !rawData && (
-                <div className="text-xs text-zinc-500 py-4 text-center">No raw capture available.</div>
+              {!rawLoading && !rawError && !reconstructed && rawTab !== "output" && (
+                <div className="text-xs text-zinc-500 py-4 text-center">No reconstruction available.</div>
+              )}
+              {!rawLoading && !rawError && !rawResponse && rawTab === "output" && (
+                <div className="text-xs text-zinc-500 py-4 text-center">No raw response available.</div>
               )}
             </div>
           </Collapsible>

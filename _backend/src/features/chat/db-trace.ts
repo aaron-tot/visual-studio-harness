@@ -537,6 +537,16 @@ export function updateTurnRawCapture(
   }
 }
 
+export function updateTurnConfigSnapshot(
+  turnId: number,
+  snapshot: Record<string, unknown> | undefined,
+  dataDir?: string,
+): void {
+  if (!snapshot) return;
+  const db = dbFor(dataDir);
+  db.update(turns).set({ configSnapshotJson: JSON.stringify(snapshot) }).where(eq(turns.id, turnId)).run();
+}
+
 // ── Utility ──────────────────────────────────────────────────────────
 
 export function getActiveTraceTurn(sessionId: string, dataDir?: string): TraceTurn | null {

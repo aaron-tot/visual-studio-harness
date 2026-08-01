@@ -58,11 +58,14 @@ export class WorkspaceGraphManager {
     }
   }
 
-  async stopAll(): Promise<void> {
-    await Promise.all(
+  stopAll(): Promise<void> {
+    return Promise.all(
       Array.from(this._graphs.values()).map((e) => e.service.stop())
-    );
-    this._graphs.clear();
+    ).then(() => { this._graphs.clear(); });
+  }
+
+  get activeWorkspaceRoots(): string[] {
+    return Array.from(this._graphs.keys());
   }
 }
 

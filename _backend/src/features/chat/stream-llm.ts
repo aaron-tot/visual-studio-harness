@@ -14,16 +14,6 @@ import { getRetryableLabel, DEFAULT_STREAM_RETRY_CONFIG } from "./stream-retry";
 import { createVerboseFetch } from "./raw-capture-fetch";
 import { parseFinishStepEvent, flattenUsage } from "./step-finish-meta";
 
-function serializeToolsForDebug(tools: import("ai").ToolSet): Array<{
-  type: "function";
-  function: { name: string; description: string; parameters: unknown };
-}> {
-  return Object.entries(tools).map(([name, tool]) => ({
-    type: "function" as const,
-    function: { name, description: tool.description ?? "", parameters: tool.parameters ?? { type: "object", properties: {} } },
-  }));
-}
-
 export async function streamChat(options: StreamChatOptions): Promise<StreamChatResult> {
   const { provider, model, messages, onToken, onReasoning, onToolCall, onToolResult, tools, maxSteps = 30, temperature, thinkingEffort, signal, hookCtx } = options;
 
@@ -75,15 +65,6 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   let aborted = false;
 
   assertExactlyOneSystemMessage(messages);
-
-  const sdkRequest: Record<string, unknown> = {
-    model,
-    messages,
-    ...(hasTools ? { tools: Object.keys(tools!) } : {}),
-    ...(temperature !== undefined ? { temperature } : {}),
-    ...(providerOptions ? { providerOptions } : {}),
-    maxSteps,
-  };
 
   const DEBUG_CHAT_MESSAGES = process.env.VISUAL_STUDIO_HARNESS_DEBUG_CHAT === "1";
   const DEBUG_STREAM_EVENTS = false; // Set true for per-event verbose logging
@@ -307,7 +288,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   await Promise.race([rawCaptureDone, new Promise<void>((r) => setTimeout(r, 3000))]);
   rawResponse = getRawResponse();
-  rawRequest = { sdk: sdkRequest, provider: getRawRequest() ?? undefined };
+  rawRequest = getRawRequest() ?? undefined;
 
   const totalUsage = streamTotalUsage ?? (steps.length > 0
     ? {

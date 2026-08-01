@@ -23,8 +23,12 @@ import {
   getSessionUsage,
 } from "../chat/project-chat";
 import { buildUsageTree } from "../chat/usage-tree";
-import { sessionHasTurns } from "../chat/db-trace";
+import { sessionHasTurns, getTurnByNumber, listContextTurnIds } from "../chat/db-trace";
 import { cancelSession } from "../chat/session-abort";
+import { buildModelMessages } from "../chat/message-builder";
+import { promptSnapshots, turns } from "../../db/schema";
+import { getDbForDataDir } from "../../db/client";
+import { eq, and } from "drizzle-orm";
 import {
   getSessionTodosJson,
   setSessionTodosJson,
@@ -203,6 +207,79 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const raw = getTurnRawCaptureByNumber(id, numTurnId, dataDir);
     if (!raw) return { rawRequest: null, rawResponse: null };
     return raw;
+  });
+
+  app.get("/api/sessions/:id/turns/:turnId/reconstructed-requests", async (request, reply) => {
+    const { id, turnId } = request.params as { id: string; turnId: string };
+    const session = await getSession(dataDir, id);
+    if (!session) return reply.code(404).send({ error: "session not found" });
+    const numTurnId = parseInt(turnId, 10);
+    if (isNaN(numTurnId)) return reply.code(400).send({ error: "invalid turn id" });
+
+    const db = getDbForDataDir(dataDir);
+
+    // Load turn record
+    const turnRow = db.select().from(turns).where(and(eq(turns.sessionId, id), eq(turns.turnNumber, numTurnId))).get();
+    if (!turnRow) return reply.code(404).send({ error: "turn not found" });
+
+    // Load config snapshot
+    interface ConfigSnap {
+      includeFailedTurnsInHistory: boolean;
+      includeToolCallsInHistory: boolean;
+      includeToolResultsInHistory: boolean;
+      includeReasoningInHistory: boolean;
+      includePatchesInHistory: boolean;
+      includeOtherPartsInHistory: boolean;
+      contextMaxTurns?: number;
+      promptSnapshotId?: number;
+      toolsSnapshotId?: number;
+    }
+    const configSnap: ConfigSnap = turnRow.configSnapshotJson ? JSON.parse(turnRow.configSnapshotJson) : {};
+    const includeFailed = configSnap.includeFailedTurnsInHistory ?? true;
+
+    // Load system prompt from snapshot
+    let systemBlock = "";
+    if (configSnap.promptSnapshotId) {
+      const sp = db.select({ content: promptSnapshots.content }).from(promptSnapshots).where(eq(promptSnapshots.id, configSnap.promptSnapshotId)).get();
+      if (sp) systemBlock = sp.content;
+    }
+
+    // Load context turn IDs from turn_context table
+    const ctxIds = listContextTurnIds(turnRow.id, dataDir);
+
+    // Reconstruct SDK messages by re-running buildModelMessages
+    const { messages: reconstructedMessages, contextTurnIds: usedTurnIds } = await buildModelMessages(
+      id,
+      systemBlock,
+      {
+        contextTurnIds: ctxIds,
+        includeIncompleteTurns: includeFailed,
+        includeTextParts: true,
+        includeToolCalls: configSnap.includeToolCallsInHistory ?? true,
+        includeToolResults: configSnap.includeToolResultsInHistory ?? true,
+        includeReasoningParts: configSnap.includeReasoningInHistory ?? false,
+        includePatchParts: configSnap.includePatchesInHistory ?? false,
+        includeOtherParts: configSnap.includeOtherPartsInHistory ?? false,
+        maxTurns: configSnap.contextMaxTurns,
+        currentTurnNumber: turnRow.turnNumber,
+        currentUserMessage: turnRow.userContent,
+      },
+      dataDir,
+    );
+
+    // Build SDK request object (exact object passed to streamText)
+    const sdkRequest = {
+      model: turnRow.modelName ?? "unknown",
+      messages: reconstructedMessages,
+      temperature: turnRow.temperature ?? undefined,
+      maxSteps: turnRow.maxSteps ?? undefined,
+    };
+
+    // Get provider request from raw capture
+    const raw = getTurnRawCaptureByNumber(id, numTurnId, dataDir);
+    const providerRequest = raw?.rawRequest ?? null;
+
+    return { sdkRequest, providerRequest };
   });
 
   app.get("/api/sessions/:id/turns/:turnId/full", async (request, reply) => {

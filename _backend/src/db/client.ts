@@ -94,7 +94,8 @@ function ensureSchema(sqlite: Database): void {
       cache_write_tokens INTEGER,
       step_count INTEGER,
       raw_request_json TEXT,
-      raw_response_json TEXT
+      raw_response_json TEXT,
+      config_snapshot_json TEXT
     );
   `);
   sqlite.run(`CREATE UNIQUE INDEX IF NOT EXISTS uq_turns_session_number ON turns(session_id, turn_number);`);

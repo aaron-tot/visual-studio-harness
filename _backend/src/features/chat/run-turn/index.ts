@@ -49,6 +49,7 @@ import {
   finalizeTurnTrace,
   abortTurnTrace,
   updateTurnRawCapture,
+  updateTurnConfigSnapshot,
 } from "../db-trace";
 import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
@@ -324,6 +325,19 @@ export async function runTurn(
       toolsSnapshotId = ensureToolsSnapshot(debugTools, dataDir);
     }
     updateTurnSnapshots(traceTurnId, promptSnapshotId, toolsSnapshotId, dataDir);
+
+    // Store config snapshot for reconstruction
+    updateTurnConfigSnapshot(traceTurnId, {
+      includeFailedTurnsInHistory: config.includeFailedTurnsInHistory ?? true,
+      includeToolCallsInHistory: config.includeToolCallsInHistory ?? true,
+      includeToolResultsInHistory: config.includeToolResultsInHistory ?? true,
+      includeReasoningInHistory: config.includeReasoningInHistory ?? false,
+      includePatchesInHistory: config.includePatchesInHistory ?? false,
+      includeOtherPartsInHistory: config.includeOtherPartsInHistory ?? false,
+      contextMaxTurns: config.contextMaxTurns,
+      promptSnapshotId,
+      toolsSnapshotId,
+    }, dataDir);
 
     const tps = config.testModels?.[model.modelName]?.tokensPerSecond;
     const modelSpeed = tps && tps > 0 ? Math.round(1000 / tps) : 0;

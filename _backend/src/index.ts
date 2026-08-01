@@ -233,6 +233,39 @@ async function main() {
         console.error("[workspace-graph] background init error:", err);
       }
     })();
+
+    // Periodically reconcile workspace graphs with active (non-archived) sessions
+    const reconcileInterval = setInterval(async () => {
+      try {
+        const sessions = await listSessions(DATA_DIR, { includeSubagents: false, includeArchived: false });
+        const activeRoots = new Set(
+          sessions.map((s) => s.workspaceRoot).filter((r): r is string => !!r?.trim()).map((r) => r.replace(/[/\\]+$/, ""))
+        );
+
+        const watched = new Set(manager.activeWorkspaceRoots);
+
+        // Start watchers for active workspaces that don't have one yet
+        for (const root of activeRoots) {
+          if (!watched.has(root)) {
+            manager.initializeForWorkspace(root, { enableWatcher: true }).catch((err) => {
+              console.error(`[workspace-graph] failed to start watcher for ${root}:`, err);
+            });
+          }
+        }
+
+        // Stop watchers for workspaces that no longer have active sessions
+        for (const root of watched) {
+          if (!activeRoots.has(root)) {
+            console.log(`[workspace-graph] pruning graph for ${root} — no active sessions`);
+            manager.stop(root).catch(() => {});
+          }
+        }
+      } catch { /* skip if listing fails */ }
+    }, 5000);
+
+    // Clear interval on shutdown
+    process.on("SIGTERM", () => clearInterval(reconcileInterval));
+    process.on("SIGINT", () => clearInterval(reconcileInterval));
   } else {
     console.log("[workspace-graph] disabled by config (workspaceGraph: false)");
   }

@@ -114,6 +114,8 @@ export const turns = sqliteTable("turns", {
   // Opaque debug blobs
   rawRequestJson: text("raw_request_json"),
   rawResponseJson: text("raw_response_json"),
+  /** Snapshot of config flags used to build this turn's messages */
+  configSnapshotJson: text("config_snapshot_json"),
 }, (t) => ({
   sessionTurnUq: uniqueIndex("uq_turns_session_number").on(t.sessionId, t.turnNumber),
   sessionIdx: index("idx_turns_session_id").on(t.sessionId),

@@ -270,32 +270,50 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     );
 
     // Build SDK request object (exact object passed to streamText)
+    // SDK v7 requires system as instructions param, not in messages array
+    const systemMsg = reconstructedMessages[0]?.role === "system" ? reconstructedMessages[0].content : undefined;
+    const sdkMessages = systemMsg ? reconstructedMessages.slice(1) : reconstructedMessages;
     const sdkRequest: Record<string, unknown> = {
       model: turnRow.modelName ?? "unknown",
-      messages: reconstructedMessages,
+      ...(systemMsg ? { instructions: systemMsg } : {}),
+      messages: sdkMessages,
       temperature: turnRow.temperature ?? undefined,
       maxSteps: turnRow.maxSteps ?? undefined,
     };
 
-    // Load tool definitions from snapshot to reconstruct provider request
-    let providerTools: unknown[] | undefined;
-    if (configSnap.toolsSnapshotId) {
-      const ts = db.select({ toolsJson: toolsSnapshots.toolsJson }).from(toolsSnapshots).where(eq(toolsSnapshots.id, configSnap.toolsSnapshotId)).get();
-      if (ts?.toolsJson) {
-        try {
-          providerTools = JSON.parse(ts.toolsJson);
-        } catch {}
-      }
+    // Provider request: prefer the verbatim wire body the SDK actually sent (perfect JSON
+    // schema, system converted to a role:"system" message). Fall back to reconstruction
+    // from the config snapshot when no capture exists (e.g. aborted turns).
+    let providerRequest: Record<string, unknown> | null = null;
+    if (turnRow.rawRequestJson) {
+      try {
+        const captured = JSON.parse(turnRow.rawRequestJson);
+        if (captured && typeof captured === "object" && !Array.isArray(captured)) {
+          providerRequest = captured;
+        }
+      } catch {}
     }
 
-    // Build provider request (what the SDK serializes and sends over the wire)
-    const providerRequest: Record<string, unknown> = {
-      model: turnRow.modelName ?? "unknown",
-      messages: reconstructedMessages,
-      ...(providerTools ? { tools: providerTools, tool_choice: "auto" } : {}),
-      stream: true,
-      ...(turnRow.temperature !== null ? { temperature: turnRow.temperature } : {}),
-    };
+    if (!providerRequest) {
+      // Load tool definitions from snapshot to reconstruct provider request
+      let providerTools: unknown[] | undefined;
+      if (configSnap.toolsSnapshotId) {
+        const ts = db.select({ toolsJson: toolsSnapshots.toolsJson }).from(toolsSnapshots).where(eq(toolsSnapshots.id, configSnap.toolsSnapshotId)).get();
+        if (ts?.toolsJson) {
+          try {
+            providerTools = JSON.parse(ts.toolsJson);
+          } catch {}
+        }
+      }
+
+      providerRequest = {
+        model: turnRow.modelName ?? "unknown",
+        messages: reconstructedMessages,
+        ...(providerTools ? { tools: providerTools, tool_choice: "auto" } : {}),
+        stream: true,
+        ...(turnRow.temperature !== null ? { temperature: turnRow.temperature } : {}),
+      };
+    }
 
     return { sdkRequest, providerRequest };
   });

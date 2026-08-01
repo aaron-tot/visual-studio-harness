@@ -55,6 +55,7 @@ import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
 import type { TurnCreateMeta, TurnInput, TurnEvents, TurnResult } from "../types";
 import { generateId, autoTitle, isAbortError } from "./util";
+import { asSchema } from "ai";
 export { isAbortError } from "./util";
 import { registerSession, unregisterSession } from "../../../session/runtime";
 
@@ -316,14 +317,14 @@ export async function runTurn(
     // Snapshots
     const promptSnapshotId = ensurePromptSnapshot(systemBlock, dataDir);
     const fullTools = tools ? Object.entries(tools).map(async ([name, tool]) => {
-      let parameters = tool.inputSchema ?? { type: "object", properties: {} };
-      if (typeof parameters?.jsonSchema === "function") {
-        try { parameters = await parameters.jsonSchema(); } catch {}
-      } else if (parameters && typeof parameters === "object" && "~standard" in (parameters as Record<string, unknown>)) {
+      let parameters: unknown = { type: "object", properties: {} };
+      if (tool.inputSchema != null) {
         try {
-          const std = (parameters as Record<string, unknown>)["~standard"] as Record<string, unknown>;
-          if (typeof std?.schema === "object") parameters = std.schema;
-        } catch {}
+          const schema = asSchema(tool.inputSchema as never);
+          parameters = typeof schema.jsonSchema === "function" ? await schema.jsonSchema() : schema.jsonSchema;
+        } catch {
+          parameters = { type: "object", properties: {} };
+        }
       }
       return {
         type: "function" as const,

@@ -315,11 +315,23 @@ export async function runTurn(
 
     // Snapshots
     const promptSnapshotId = ensurePromptSnapshot(systemBlock, dataDir);
-    const fullTools = tools ? Object.entries(tools).map(([name, tool]) => ({
-      type: "function" as const,
-      function: { name, description: tool.description ?? "", parameters: tool.parameters ?? { type: "object", properties: {} } },
-    })) : [];
-    const debugTools = JSON.stringify(fullTools);
+    const fullTools = tools ? Object.entries(tools).map(async ([name, tool]) => {
+      let parameters = tool.inputSchema ?? { type: "object", properties: {} };
+      if (typeof parameters?.jsonSchema === "function") {
+        try { parameters = await parameters.jsonSchema(); } catch {}
+      } else if (parameters && typeof parameters === "object" && "~standard" in (parameters as Record<string, unknown>)) {
+        try {
+          const std = (parameters as Record<string, unknown>)["~standard"] as Record<string, unknown>;
+          if (typeof std?.schema === "object") parameters = std.schema;
+        } catch {}
+      }
+      return {
+        type: "function" as const,
+        function: { name, description: tool.description ?? "", parameters },
+      };
+    }) : [];
+    const resolvedTools = await Promise.all(fullTools);
+    const debugTools = JSON.stringify(resolvedTools);
     let toolsSnapshotId: number | undefined;
     if (debugTools.length > 2) {
       toolsSnapshotId = ensureToolsSnapshot(debugTools, dataDir);

@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 
 import { PORTABLE_BINARY_BASE64 } from "./generated/embedded-portable";
+import { VEC0_SO_BASE64, VEC0_SO_FILENAME } from "./generated/embedded-vec0";
 
 let stdin: ReadStream;
 let ttyOut: WriteStream;
@@ -171,6 +172,13 @@ async function doInstall() {
   } catch (err) {
     await rm(tmpPath, { force: true });
     throw new Error(`Failed to replace binary at ${binaryPath}: ${String(err)}`);
+  }
+
+  // Extract sqlite-vec native extension for vector search support
+  if (VEC0_SO_BASE64) {
+    const vec0Path = join(installPath, "data", VEC0_SO_FILENAME);
+    await mkdir(dirname(vec0Path), { recursive: true });
+    await writeFile(vec0Path, Buffer.from(VEC0_SO_BASE64, "base64"));
   }
 
   if (!isUpdate) {

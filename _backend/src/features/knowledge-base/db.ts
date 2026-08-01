@@ -1,11 +1,14 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Database } from "bun:sqlite";
 import { join, resolve } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import * as schema from "./schema";
 import { ensureVecTable } from "./sqlite/vec";
 import { ensureFtsTable } from "./sqlite/fts";
 import { getLoadablePath as getVecLoadablePath } from "sqlite-vec";
+import { resolveDataDir } from "../../paths";
+import { VEC0_SO_BASE64, VEC0_SO_FILENAME } from "../../generated/vec0-embed";
 
 type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -260,7 +263,14 @@ export async function openKnowledgeDb(
   // Load sqlite-vec extension so the vec0 virtual table can be created.
   // If unavailable, vector search is disabled but keyword search still works.
   try {
-    sqlite.loadExtension(getVecLoadablePath());
+    if (VEC0_SO_BASE64) {
+      const dataDir = resolveDataDir();
+      const soPath = join(dataDir, VEC0_SO_FILENAME);
+      await writeFile(soPath, Buffer.from(VEC0_SO_BASE64, "base64"));
+      sqlite.loadExtension(soPath);
+    } else {
+      sqlite.loadExtension(getVecLoadablePath());
+    }
   } catch (err: any) {
     console.warn("[knowledge] sqlite-vec extension unavailable — vector search disabled:", err?.message);
   }

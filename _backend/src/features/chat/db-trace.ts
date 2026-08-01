@@ -118,7 +118,12 @@ export function ensurePromptSnapshot(content: string, dataDir?: string): number 
 
 export function ensureToolsSnapshot(toolsJson: string, dataDir?: string): number {
   const db = dbFor(dataDir);
-  const canonical = JSON.stringify(JSON.parse(toolsJson), Object.keys(JSON.parse(toolsJson)).sort());
+  const parsed = JSON.parse(toolsJson);
+  const canonical = JSON.stringify(parsed, (key, value) =>
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? Object.keys(value).sort().reduce((acc, k) => { acc[k] = (value as Record<string, unknown>)[k]; return acc; }, {} as Record<string, unknown>)
+      : value
+  );
   const hash = sha256(canonical);
   const existing = db
     .select({ id: toolsSnapshots.id })
@@ -126,7 +131,6 @@ export function ensureToolsSnapshot(toolsJson: string, dataDir?: string): number
     .where(eq(toolsSnapshots.contentHash, hash))
     .get();
   if (existing) return existing.id;
-  const parsed = JSON.parse(toolsJson);
   const names = Array.isArray(parsed) ? parsed.map((t: any) => t.name ?? t.function?.name).filter(Boolean) : [];
   const result = db
     .insert(toolsSnapshots)

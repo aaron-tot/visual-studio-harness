@@ -98,6 +98,10 @@ function ensureSchema(sqlite: Database): void {
       config_snapshot_json TEXT
     );
   `);
+  // Migration: add config_snapshot_json column for existing databases
+  try {
+    sqlite.run(`ALTER TABLE turns ADD COLUMN config_snapshot_json TEXT`);
+  } catch {}
   sqlite.run(`CREATE UNIQUE INDEX IF NOT EXISTS uq_turns_session_number ON turns(session_id, turn_number);`);
   sqlite.run(`CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);`);
   sqlite.run(`CREATE INDEX IF NOT EXISTS idx_turns_session_status ON turns(session_id, status);`);

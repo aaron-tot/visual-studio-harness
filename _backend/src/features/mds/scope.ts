@@ -1,5 +1,5 @@
 import { join, extname } from "node:path";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { getSession } from "../../storage/session";
 import { resolveDataDirInfo } from "../../paths";
@@ -182,6 +182,93 @@ export async function ensureDefaultMdsDirs(dir: string, mode: string): Promise<v
       }
     }
   }
+}
+
+/** Recursively copy a directory tree. Uses mkdir + readdir + copyFile. */
+export async function copyRecursive(src: string, dst: string): Promise<void> {
+  await mkdir(dst, { recursive: true });
+  const entries = await readdir(src, { withFileTypes: true });
+  for (const e of entries) {
+    const s = join(src, e.name);
+    const d = join(dst, e.name);
+    if (e.isDirectory()) {
+      await copyRecursive(s, d);
+    } else {
+      await copyFile(s, d);
+    }
+  }
+}
+
+/**
+ * Update paths in config.json and agents/*.json: replace oldPrefix with newPrefix.
+ * Best-effort — never throws.
+ */
+export async function updateMdsPathPrefix(
+  resolvedDataDir: string,
+  oldPrefix: string,
+  newPrefix: string
+): Promise<void> {
+  // Update config.json
+  const configPath = join(resolvedDataDir, "config.json");
+  try {
+    const raw = await readFile(configPath, "utf-8");
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const agents = config.agents as Record<string, Record<string, unknown>> | undefined;
+    let changed = false;
+    if (agents && typeof agents === "object") {
+      for (const key of Object.keys(agents)) {
+        const a = agents[key];
+        if (!a || typeof a !== "object") continue;
+        const amd = a.agentMd as Record<string, unknown> | undefined;
+        if (amd?.path && typeof amd.path === "string" && (amd.path as string).startsWith(oldPrefix)) {
+          amd.path = (amd.path as string).replace(oldPrefix, newPrefix);
+          changed = true;
+        }
+        const skills = a.skillMds as Record<string, unknown>[] | undefined;
+        if (Array.isArray(skills)) {
+          for (const sk of skills) {
+            if (sk.path && typeof sk.path === "string" && (sk.path as string).startsWith(oldPrefix)) {
+              sk.path = (sk.path as string).replace(oldPrefix, newPrefix);
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+    if (changed) {
+      await writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    }
+  } catch { /* best-effort */ }
+
+  // Update agents/{key}.json
+  const agentsDir = join(resolvedDataDir, "agents");
+  try {
+    const entries = await readdir(agentsDir, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isFile() || !e.name.endsWith(".json")) continue;
+      const fp = join(agentsDir, e.name);
+      try {
+        const raw = await readFile(fp, "utf-8");
+        const settings = JSON.parse(raw) as Record<string, unknown>;
+        let changed = false;
+        const amd = settings.agentMd as Record<string, unknown> | undefined;
+        if (amd?.path && typeof amd.path === "string" && (amd.path as string).startsWith(oldPrefix)) {
+          amd.path = (amd.path as string).replace(oldPrefix, newPrefix);
+          changed = true;
+        }
+        const skills = settings.skillMds as Record<string, unknown>[] | undefined;
+        if (Array.isArray(skills)) {
+          for (const sk of skills) {
+            if (sk.path && typeof sk.path === "string" && (sk.path as string).startsWith(oldPrefix)) {
+              sk.path = (sk.path as string).replace(oldPrefix, newPrefix);
+              changed = true;
+            }
+          }
+        }
+        if (changed) await writeFile(fp, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+      } catch { /* skip unreadable */ }
+    }
+  } catch { /* agents dir may not exist */ }
 }
 
 /** Validate a relative path: no `..`, no traversal, no empty segments. Returns normalized path or null. */

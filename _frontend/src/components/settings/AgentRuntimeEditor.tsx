@@ -108,9 +108,18 @@ export function AgentRuntimeEditor({
     if (scopeItems.length === 0 || Object.keys(scopeIndex).length === 0) return;
     const changes: { type: "agentMd" | "skillMd"; index?: number; newPath: string }[] = [];
 
+    const itemNameFromPath = (p: string): string => {
+      const segments = p.split("/").filter(Boolean);
+      if (segments.length < 2) return "";
+      const last = segments[segments.length - 1];
+      // V1 flat filename: "customHello.md" → "customHello"
+      if (last.endsWith(".md")) return last.slice(0, -3);
+      // V2 folder structure: "customHello/prompt.md" → "customHello"
+      return segments[segments.length - 2];
+    };
+
     if (value.agentMd?.path && !scopeIndex[value.agentMd.path]) {
-      const segments = value.agentMd.path.split("/").filter(Boolean);
-      const name = segments.length >= 2 ? segments[segments.length - 2] : "";
+      const name = itemNameFromPath(value.agentMd.path);
       if (name) {
         const match = scopeItems.find((i) => i.relPath === name || i.relPath.endsWith("/" + name));
         if (match) changes.push({ type: "agentMd", newPath: match.promptPath });
@@ -120,8 +129,7 @@ export function AgentRuntimeEditor({
     for (let i = 0; i < (value.skillMds ?? []).length; i++) {
       const s = value.skillMds![i];
       if (s.mode === "custom" && s.path && !scopeIndex[s.path]) {
-        const segments = s.path.split("/").filter(Boolean);
-        const name = segments.length >= 2 ? segments[segments.length - 2] : "";
+        const name = itemNameFromPath(s.path);
         if (name) {
           const match = scopeItems.find((i) => i.relPath === name || i.relPath.endsWith("/" + name));
           if (match) changes.push({ type: "skillMd", index: i, newPath: match.promptPath });

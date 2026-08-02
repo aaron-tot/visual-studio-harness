@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderPlus, Pencil, FilePlus, FolderOpen } from "lucide-react";
+import { FolderPlus, Pencil, FilePlus, FolderOpen, ArrowRightFromLine } from "lucide-react";
 import { DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { createMdsScopeFolder, createMdsScopeMd, renameMdsScopeFolder, deleteMdsScopeFolder, type ScopeDirNode } from "../../lib/api";
+import { createMdsScopeFolder, createMdsScopeMd, renameMdsScopeFolder, deleteMdsScopeFolder, transferMdsScopeFolder, type ScopeDirNode } from "../../lib/api";
 import type { PlanScope } from "../info-panel/types";
 import { MdsNameModal } from "./MdsNameModal";
 import { MdsEditModal } from "./MdsEditModal";
@@ -31,7 +31,8 @@ type DialogState =
   | { kind: "mkmd"; parentRel?: string }
   | { kind: "rename"; from: string; currentName: string }
   | { kind: "edit"; relPath: string; name: string; ext: string }
-  | { kind: "delete"; relPath: string; name: string };
+  | { kind: "delete"; relPath: string; name: string }
+  | { kind: "transfer"; relPath: string; name: string };
 
 function validateName(name: string): string | null {
   const trimmed = name.trim();
@@ -45,6 +46,7 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [transferTarget, setTransferTarget] = useState<"global" | "project" | "session">("project");
 
   useEffect(() => {
     if (!menu) return;
@@ -119,6 +121,11 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
 
   const runDelete = async (relPath: string) => {
     await deleteMdsScopeFolder({ scope, path: relPath, sessionId, workspaceRoot });
+    onChanged();
+  };
+
+  const runTransfer = async (fromScope: "global" | "project" | "session", relPath: string, toScope: "global" | "project" | "session") => {
+    await transferMdsScopeFolder({ fromScope, relPath, toScope, sessionId, workspaceRoot });
     onChanged();
   };
 
@@ -200,6 +207,15 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
               {!menu.protectedDir && (
                 <MenuButton icon={<Pencil size={12} className="text-zinc-500" />} label={`Rename "${menu.name}"…`} onClick={onRename} />
               )}
+              {!menu.protectedDir && (
+                <MenuButton icon={<ArrowRightFromLine size={12} className="text-zinc-500" />} label="Transfer to scope…" onClick={() => {
+                  if (menu?.relPath && menu?.name) {
+                    const t = scope === "global" ? "project" : "global";
+                    setTransferTarget(t);
+                    setDialog({ kind: "transfer", relPath: menu.relPath, name: menu.name });
+                  }
+                }} />
+              )}
               {menu.protectedDir && (
                 <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-zinc-600">reserved folder</div>
               )}
@@ -264,6 +280,52 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
           onClose={() => setDialog(null)}
           onConfirm={() => runDelete(dialog.relPath)}
         />
+      )}
+
+      {dialog?.kind === "transfer" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDialog(null)}>
+          <div className="rounded-md border border-zinc-700 bg-zinc-900 p-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-medium text-zinc-100 mb-3">Transfer "{dialog.name}"</h3>
+            <p className="text-xs text-zinc-500 mb-3">
+              Move folder from scope "{scope}" to another scope. The folder keeps its name; if the
+              same parent container exists in the target scope, nesting is preserved.
+            </p>
+            <div className="flex gap-2 mb-3">
+              {(["global", "project", "session"] as const)
+                .filter((s) => s !== scope)
+                .map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setTransferTarget(s)}
+                    className={`rounded px-3 py-1.5 text-xs ${
+                      transferTarget === s
+                        ? "bg-zinc-700 text-zinc-100"
+                        : "bg-zinc-800 text-zinc-400"
+                    }`}
+                  >
+                    {s === "global" ? "Global" : s === "project" ? "Project" : "Session"}
+                  </button>
+                ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDialog(null)}
+                className="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  runTransfer(scope, dialog.relPath, transferTarget);
+                  setDialog(null);
+                }}
+                className="rounded bg-sky-600 px-3 py-1.5 text-xs text-white hover:bg-sky-500"
+              >
+                Transfer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

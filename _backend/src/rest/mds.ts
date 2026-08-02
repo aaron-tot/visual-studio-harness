@@ -15,6 +15,8 @@ import {
   ensureDefaultMdsDirs,
   safeRelPath,
   resolveMdsContext,
+  copyRecursive,
+  updateMdsPathPrefix,
 } from "../features/mds/scope";
 
 export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
@@ -156,52 +158,61 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
           console.log(`[mds] auto-updated config paths for moved folder: ${fromRel} -> ${toRel}`);
         }
       }
-    } catch (err) {
+    } catch {
       // Config update is best-effort — don't fail the rename if config write fails.
-      console.warn(`[mds] failed to update config paths after rename:`, err instanceof Error ? err.message : err);
     }
 
-    // Also update agent files in {dataDir}/agents/{key}.json — this is the primary storage
-    // that the frontend reads via GET /api/agents.
-    try {
-      const agentsDir = join(resolvedDataDir, "agents");
-      if (existsSync(agentsDir)) {
-        const agentEntries = await readdir(agentsDir, { withFileTypes: true });
-        const oldPrefix = join(base, fromRel);
-        const newPrefix = join(base, toRel);
-        for (const e of agentEntries) {
-          if (!e.isFile() || !e.name.endsWith(".json")) continue;
-          const fp = join(agentsDir, e.name);
-          const raw = await readFile(fp, "utf-8");
-          const settings = JSON.parse(raw) as Record<string, unknown>;
-          let changed = false;
-          // agentMd.path
-          const amd = settings.agentMd as Record<string, unknown> | undefined;
-          if (amd?.path && typeof amd.path === "string" && (amd.path as string).startsWith(oldPrefix)) {
-            amd.path = (amd.path as string).replace(oldPrefix, newPrefix);
-            changed = true;
-          }
-          // skillMds[].path
-          const skills = settings.skillMds as Record<string, unknown>[] | undefined;
-          if (Array.isArray(skills)) {
-            for (const sk of skills) {
-              if (sk.path && typeof sk.path === "string" && (sk.path as string).startsWith(oldPrefix)) {
-                sk.path = (sk.path as string).replace(oldPrefix, newPrefix);
-                changed = true;
-              }
-            }
-          }
-          if (changed) {
-            await writeFile(fp, JSON.stringify(settings, null, 2) + "\n", "utf-8");
-          }
-        }
-      }
-    } catch (err) {
-      // Best-effort — don't fail the rename if agent file writes fail.
-      console.warn(`[mds] failed to update agent files after rename:`, err instanceof Error ? err.message : err);
-    }
+    // Update paths in config.json + agent files referencing the moved folder.
+    await updateMdsPathPrefix(resolvedDataDir, join(base, fromRel), join(base, toRel));
 
     return { ok: true, path: to };
+  });
+
+  app.post("/api/mds/scope-transfer", async (request, reply) => {
+    const q = request.query as { sessionId?: string; workspaceRoot?: string };
+    const body = (request.body || {}) as { fromScope?: string; relPath?: string; toScope?: string };
+    const fromScope = body.fromScope as "global" | "project" | "session";
+    const toScope = body.toScope as "global" | "project" | "session";
+    if (!["global", "project", "session"].includes(fromScope) || !["global", "project", "session"].includes(toScope)) {
+      return reply.code(400).send({ error: "invalid scope" });
+    }
+    if (fromScope === toScope) return reply.code(400).send({ error: "from and to scopes are the same" });
+    const fromRel = safeRelPath(body.relPath);
+    if (!fromRel) return reply.code(400).send({ error: "invalid path" });
+    if (RESERVED_MDS_DIRS.has(fromRel)) {
+      return reply.code(400).send({ error: `"${fromRel}" is a reserved folder and cannot be transferred` });
+    }
+
+    const { resolvedDataDir, wsRoot } = await resolveMdsContext(q);
+    const fromBase = resolveMdsScopeDir(fromScope, resolvedDataDir, wsRoot || undefined, q.sessionId);
+    const toBase = resolveMdsScopeDir(toScope, resolvedDataDir, wsRoot || undefined, q.sessionId);
+    if (!fromBase) return reply.code(400).send({ error: `source scope "${fromScope}" not available` });
+    if (!toBase) return reply.code(400).send({ error: `target scope "${toScope}" not available` });
+
+    const from = join(fromBase, fromRel);
+    if (!from.startsWith(fromBase)) return reply.code(400).send({ error: "path outside scope" });
+
+    // Determine target relPath: if parent container exists in target, preserve nesting
+    const parentRel = dirname(fromRel);
+    const name = fromRel.split("/").pop() || fromRel;
+    const toRel = (parentRel !== "." && existsSync(join(toBase, parentRel)))
+      ? fromRel
+      : name;
+    const to = join(toBase, toRel);
+    if (!to.startsWith(toBase)) return reply.code(400).send({ error: "target outside scope" });
+    if (existsSync(to)) return reply.code(409).send({ error: "target already exists" });
+
+    try {
+      await copyRecursive(from, to);
+      await rm(from, { recursive: true, force: true });
+    } catch (err) {
+      return reply.code(400).send({ error: `transfer failed: ${err instanceof Error ? err.message : String(err)}` });
+    }
+
+    // Update paths in the main data dir's config.json and agent files
+    await updateMdsPathPrefix(resolvedDataDir, from, to);
+
+    return { ok: true, fromPath: from, toPath: to };
   });
 
   app.post("/api/mds/scope-create-md", async (request, reply) => {

@@ -37,6 +37,10 @@ export default defineConfig({
   server: {
     port: 3100,
     watch: {
+      // Poll filesystem instead of relying on inotify (pre-commit hook stash/restore
+      // can confuse native file watchers, causing HMR to miss changes).
+      usePolling: true,
+      interval: 1000,
       // Watch _shared directory for changes since it's outside the frontend root
       additionalPaths: ["../_shared"],
     },

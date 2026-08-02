@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { FolderOpen, File, ChevronRight, ChevronDown, Pencil, Trash2, BookOpenText } from "lucide-react";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { ScopeDirNode } from "../../lib/api";
 
 const RESERVED_MDS_DIRS = new Set(["_skills", "_SystemBase"]);
@@ -11,39 +12,46 @@ interface TreeNodeProps {
   onFolderContext: (e: React.MouseEvent, relPath: string, name: string, protectedDir: boolean) => void;
   onEditFile: (relPath: string, name: string, ext: string) => void;
   onDeleteFolder: (relPath: string, name: string) => void;
-  onFolderDrop: (draggedRel: string, targetRel: string) => void;
 }
 
-function TreeNode({ node, depth, relPath, onFolderContext, onEditFile, onDeleteFolder, onFolderDrop }: TreeNodeProps) {
+function TreeNode({ node, depth, relPath, onFolderContext, onEditFile, onDeleteFolder }: TreeNodeProps) {
   const [open, setOpen] = useState(depth < 1);
   const pad = { paddingLeft: `${depth * 16 + 10}px` };
   const protectedDir = node.type === "dir" && RESERVED_MDS_DIRS.has(relPath);
   const isPromptItem = node.type === "dir" && node.isItem === true;
   const isDropTarget = node.type === "dir" && !isPromptItem;
 
+  const isFile = node.type !== "dir";
+  const { setNodeRef: dragRef, listeners, attributes } = useDraggable({
+    id: relPath,
+    data: { relPath },
+    disabled: isFile || protectedDir,
+  });
+  const { setNodeRef: dropRef, isOver } = useDroppable({
+    id: relPath,
+    data: { relPath },
+    disabled: isFile || !isDropTarget,
+  });
+
+  const mergedRef = useCallback(
+    (node: HTMLElement | null) => {
+      dragRef(node);
+      dropRef(node);
+    },
+    [dragRef, dropRef]
+  );
+
   if (node.type === "dir") {
     return (
       <div className="group">
         <div
-          className="flex items-center gap-1.5 py-1 text-zinc-400 hover:text-zinc-200 cursor-pointer select-none"
+          ref={mergedRef}
+          {...attributes}
+          {...listeners}
+          className={`flex items-center gap-1.5 py-1 text-zinc-400 hover:text-zinc-200 cursor-pointer select-none ${
+            isOver ? "bg-zinc-700/50 ring-1 ring-sky-500/30 rounded" : ""
+          }`}
           style={pad}
-          draggable={!protectedDir}
-          onDragStart={(e) => {
-            if (protectedDir) { e.preventDefault(); return; }
-            e.dataTransfer.setData("text/plain", relPath);
-            e.dataTransfer.effectAllowed = "move";
-          }}
-          onDragOver={(e) => {
-            if (!isDropTarget) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
-          }}
-          onDrop={(e) => {
-            if (!isDropTarget) return;
-            e.preventDefault();
-            const draggedRel = e.dataTransfer.getData("text/plain");
-            if (draggedRel && draggedRel !== relPath) onFolderDrop(draggedRel, relPath);
-          }}
           onClick={() => setOpen((o) => !o)}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -86,7 +94,6 @@ function TreeNode({ node, depth, relPath, onFolderContext, onEditFile, onDeleteF
                 onFolderContext={onFolderContext}
                 onEditFile={onEditFile}
                 onDeleteFolder={onDeleteFolder}
-                onFolderDrop={onFolderDrop}
               />
             ))}
           </div>
@@ -96,10 +103,7 @@ function TreeNode({ node, depth, relPath, onFolderContext, onEditFile, onDeleteF
   }
 
   return (
-    <div
-      className="group flex items-center gap-1.5 py-1 text-zinc-400"
-      style={pad}
-    >
+    <div className="group flex items-center gap-1.5 py-1 text-zinc-400" style={pad}>
       <File size={12} className="shrink-0 text-zinc-600" />
       <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-300">{node.name}</span>
       <span className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">
@@ -123,22 +127,23 @@ interface Props {
   onFolderContext: (e: React.MouseEvent, relPath: string, name: string, protectedDir: boolean) => void;
   onEditFile: (relPath: string, name: string, ext: string) => void;
   onDeleteFolder: (relPath: string, name: string) => void;
-  onFolderDrop: (draggedRel: string, targetRel: string) => void;
 }
 
-/** Render the MDS scope tree; files have an edit button, folders have a delete button. Supports drag-and-drop move. */
-export function MdsTreeView({ tree, onRootContext, onFolderContext, onEditFile, onDeleteFolder, onFolderDrop }: Props) {
+/** Render the MDS scope tree using @dnd-kit (useDraggable + useDroppable). */
+export function MdsTreeView({ tree, onRootContext, onFolderContext, onEditFile, onDeleteFolder }: Props) {
+  const { setNodeRef: rootDropRef, isOver: rootIsOver } = useDroppable({
+    id: "__root__",
+    data: { relPath: "" },
+  });
+
   return (
     <div
-      className="rounded-md border border-zinc-800/50 bg-zinc-900/30 py-1"
+      ref={rootDropRef}
+      className={`rounded-md border py-1 ${
+        rootIsOver ? "border-sky-500/50 bg-zinc-800/30" : "border-zinc-800/50 bg-zinc-900/30"
+      }`}
       onContextMenu={onRootContext}
       title="Right-click to add a folder or MD"
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-      onDrop={(e) => {
-        e.preventDefault();
-        const draggedRel = e.dataTransfer.getData("text/plain");
-        if (draggedRel) onFolderDrop(draggedRel, "");
-      }}
     >
       {tree.length === 0 ? (
         <div className="px-2.5 py-1.5 text-[11px] italic text-zinc-600">
@@ -154,7 +159,6 @@ export function MdsTreeView({ tree, onRootContext, onFolderContext, onEditFile, 
             onFolderContext={onFolderContext}
             onEditFile={onEditFile}
             onDeleteFolder={onDeleteFolder}
-            onFolderDrop={onFolderDrop}
           />
         ))
       )}

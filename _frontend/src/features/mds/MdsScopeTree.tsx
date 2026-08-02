@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderPlus, Pencil, FilePlus } from "lucide-react";
+import { FolderPlus, Pencil, FilePlus, FolderOpen } from "lucide-react";
+import { DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { createMdsScopeFolder, createMdsScopeMd, renameMdsScopeFolder, deleteMdsScopeFolder, type ScopeDirNode } from "../../lib/api";
 import type { PlanScope } from "../info-panel/types";
 import { MdsNameModal } from "./MdsNameModal";
@@ -32,7 +33,6 @@ type DialogState =
   | { kind: "edit"; relPath: string; name: string; ext: string }
   | { kind: "delete"; relPath: string; name: string };
 
-/** Validate a single-segment name (no slashes, no traversal). Returns error message or null. */
 function validateName(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) return "Name is required.";
@@ -44,6 +44,7 @@ function validateName(name: string): string | null {
 export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, onChanged }: Props) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!menu) return;
@@ -58,6 +59,39 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
       window.removeEventListener("keydown", onKey);
     };
   }, [menu]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  }, []);
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      setActiveDragId(null);
+      const { active, over } = event;
+      if (!over || !active) return;
+      const draggedRel = active.data.current?.relPath as string;
+      const targetRel = over.id === "__root__" ? "" : (over.data.current?.relPath as string);
+      if (!draggedRel || draggedRel === targetRel) return;
+      if (targetRel.startsWith(draggedRel + "/")) return; // can't drop into own descendant
+      const name = draggedRel.split("/").pop() || draggedRel;
+      const to = targetRel ? `${targetRel}/${name}` : name;
+      try {
+        await renameMdsScopeFolder({ scope, from: draggedRel, to, sessionId, workspaceRoot });
+        onChanged();
+      } catch (e) {
+        console.error("Move failed:", e);
+      }
+    },
+    [scope, sessionId, workspaceRoot, onChanged]
+  );
+
+  const handleDragCancel = useCallback(() => {
+    setActiveDragId(null);
+  }, []);
 
   const runCreateFolder = async (name: string, parentRel?: string) => {
     const err = validateName(name);
@@ -88,19 +122,6 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
     onChanged();
   };
 
-  const onFolderDrop = useCallback(async (draggedRel: string, targetRel: string) => {
-    if (draggedRel === targetRel) return;
-    if (targetRel.startsWith(draggedRel + "/")) return; // can't drop into own descendant
-    const name = draggedRel.split("/").pop() || draggedRel;
-    const to = targetRel ? `${targetRel}/${name}` : name;
-    try {
-      await renameMdsScopeFolder({ scope, from: draggedRel, to, sessionId, workspaceRoot });
-      onChanged();
-    } catch (e) {
-      console.error("Move failed:", e);
-    }
-  }, [scope, sessionId, workspaceRoot, onChanged]);
-
   const onNewFolder = () => {
     const parent = menu?.mode === "folder" ? menu.relPath : undefined;
     setMenu(null);
@@ -129,21 +150,36 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
 
   return (
     <>
-      <MdsTreeView
-        tree={tree}
-        onRootContext={(e) => {
-          e.preventDefault();
-          setMenu({ x: e.clientX, y: e.clientY, mode: "root" });
-        }}
-        onFolderContext={(e, rel, name, protectedDir) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setMenu({ x: e.clientX, y: e.clientY, mode: "folder", relPath: rel, name, protectedDir });
-        }}
-        onEditFile={onEditFile}
-        onDeleteFolder={onDeleteFolder}
-        onFolderDrop={onFolderDrop}
-      />
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        <MdsTreeView
+          tree={tree}
+          onRootContext={(e) => {
+            e.preventDefault();
+            setMenu({ x: e.clientX, y: e.clientY, mode: "root" });
+          }}
+          onFolderContext={(e, rel, name, protectedDir) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setMenu({ x: e.clientX, y: e.clientY, mode: "folder", relPath: rel, name, protectedDir });
+          }}
+          onEditFile={onEditFile}
+          onDeleteFolder={onDeleteFolder}
+        />
+        <DragOverlay>
+          {activeDragId ? (
+            <div className="flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 shadow-lg">
+              <FolderOpen size={12} className="shrink-0 text-amber-500/70" />
+              <span className="font-mono text-[11px] text-zinc-200">{activeDragId}</span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {menu && (
         <div
@@ -162,7 +198,7 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
           ) : (
             <>
               {!menu.protectedDir && (
-                <MenuButton icon={<Pencil size={12} className="text-zinc-500" />} label={`Rename “${menu.name}”…`} onClick={onRename} />
+                <MenuButton icon={<Pencil size={12} className="text-zinc-500" />} label={`Rename "${menu.name}"…`} onClick={onRename} />
               )}
               {menu.protectedDir && (
                 <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-zinc-600">reserved folder</div>
@@ -176,7 +212,7 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
 
       {dialog?.kind === "mkdir" && (
         <MdsNameModal
-          title={dialog.parentRel ? `New folder inside “${dialog.parentRel}”` : "New folder"}
+          title={dialog.parentRel ? `New folder inside "${dialog.parentRel}"` : "New folder"}
           label="Folder name"
           confirmLabel="Create folder"
           placeholder="e.g. my-skill"
@@ -187,7 +223,7 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
 
       {dialog?.kind === "mkmd" && (
         <MdsNameModal
-          title={dialog.parentRel ? `New MD inside “${dialog.parentRel}”` : "New MD"}
+          title={dialog.parentRel ? `New MD inside "${dialog.parentRel}"` : "New MD"}
           label="MD name (folder + prompt.md / prompt.json)"
           confirmLabel="Create MD"
           placeholder="e.g. my-agent"
@@ -198,7 +234,7 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
 
       {dialog?.kind === "rename" && (
         <MdsNameModal
-          title={`Rename “${dialog.currentName}”`}
+          title={`Rename "${dialog.currentName}"`}
           label="New name"
           confirmLabel="Rename"
           initialValue={dialog.currentName}
@@ -222,7 +258,7 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
 
       {dialog?.kind === "delete" && (
         <MdsConfirmModal
-          title={`Delete folder “${dialog.name}”`}
+          title={`Delete folder "${dialog.name}"`}
           message={`This permanently deletes the folder "${dialog.relPath}" and everything inside it (prompt.md, prompt.json, nested folders). This cannot be undone.`}
           confirmLabel="Delete folder"
           onClose={() => setDialog(null)}

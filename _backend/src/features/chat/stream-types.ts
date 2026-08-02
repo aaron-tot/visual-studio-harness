@@ -2,6 +2,7 @@ import type { Message, MessagePartType, ProviderConfig, ThinkingEffort, TurnDebu
 import type { ToolSet, LanguageModelUsage, FinishReason, PrepareStepFunction } from "ai";
 import type { HookContext } from "../hooks";
 import type { StepFinishMeta } from "./step-finish-meta";
+import type { StepToolBatchBeforePayload, StepToolBatchAfterPayload } from "../../../../_shared/types/step-batch";
 
 export interface StreamStepSummary {
   stepIndex: number;
@@ -42,6 +43,10 @@ export interface StreamChatOptions {
   onStepStart?: (info: { stepIndex: number; request?: unknown; warnings?: unknown[] }) => void;
   /** Full finish-step payload — prefer `meta` for DB writes */
   onStepFinish?: (info: StepFinishMeta) => void;
+  /** Fires once per step before the first tool executes, with the full tool-call list. */
+  onToolBatchStart?: (e: StepToolBatchBeforePayload) => void | Promise<void>;
+  /** Fires once per step after all tools complete, with calls + results. */
+  onToolBatchEnd?: (e: StepToolBatchAfterPayload) => void | Promise<void>;
   /** Per-step instructions rebuild. Must return the complete system block, never a delta. */
   prepareStep?: PrepareStepFunction<ToolSet>;
   tools?: ToolSet;

@@ -13,6 +13,7 @@ import type { StreamChatOptions, StreamChatResult } from "./stream-types";
 import { getRetryableLabel, DEFAULT_STREAM_RETRY_CONFIG } from "./stream-retry";
 import { createVerboseFetch } from "./raw-capture-fetch";
 import { parseFinishStepEvent, flattenUsage } from "./step-finish-meta";
+import { StepToolBatch } from "./step-tool-batch";
 
 export async function streamChat(options: StreamChatOptions): Promise<StreamChatResult> {
   const { provider, model, messages, onToken, onReasoning, onToolCall, onToolResult, tools, maxSteps = 30, temperature, thinkingEffort, signal, hookCtx, prepareStep } = options;
@@ -37,6 +38,17 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   const hasTools = tools && Object.keys(tools).length > 0;
   const bus = hookCtx ? getBus() : null;
+  const stepBatch = new StepToolBatch({
+    onBefore: async (p) => {
+      await bus?.emit("step.tool_batch.before", hookCtx, p);
+      await options.onToolBatchStart?.(p);
+    },
+    onAfter: async (p) => {
+      await bus?.emit("step.tool_batch.after", hookCtx, p);
+      await options.onToolBatchEnd?.(p);
+    },
+  });
+  let currentStepIndex = 0;
   const streamStarted = Date.now();
   const dbg = (...a: unknown[]) => console.log("[stream]", ...a);
   dbg("streamChat:start", { provider: provider.displayName, model, messageCount: messages.length, hasTools, maxSteps, thinkingEffort, retryMaxAttempts: retryConfig.maxAttempts });
@@ -153,11 +165,15 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
               ? (event as any).stepNumber
               : stepIndexCounter;
             stepIndexCounter = stepIndex + 1;
+            currentStepIndex = stepIndex;
+            stepBatch.start(stepIndex);
             stepExchangeStart.push(lastCap!.getExchanges().length);
             const request = (event as any).request;
             const warnings = (event as any).warnings;
             options.onStepStart?.({ stepIndex, request, warnings });
           } else if (event.type === "finish-step") {
+            await stepBatch.fireBefore();
+            await stepBatch.fireAfter();
             if (textBuffer) { parts.push({ type: "text" as const, content: textBuffer }); textBuffer = ""; }
             flushReasoning();
             // Prefer last started index (counter already advanced on start-step)
@@ -210,10 +226,13 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
             const args = "input" in event ? event.input : (event as { args?: unknown }).args;
             const part: MessagePartType & { type: "tool" } = { type: "tool", toolCallId, toolName, status: "running", args };
             toolParts.set(toolCallId, part); parts.push(part); onToolCall?.({ toolCallId, toolName, args }); pendingTools++;
+            stepBatch.addCall({ toolCallId, toolName, args });
           } else if (event.type === "tool-result") {
+            await stepBatch.fireBefore();
             const toolCallId = event.toolCallId;
             const toolName = event.toolName;
             const output = "output" in event ? event.output : "result" in event ? (event as { result?: unknown }).result : undefined;
+            stepBatch.addResult(toolCallId, output);
             const existing = toolParts.get(toolCallId);
             if (existing) { existing.status = "completed"; existing.result = output; }
             else { parts.push({ type: "tool", toolCallId, toolName, status: "completed", args: {}, result: output } as any); }
@@ -225,8 +244,10 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
               parts.push({ type: "text" as const, content: textAfterToolCalls }); textBuffer = ""; textAfterToolCalls = "";
             }
           } else if (event.type === "tool-error") {
+            await stepBatch.fireBefore();
             const toolCallId = event.toolCallId; const toolName = event.toolName;
             const errMsg = "error" in event ? String((event as { error?: unknown }).error) : "tool error";
+            stepBatch.addResult(toolCallId, errMsg, true);
             const existing = toolParts.get(toolCallId);
             if (existing) { existing.status = "error"; existing.error = errMsg; existing.result = errMsg; }
             onToolResult?.({ toolCallId, toolName, output: errMsg, isError: true });

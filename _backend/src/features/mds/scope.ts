@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { getSession } from "../../storage/session";
 import { resolveDataDirInfo } from "../../paths";
-import { seedsDir } from "./paths";
+import { seedsDir, seedSubdirForMode } from "./paths";
 
 export interface ScopeDirNode {
   name: string;
@@ -149,7 +149,7 @@ export async function bumpPromptJson(folder: string): Promise<void> {
 export const RESERVED_MDS_DIRS = new Set(["_skills", "_SystemBase"]);
 
 /** Ensure the default reserved folders exist in a scope dir (global / project / session). */
-export async function ensureDefaultMdsDirs(dir: string): Promise<void> {
+export async function ensureDefaultMdsDirs(dir: string, mode: string): Promise<void> {
   for (const name of RESERVED_MDS_DIRS) {
     await mkdir(join(dir, name), { recursive: true });
   }
@@ -160,7 +160,10 @@ export async function ensureDefaultMdsDirs(dir: string): Promise<void> {
     const sDir = seedsDir();
     if (sDir) {
       try {
-        const seed = await readFile(join(sDir, "dev", "mds", "systemPromptBase.md"), "utf-8");
+        const seed = await readFile(
+          join(sDir, seedSubdirForMode(mode), "mds", "systemPromptBase.md"),
+          "utf-8"
+        );
         await mkdir(dirname(base), { recursive: true });
         await writeFile(base, seed, "utf-8");
       } catch {

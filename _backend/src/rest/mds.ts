@@ -4,11 +4,9 @@ import { mkdir, writeFile, stat, rename, rm, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { getSession } from "../storage/session";
 import { resolveDataDirInfo, getMode } from "../paths";
-import { projectScopedMdsDir, resolveMdsScopeDir, globalSystemPromptPath } from "../features/mds/paths";
+import { resolveMdsScopeDir, globalSystemPromptPath } from "../features/mds/paths";
 import { listAgentsMdAtRoot } from "../features/mds/reader";
 import {
-  ScopeDirNode,
-  ScopeItem,
   collectScopeTags,
   listScopeItems,
   walkDir,
@@ -37,9 +35,9 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
     const projectPath = resolveMdsScopeDir("project", resolvedDataDir, wsRoot || undefined);
     const sessionPath = resolveMdsScopeDir("session", resolvedDataDir, undefined, q.sessionId);
 
-    if (globalPath) await ensureDefaultMdsDirs(globalPath);
-    if (projectPath) await ensureDefaultMdsDirs(projectPath);
-    if (sessionPath) await ensureDefaultMdsDirs(sessionPath);
+    if (globalPath) await ensureDefaultMdsDirs(globalPath, mode);
+    if (projectPath) await ensureDefaultMdsDirs(projectPath, mode);
+    if (sessionPath) await ensureDefaultMdsDirs(sessionPath, mode);
 
     const project = projectPath
       ? { available: true as const, path: projectPath, tree: await walkDir(projectPath), tags: await collectScopeTags(projectPath), items: await listScopeItems(projectPath) }

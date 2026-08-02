@@ -339,7 +339,7 @@ export function AgentRuntimeEditor({
           tokens, old system messages are stripped as stale and redundant.
         </p>
 
-        {/* Global system prompt base (systemPromptBase.md) */}
+        {/* Global system prompt base (systemPromptBase.md) — per-agent editable */}
         <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
@@ -347,25 +347,140 @@ export function AgentRuntimeEditor({
               <div className="min-w-0">
                 <p className="text-xs font-medium text-zinc-300">Global system prompt base</p>
                 <p className="truncate text-[11px] text-zinc-500">
-                  {globalSystemPromptBasePath ?? "Not found"}
+                  {(() => {
+                    const effective = value.systemPromptBase?.path ?? config.systemPromptBase?.path ?? globalSystemPromptBasePath;
+                    return effective ?? "Not found";
+                  })()}
+                  {value.systemPromptBase && " (custom)"}
                 </p>
               </div>
             </div>
-            {globalSystemPromptBasePath && (
+            <div className="flex items-center gap-1">
+              {value.systemPromptBase && (
+                <button
+                  onClick={() => patch({ systemPromptBase: undefined })}
+                  className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+                  title="Restore default"
+                >
+                  <Undo2 className="h-3 w-3" />
+                  Restore default
+                </button>
+              )}
+              {(() => {
+                const effectivePath = value.systemPromptBase?.path ?? config.systemPromptBase?.path ?? globalSystemPromptBasePath;
+                if (effectivePath) {
+                  return (
+                    <button
+                      onClick={() => {
+                        // Try to find the path in scopeIndex for editing
+                        const hit = scopeIndex[effectivePath];
+                        if (hit) {
+                          setEditTarget({ scope: hit.scope, relPath: hit.relPath, ext: "md" });
+                        }
+                      }}
+                      className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+                    >
+                      <Edit3 className="h-3 w-3" />
+                      Edit
+                    </button>
+                  );
+                }
+                return null;
+              })()}
               <button
-                onClick={() => setEditTarget({ scope: "global", relPath: "systemPromptBase.md", ext: "md" })}
-                className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+                onClick={() => {
+                  setShowSysPromptBasePicker(!showSysPromptBasePicker);
+                }}
+                className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
               >
-                <Edit3 className="h-3 w-3" />
-                Edit
+                {value.systemPromptBase ? "Change" : <><Plus className="h-3.5 w-3.5" /> Set</>}
               </button>
-            )}
+            </div>
           </div>
           <p className="mt-1.5 text-[11px] text-zinc-500">
-            The global "constitution" (systemPromptBase.md) — applies to every agent regardless of
-            session or workspace. Not an AGENTS.md file.
+            The global "constitution" — applies to every agent regardless of session or workspace.
+            {value.systemPromptBase ? " This agent uses a custom source." : ""}
           </p>
         </div>
+
+        {/* System prompt base picker */}
+        {showSysPromptBasePicker && (
+          <div className="rounded-md border border-zinc-700 bg-zinc-900 p-2 space-y-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSysPromptBaseTab("discover")}
+                className={`rounded px-2 py-1 text-xs ${
+                  sysPromptBaseTab === "discover"
+                    ? "bg-zinc-700 text-zinc-100"
+                    : "bg-zinc-800 text-zinc-400"
+                }`}
+              >
+                Discover
+              </button>
+              <button
+                onClick={() => setSysPromptBaseTab("custom")}
+                className={`rounded px-2 py-1 text-xs ${
+                  sysPromptBaseTab === "custom"
+                    ? "bg-zinc-700 text-zinc-100"
+                    : "bg-zinc-800 text-zinc-400"
+                }`}
+              >
+                Custom Path
+              </button>
+            </div>
+
+            {sysPromptBaseTab === "discover" && (
+              <div className="max-h-40 overflow-y-auto space-y-1">
+                {scopeItems.length === 0 ? (
+                  <p className="text-xs text-zinc-500">No scope items found</p>
+                ) : (
+                  scopeItems.map((i) => (
+                    <button
+                      key={i.promptPath}
+                      onClick={() => {
+                        onChange({
+                          ...value,
+                          systemPromptBase: { mode: "existing", path: i.promptPath },
+                        });
+                        setShowSysPromptBasePicker(false);
+                      }}
+                      className="w-full rounded px-2 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-700"
+                    >
+                      {i.relPath}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+
+            {sysPromptBaseTab === "custom" && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="/path/to/prompt.md"
+                  value={customSysPromptBasePath}
+                  onChange={(e) => setCustomSysPromptBasePath(e.target.value)}
+                  className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-100"
+                />
+                <button
+                  onClick={() => {
+                    if (customSysPromptBasePath.trim()) {
+                      onChange({
+                        ...value,
+                        systemPromptBase: { mode: "existing", path: customSysPromptBasePath.trim() },
+                      });
+                      setCustomSysPromptBasePath("");
+                      setShowSysPromptBasePicker(false);
+                    }
+                  }}
+                  className="rounded bg-zinc-700 px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-600"
+                >
+                  Set
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Project AGENTS.md (workspace root) */}
         <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2">

@@ -35,6 +35,7 @@ export interface TurnInput {
   noSystemPrompt?: boolean;
   excludeTools?: string[];
   createMeta?: TurnCreateMeta;
+  contextFirstTurnNumber?: number | null;
 }
 
 export interface TurnEvents {

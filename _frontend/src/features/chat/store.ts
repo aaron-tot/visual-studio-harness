@@ -12,6 +12,7 @@ import type { ChatState } from "./types";
 import {
   getSession,
   getTurns,
+  getSessionContextConfig,
 } from "../../lib/api";
 import type { SessionConfig } from "../../../_shared/types";
 import { chatDebug } from "./debug";
@@ -71,6 +72,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   workspaceRoot: localStorage.getItem("VISUAL STUDIO HARNESS.workspaceRoot") || "",
   turns: {},
   inspectedTurnId: null,
+  contextFirstTurnNumber: null,
+  setContextFirstTurnNumber: (tn) => set({ contextFirstTurnNumber: tn }),
   stagedChatInput: "",
   subagentConfigPrompt: null,
   setSubagentConfigPrompt: (prompt) => set({ subagentConfigPrompt: prompt }),
@@ -141,6 +144,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     } catch {
     }
+
+    // Load context config
+    try {
+      const ctxCfg = await getSessionContextConfig(id);
+      set({ contextFirstTurnNumber: ctxCfg.firstTurnNumber });
+    } catch { /* ignore */ }
   },
 
   sendMessage: (content, config: SessionConfig) => {
@@ -168,6 +177,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
     chatDebug("store", "sendMessage -> streaming=true", { sessionId, agentName: config.agentName });
     touchStreamTimeout();
+    const { contextFirstTurnNumber: ctxTn } = get();
     const wsMsg = {
       type: "chat",
       sessionId: sessionId || "new",
@@ -177,6 +187,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       providerName: config.providerName,
       modelName: config.modelName,
       thinkingEffort: config.thinkingEffort,
+      contextFirstTurnNumber: ctxTn,
     };
     wsClient.send(wsMsg);
   },

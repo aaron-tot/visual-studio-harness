@@ -111,6 +111,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       content: msg.content, sessionId: msg.sessionId, workspaceRoot: msg.workspaceRoot,
       agentName: msg.agentName ?? undefined, providerName: msg.providerName,
       modelName: msg.modelName, thinkingEffort: msg.thinkingEffort, noSystemPrompt: !msg.agentName,
+      contextFirstTurnNumber: msg.contextFirstTurnNumber ?? null,
     }, {
       source: "ws", signal: abortController.signal,
       onSessionReady: ({ sessionId: id, created, meta, turnId }) => {

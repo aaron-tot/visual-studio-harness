@@ -29,6 +29,8 @@ export interface ChatState {
   stagedChatInput: string;
   stageChatInput: (content: string) => void;
   sendMessage: (content: string, config: SessionConfig) => void;
+  contextFirstTurnNumber: number | null;
+  setContextFirstTurnNumber: (tn: number | null) => void;
   clearMessages: () => void;
   stopStreaming: () => void;
   appendToken: (token: string, seq?: number) => void;

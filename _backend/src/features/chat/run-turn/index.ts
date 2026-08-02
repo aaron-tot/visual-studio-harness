@@ -179,17 +179,9 @@ export async function runTurn(
   // ── Context refs ─────────────────────────────────────────────────
   const includeFailedTurns = config.includeFailedTurnsInHistory ?? true;
 
-  // Read per-session context config (firstTurnNumber)
-  let firstTurnNumber: number | null = null;
-  if (sessionId && !isNew) {
-    try {
-      const raw = getSessionModelConfigJson(sessionId, dataDir);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        firstTurnNumber = parsed?.context?.firstTurnNumber ?? null;
-      }
-    } catch { /* ignore */ }
-  }
+  // Read firstTurnNumber from the WS message (avoids race with REST save)
+  const firstTurnNumber: number | null =
+    input.contextFirstTurnNumber != null ? input.contextFirstTurnNumber : null;
 
   const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns, firstTurnNumber });
 

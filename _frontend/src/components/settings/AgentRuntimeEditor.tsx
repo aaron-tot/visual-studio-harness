@@ -6,7 +6,7 @@ import type {
   ThinkingEffort,
 } from "../../../../_shared/types";
 import { useConfigStore } from "../../stores/config";
-import { listMds, readMd } from "../../lib/api";
+import { listMds, readMd, getMdsScopePaths, type ScopeItem } from "../../lib/api";
 import { useSessionStore } from "../../stores/sessions";
 import { MdEditorModal } from "./MdEditorModal";
 
@@ -41,8 +41,11 @@ export function AgentRuntimeEditor({
   const [roots, setRoots] = useState<{ mds: string; workspace: string } | null>(null);
   const [globalSystemPromptBasePath, setGlobalSystemPromptBasePath] = useState<string | null>(null);
   const [workspaceAgentsMd, setWorkspaceAgentsMd] = useState<string | null>(null);
-  const [agentTaggedMds, setAgentTaggedMds] = useState<{ path: string; fullPath: string }[]>([]);
-  const [skillTaggedMds, setSkillTaggedMds] = useState<{ path: string; fullPath: string }[]>([]);
+  const [scopeItems, setScopeItems] = useState<ScopeItem[]>([]);
+  const [agentMdTagFilter, setAgentMdTagFilter] = useState("");
+  const [agentMdSearch, setAgentMdSearch] = useState("");
+  const [skillTagFilter, setSkillTagFilter] = useState("");
+  const [skillSearch, setSkillSearch] = useState("");
   const [editingMd, setEditingMd] = useState<{ path: string; tag: string; content: string; source?: string } | null>(null);
   const [fileErrors, setFileErrors] = useState<Set<string>>(new Set());
 
@@ -82,25 +85,25 @@ export function AgentRuntimeEditor({
       }
       setGlobalSystemPromptBasePath(global);
       setWorkspaceAgentsMd(workspace);
-      const agentTagged: { path: string; fullPath: string }[] = [];
-      for (const entries of Object.values(result.entries)) {
-        for (const entry of entries) {
-          if (entry.tags.includes("agent")) {
-            agentTagged.push({ path: entry.path, fullPath: entry.fullPath ?? entry.path });
-          }
-        }
-      }
-      setAgentTaggedMds(agentTagged);
-      const skillTagged: { path: string; fullPath: string }[] = [];
-      for (const entries of Object.values(result.entries)) {
-        for (const entry of entries) {
-          if (entry.tags.includes("skill")) {
-            skillTagged.push({ path: entry.path, fullPath: entry.fullPath ?? entry.path });
-          }
-        }
-      }
-      setSkillTaggedMds(skillTagged);
     }).catch(() => {});
+  }, [sessionId]);
+
+  // V2 scope items: tags come from each item's own prompt.json (not folder location).
+  useEffect(() => {
+    let cancelled = false;
+    getMdsScopePaths({ sessionId, workspaceRoot: undefined })
+      .then((result) => {
+        if (cancelled) return;
+        const all: ScopeItem[] = [];
+        for (const scope of Object.values(result.scopes)) {
+          if (scope.available) all.push(...scope.items);
+        }
+        setScopeItems(all);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId]);
   const providers = config.providers.filter((p) => p.enabled !== false);
   const selectedProvider =
@@ -437,26 +440,56 @@ export function AgentRuntimeEditor({
             </div>
 
             {agentMdPickerTab === "discover" && (
-              <div className="max-h-40 overflow-y-auto space-y-1">
-                {agentTaggedMds.length === 0 ? (
-                  <p className="text-xs text-zinc-500">No agent Mds discovered</p>
-                ) : (
-                  agentTaggedMds.map((md) => (
-                    <button
-                      key={md.fullPath}
-                      onClick={() => {
-                        onChange({
-                          ...value,
-                          agentMd: { mode: "existing", path: md.fullPath },
-                        });
-                        setShowAgentMdPicker(false);
-                      }}
-                      className="w-full rounded px-2 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-700"
-                    >
-                      {md.path}
-                    </button>
-                  ))
-                )}
+              <div className="space-y-1">
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="Search by path…"
+                    value={agentMdSearch}
+                    onChange={(e) => setAgentMdSearch(e.target.value)}
+                    className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600"
+                  />
+                  <select
+                    value={agentMdTagFilter}
+                    onChange={(e) => setAgentMdTagFilter(e.target.value)}
+                    className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200"
+                    title="Filter by tag"
+                  >
+                    <option value="">All tags</option>
+                    {[...new Set(scopeItems.flatMap((i) => i.tags))].sort().map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {(() => {
+                    const q = agentMdSearch.trim().toLowerCase();
+                    const filtered = scopeItems.filter(
+                      (i) =>
+                        (!agentMdTagFilter || i.tags.includes(agentMdTagFilter)) &&
+                        (!q || i.relPath.toLowerCase().includes(q))
+                    );
+                    return filtered.length === 0 ? (
+                      <p className="text-xs text-zinc-500">No agent Mds match</p>
+                    ) : (
+                      filtered.map((i) => (
+                        <button
+                          key={i.promptPath}
+                          onClick={() => {
+                            onChange({
+                              ...value,
+                              agentMd: { mode: "existing", path: i.promptPath },
+                            });
+                            setShowAgentMdPicker(false);
+                          }}
+                          className="w-full rounded px-2 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-700"
+                        >
+                          {i.relPath}
+                        </button>
+                      ))
+                    );
+                  })()}
+                </div>
               </div>
             )}
 
@@ -614,29 +647,59 @@ export function AgentRuntimeEditor({
             </div>
 
             {skillPickerTab === "discover" && (
-              <div className="max-h-40 overflow-y-auto space-y-1">
-                {skillTaggedMds.length === 0 ? (
-                  <p className="text-xs text-zinc-500">No skills discovered</p>
-                ) : (
-                  skillTaggedMds.map((md) => (
-                    <button
-                      key={md.fullPath}
-                      onClick={() => {
-                        onChange({
-                          ...value,
-                          skillMds: [
-                            ...(value.skillMds ?? []),
-                            { mode: "custom", path: md.fullPath },
-                          ],
-                        });
-                        setShowSkillPicker(false);
-                      }}
-                      className="w-full rounded px-2 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-700"
-                    >
-                      {md.path}
-                    </button>
-                  ))
-                )}
+              <div className="space-y-1">
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="Search by path…"
+                    value={skillSearch}
+                    onChange={(e) => setSkillSearch(e.target.value)}
+                    className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600"
+                  />
+                  <select
+                    value={skillTagFilter}
+                    onChange={(e) => setSkillTagFilter(e.target.value)}
+                    className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200"
+                    title="Filter by tag"
+                  >
+                    <option value="">All tags</option>
+                    {[...new Set(scopeItems.flatMap((i) => i.tags))].sort().map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {(() => {
+                    const q = skillSearch.trim().toLowerCase();
+                    const filtered = scopeItems.filter(
+                      (i) =>
+                        (!skillTagFilter || i.tags.includes(skillTagFilter)) &&
+                        (!q || i.relPath.toLowerCase().includes(q))
+                    );
+                    return filtered.length === 0 ? (
+                      <p className="text-xs text-zinc-500">No skills match</p>
+                    ) : (
+                      filtered.map((i) => (
+                        <button
+                          key={i.promptPath}
+                          onClick={() => {
+                            onChange({
+                              ...value,
+                              skillMds: [
+                                ...(value.skillMds ?? []),
+                                { mode: "custom", path: i.promptPath },
+                              ],
+                            });
+                            setShowSkillPicker(false);
+                          }}
+                          className="w-full rounded px-2 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-700"
+                        >
+                          {i.relPath}
+                        </button>
+                      ))
+                    );
+                  })()}
+                </div>
               </div>
             )}
 

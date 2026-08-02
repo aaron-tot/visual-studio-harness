@@ -1,4 +1,4 @@
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AgentSettings, SkillMdConfig } from "../../../_shared/types";
@@ -55,29 +55,33 @@ export async function readProjectAgentsMd(rootDir: string): Promise<string> {
   return parts.join("\n");
 }
 
+/**
+ * Read an MDS prompt: if `path` is a directory (item folder), read prompt.md inside;
+ * if it's a file (prompt.md or legacy .md), read it directly.
+ */
+async function readPromptPath(path: string): Promise<string | null> {
+  try {
+    const info = await stat(path);
+    const target = info.isDirectory() ? join(path, "prompt.md") : path;
+    const raw = await readFile(target, "utf-8");
+    return raw.trim() || null;
+  } catch (err) {
+    console.warn(`[system-prompt] unreadable prompt ${path}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 export async function resolveAgentMd(agentMd: AgentSettings["agentMd"]): Promise<string | null> {
   if (!agentMd) return null;
   if (agentMd.mode === "inline") return agentMd.content?.trim() || null;
   if (!agentMd.path) return null;
-  try {
-    const raw = await readFile(agentMd.path, "utf-8");
-    return raw.trim() || null;
-  } catch (err) {
-    console.warn(`[system-prompt] unreadable agent MD ${agentMd.path}:`, err instanceof Error ? err.message : err);
-    return null;
-  }
+  return readPromptPath(agentMd.path);
 }
 
 async function resolveSingleSkillMd(skill: SkillMdConfig): Promise<string | null> {
   if (skill.mode === "custom") {
     if (!skill.path) return null;
-    try {
-      const raw = await readFile(skill.path, "utf-8");
-      return raw.trim() || null;
-    } catch (err) {
-      console.warn(`[system-prompt] unreadable skill MD ${skill.path}:`, err instanceof Error ? err.message : err);
-      return null;
-    }
+    return readPromptPath(skill.path);
   }
   return null;
 }

@@ -315,8 +315,16 @@ export interface ScopeDirNode {
   children: ScopeDirNode[];
 }
 
+export interface ScopeItem {
+  name: string;
+  relPath: string;
+  path: string;
+  promptPath: string;
+  tags: string[];
+}
+
 export type ScopePathEntry =
-  | { available: true; path: string; tree: ScopeDirNode[]; tags: string[] }
+  | { available: true; path: string; tree: ScopeDirNode[]; tags: string[]; items: ScopeItem[] }
   | { available: false; reason: string };
 
 export interface ScopePathsResult {

@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, writeFile, unlink, stat, rename, rm } from "n
 import { existsSync } from "node:fs";
 import { getSession } from "../storage/session";
 import { resolveDataDirInfo, getMode } from "../paths";
-import { projectScopedMdsDir, resolveMdsScopeDir } from "../features/mds/paths";
+import { projectScopedMdsDir, resolveMdsScopeDir, seedsDir } from "../features/mds/paths";
 import type { MdMetaFile, MdStats } from "../../_shared/types";
 
 interface MdListEntry {
@@ -204,6 +204,54 @@ async function collectScopeTags(dir: string): Promise<string[]> {
   return [...tags].sort((a, b) => a.localeCompare(b));
 }
 
+export interface ScopeItem {
+  name: string;
+  relPath: string;
+  path: string;
+  promptPath: string;
+  tags: string[];
+}
+
+/**
+ * List MDS item folders (dirs containing prompt.md) under `dir`, recursively.
+ * Item tags come from each item's own prompt.json (not from folder location).
+ */
+async function listScopeItems(dir: string): Promise<ScopeItem[]> {
+  const items: ScopeItem[] = [];
+  async function walk(d: string, rel: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const full = join(d, e.name);
+      const childRel = rel ? `${rel}/${e.name}` : e.name;
+      const mdPath = join(full, "prompt.md");
+      const jsonPath = join(full, "prompt.json");
+      if (existsSync(mdPath)) {
+        let tags: string[] = [];
+        try {
+          const raw = await readFile(jsonPath, "utf-8");
+          const parsed = JSON.parse(raw) as { tags?: unknown };
+          tags = Array.isArray(parsed.tags)
+            ? parsed.tags.filter((t): t is string => typeof t === "string")
+            : [];
+        } catch {
+          // no prompt.json — no tags
+        }
+        items.push({ name: e.name, relPath: childRel, path: full, promptPath: mdPath, tags });
+      } else {
+        await walk(full, childRel);
+      }
+    }
+  }
+  await walk(dir, "");
+  return items.sort((a, b) => a.relPath.localeCompare(b.relPath));
+}
+
 /** Walk a directory recursively, returning a full tree (dirs first, then files, alphabetical). */
 async function walkDir(dir: string): Promise<ScopeDirNode[]> {
   try {
@@ -254,6 +302,19 @@ async function ensureDefaultMdsDirs(dir: string): Promise<void> {
   for (const name of RESERVED_MDS_DIRS) {
     await mkdir(join(dir, name), { recursive: true });
   }
+  // Seed _SystemBase/prompt.md from the repo seeds when available (fresh installs only).
+  const base = join(dir, "_SystemBase", "prompt.md");
+  if (!existsSync(base)) {
+    const sDir = seedsDir();
+    if (sDir) {
+      try {
+        const seed = await readFile(join(sDir, "dev", "mds", "systemPromptBase.md"), "utf-8");
+        await writeFile(base, seed, "utf-8");
+      } catch {
+        // no seed file — leave _SystemBase empty
+      }
+    }
+  }
 }
 
 export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
@@ -288,10 +349,10 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
     if (sessionPath) await ensureDefaultMdsDirs(sessionPath);
 
     const project = projectPath
-      ? { available: true as const, path: projectPath, tree: await walkDir(projectPath), tags: await collectScopeTags(projectPath) }
+      ? { available: true as const, path: projectPath, tree: await walkDir(projectPath), tags: await collectScopeTags(projectPath), items: await listScopeItems(projectPath) }
       : { available: false as const, reason: "no workspace selected" };
     const sessionScope = sessionPath
-      ? { available: true as const, path: sessionPath, tree: await walkDir(sessionPath), tags: await collectScopeTags(sessionPath) }
+      ? { available: true as const, path: sessionPath, tree: await walkDir(sessionPath), tags: await collectScopeTags(sessionPath), items: await listScopeItems(sessionPath) }
       : { available: false as const, reason: "not in a session" };
 
     return {
@@ -301,7 +362,7 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
       workspaceRoot: wsRoot ? resolve(wsRoot) : null,
       sessionId: q.sessionId || null,
       scopes: {
-        global: { available: true as const, path: globalPath, tree: await walkDir(globalPath), tags: await collectScopeTags(globalPath) },
+        global: { available: true as const, path: globalPath, tree: await walkDir(globalPath), tags: await collectScopeTags(globalPath), items: await listScopeItems(globalPath) },
         project,
         session: sessionScope,
       },

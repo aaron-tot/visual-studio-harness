@@ -38,7 +38,18 @@ const SECTION_BUILDERS: Array<{ tag: string; build: (ctx: SectionContext) => Pro
 
 export async function buildSystemBlock(input: BuildSystemBlockInput): Promise<string> {
   if (input.noSystemPrompt) return "";
-  await ensureGlobalSystemPromptFile(input.dataDir, input.mode);
+  if (!input.skipSeed) {
+    await ensureGlobalSystemPromptFile(input.dataDir, input.mode);
+  }
+  return buildSystemBlockSections(input);
+}
+
+/**
+ * Rebuilds the system block WITHOUT seeding the global prompt file.
+ * Used by per-step prepareStep rebuilds (seeding happens once per turn).
+ */
+export async function buildSystemBlockSections(input: BuildSystemBlockInput): Promise<string> {
+  if (input.noSystemPrompt) return "";
 
   const joiners = input.systemPromptJoiners ?? DEFAULT_SYSTEM_PROMPT_JOINERS;
   const ctx: SectionContext = {
@@ -47,6 +58,7 @@ export async function buildSystemBlock(input: BuildSystemBlockInput): Promise<st
     mode: input.mode,
     sessionId: input.sessionId,
     now: input.now,
+    turnStart: input.turnStart,
     agentSettings: input.agentSettings,
     workspaceManifest: input.workspaceManifest,
     graphService: input.graphService,

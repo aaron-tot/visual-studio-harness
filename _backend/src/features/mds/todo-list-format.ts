@@ -26,7 +26,7 @@ export async function formatTodoList(
 
     if (!Array.isArray(todos) || todos.length === 0) return null;
 
-    const lines: string[] = ["## TODO List"];
+    const lines: string[] = ["## TODO List","## Work on your TODO list, if it needs updating then update it. Never leave it incomplete. ##"];
     for (const t of todos) {
       const icon = STATUS_ICON[t.status] ?? "·";
       const prio = t.priority ? ` [${t.priority}]` : "";

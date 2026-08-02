@@ -154,6 +154,9 @@ function ensureSchema(sqlite: Database): void {
       provider_metadata_json TEXT,
       warnings_json TEXT,
       request_meta_json TEXT,
+      prompt_snapshot_id INTEGER REFERENCES prompt_snapshots(id),
+      raw_request_json TEXT,
+      raw_response_json TEXT,
       started_at TEXT,
       completed_at TEXT
     );
@@ -161,6 +164,16 @@ function ensureSchema(sqlite: Database): void {
   sqlite.run(`CREATE UNIQUE INDEX IF NOT EXISTS uq_steps_turn_index ON steps(turn_id, step_index);`);
   sqlite.run(`CREATE INDEX IF NOT EXISTS idx_steps_turn_id ON steps(turn_id);`);
   sqlite.run(`CREATE INDEX IF NOT EXISTS idx_steps_session_id ON steps(session_id);`);
+  // Migration: per-step prompt snapshot + raw capture columns for existing databases
+  try {
+    sqlite.run(`ALTER TABLE steps ADD COLUMN prompt_snapshot_id INTEGER REFERENCES prompt_snapshots(id)`);
+  } catch {}
+  try {
+    sqlite.run(`ALTER TABLE steps ADD COLUMN raw_request_json TEXT`);
+  } catch {}
+  try {
+    sqlite.run(`ALTER TABLE steps ADD COLUMN raw_response_json TEXT`);
+  } catch {}
 
   // ── step_parts ─────────────────────────────────────────────────────
   sqlite.run(`

@@ -31,6 +31,7 @@ import {
 import { resolveRuntimeFromSettings, getAgentSettings, resolveSessionRuntime, type ResolvedRuntime } from "../../agents/runtime-settings";
 import { readAgent } from "../../agents/rest";
 import { buildSystemBlock } from "../../system-prompt/builder";
+import { createPerStepPrepareStep } from "../per-step-system-prompt";
 import { getMode } from "../../../paths";
 import { getWorkspaceGraphManager } from "../../../core/workspaceGraph/service-singleton";
 import type { WorkspaceGraphService } from "../../../core/workspaceGraph/api/types";
@@ -50,6 +51,7 @@ import {
   abortTurnTrace,
   updateTurnRawCapture,
   updateTurnConfigSnapshot,
+  writeStepRaw,
 } from "../db-trace";
 import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
@@ -264,12 +266,15 @@ export async function runTurn(
       : undefined;
 
     const noSystemPrompt = input.noSystemPrompt ?? false;
+    const turnStartNow = new Date();
     const systemBlock = await buildSystemBlock({
       dataDir, workspaceRoot, mode: getMode(), sessionId,
       agentSettings: runtime.settings, noSystemPrompt,
       systemPromptJoiners: config.systemPromptJoiners,
       workspaceManifest: config.workspaceGraph !== false ? config.workspaceManifest : undefined,
       graphService,
+      now: turnStartNow,
+      turnStart: turnStartNow,
     });
 
     // Build model messages (UNIFIED - includes system, history, current user)
@@ -356,6 +361,25 @@ export async function runTurn(
     // ── Trace schema: step-scoped writer ───────────────────────────
     let currentStepId: number | null = null;
     let stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
+    let stepIdByIndex: Record<number, number> = {};
+
+    // Per-step system prompt rebuild (prepareStep). Step 0 uses the turn-initial
+    // timestamp so it matches the turn-level snapshot; later steps get fresh state.
+    let lastPreparedStepNumber = -1;
+    let lastPreparedBlock = systemBlock;
+    const prepareStep = createPerStepPrepareStep({
+      dataDir, workspaceRoot, sessionId, mode: getMode(),
+      noSystemPrompt,
+      agentSettings: runtime.settings,
+      systemPromptJoiners: config.systemPromptJoiners,
+      workspaceManifest: config.workspaceGraph !== false ? config.workspaceManifest : undefined,
+      graphService,
+      turnStartNow,
+      onBlockBuilt: (stepNumber, block) => {
+        lastPreparedStepNumber = stepNumber;
+        lastPreparedBlock = block;
+      },
+    });
 
     let _fullContent = "";
     let _parts: MessagePartType[] | undefined;
@@ -376,6 +400,9 @@ export async function runTurn(
             clearTurnSteps(traceTurnId, dataDir);
             partSeq = 0;
             stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
+            stepIdByIndex = {};
+            lastPreparedStepNumber = -1;
+            lastPreparedBlock = systemBlock;
           }
         },
         onToken: (token) => {
@@ -392,13 +419,17 @@ export async function runTurn(
         },
         onStepStart: (info) => {
           stepWriter.closeOpen();
+          const stepBlock = lastPreparedStepNumber === info.stepIndex ? lastPreparedBlock : systemBlock;
+          const stepPromptSnapshotId = ensurePromptSnapshot(stepBlock, dataDir);
           currentStepId = createStep(traceTurnId, sessionId, info.stepIndex, {
             providerName: provider.displayName,
             modelId: model.modelName,
             callId: `step-${info.stepIndex}-${traceTurnId}`,
             requestMetaJson: info.request ? JSON.stringify(info.request) : undefined,
             warningsJson: info.warnings ? JSON.stringify(info.warnings) : undefined,
+            promptSnapshotId: stepPromptSnapshotId,
           }, dataDir);
+          stepIdByIndex[info.stepIndex] = currentStepId;
           stepWriter.rebindStep(currentStepId);
         },
         onStepFinish: (info) => {
@@ -449,6 +480,7 @@ export async function runTurn(
         signal: abortSignal, hookCtx, modelSpeed, workspaceRoot,
         streamRetryErrorName: config.streamRetryErrorName,
         streamRetryMaxAttempts: config.streamRetryMaxAttempts,
+        prepareStep,
       });
       _fullContent = streamResult.content;
       _parts = streamResult.parts;
@@ -463,6 +495,17 @@ export async function runTurn(
       stepWriter.closeOpen();
       if (rawRequest !== undefined || rawResponse !== undefined) {
         updateTurnRawCapture(traceTurnId, rawRequest, rawResponse, dataDir);
+      }
+      // Persist per-step verbatim raw exchanges captured during streaming
+      const streamSteps = _streamResult?.steps;
+      if (streamSteps) {
+        for (const s of streamSteps) {
+          if (s.rawRequest === undefined && s.rawResponse === undefined) continue;
+          const stepId = stepIdByIndex[s.stepIndex];
+          if (stepId != null) {
+            writeStepRaw(stepId, s.rawRequest, s.rawResponse, dataDir);
+          }
+        }
       }
     }
     const streamResult = _streamResult!;

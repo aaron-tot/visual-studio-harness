@@ -172,6 +172,7 @@ export function createStep(
     callId?: string;
     requestMetaJson?: string;
     warningsJson?: string;
+    promptSnapshotId?: number;
   },
   dataDir?: string,
 ): number {
@@ -188,6 +189,7 @@ export function createStep(
       callId: opts?.callId ?? null,
       requestMetaJson: opts?.requestMetaJson ?? null,
       warningsJson: opts?.warningsJson ?? null,
+      promptSnapshotId: opts?.promptSnapshotId ?? null,
       startedAt: new Date().toISOString(),
     })
     .returning({ id: steps.id })
@@ -538,6 +540,21 @@ export function updateTurnRawCapture(
   if (rawResponse !== undefined) updates.rawResponseJson = JSON.stringify(rawResponse);
   if (Object.keys(updates).length > 0) {
     db.update(turns).set(updates).where(eq(turns.id, turnId)).run();
+  }
+}
+
+export function writeStepRaw(
+  stepId: number,
+  rawRequest: Record<string, unknown> | undefined,
+  rawResponse: Record<string, unknown> | undefined,
+  dataDir?: string,
+): void {
+  const db = dbFor(dataDir);
+  const updates: Record<string, unknown> = {};
+  if (rawRequest !== undefined) updates.rawRequestJson = JSON.stringify(rawRequest);
+  if (rawResponse !== undefined) updates.rawResponseJson = JSON.stringify(rawResponse);
+  if (Object.keys(updates).length > 0) {
+    db.update(steps).set(updates).where(eq(steps.id, stepId)).run();
   }
 }
 

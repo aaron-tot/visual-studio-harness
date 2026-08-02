@@ -1,8 +1,11 @@
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
 import { turns, turnContext, steps, stepParts, promptSnapshots, toolsSnapshots, sessions } from "../../db/schema";
+import type { CoreMessage } from "ai";
 import type { Message, MessagePartType } from "../../../../_shared/types";
-import type { TurnSummary, StepSummary, TurnDetail, SessionUsage, TurnStatus, StepPart } from "../../../../_shared/types/trace";
+import type { TurnSummary, StepSummary, TurnDetail, SessionUsage, TurnStatus, StepPart, TurnRawCapture, TurnStepRawDetail } from "../../../../_shared/types/trace";
+import { listContextTurnIds } from "./db-trace";
+import { buildModelMessages } from "./message-builder";
 
 function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
@@ -488,4 +491,261 @@ export function maxStepPartSeq(turnId: number, dataDir?: string): number {
     .limit(1)
     .get();
   return row?.maxSeq ?? 0;
+}
+
+interface ReplayOptions {
+  includeText: boolean;
+  includeTools: boolean;
+  includeReasoning: boolean;
+  includePatch: boolean;
+  includeOther: boolean;
+}
+
+function parsePartData(data: string): Record<string, unknown> {
+  try {
+    return JSON.parse(data);
+  } catch {
+    return { content: data };
+  }
+}
+
+function replayStepPartsToMessages(
+  parts: Array<{
+    type: string;
+    data: string;
+    status: string | null;
+    toolCallId: string | null;
+    toolName: string | null;
+  }>,
+  opts: ReplayOptions,
+): CoreMessage[] {
+  const contentParts: NonNullable<CoreMessage["content"]> = [];
+  const toolResultMessages: CoreMessage[] = [];
+
+  for (const part of parts) {
+    const data = parsePartData(part.data);
+    switch (part.type) {
+      case "text": {
+        if (opts.includeText) {
+          const text = typeof data.content === "string" ? data.content : "";
+          if (text) contentParts.push({ type: "text", text });
+        }
+        break;
+      }
+      case "tool": {
+        if (opts.includeTools && part.toolCallId) {
+          const args = data.args ?? {};
+          contentParts.push({
+            type: "tool-call",
+            toolCallId: part.toolCallId,
+            toolName: part.toolName ?? "",
+            input: args,
+          });
+          const rawOutput = data.result ?? data.output ?? "";
+          toolResultMessages.push({
+            role: "tool",
+            content: [{
+              type: "tool-result",
+              toolCallId: part.toolCallId,
+              toolName: part.toolName ?? "",
+              output: part.status === "completed"
+                ? { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) }
+                : { type: "error-text", value: `Tool call ${part.status} before returning a result` },
+            }],
+          });
+        }
+        break;
+      }
+      case "reasoning": {
+        if (opts.includeReasoning) {
+          contentParts.push({ type: "reasoning", text: typeof data.content === "string" ? data.content : "" });
+        }
+        break;
+      }
+      case "patch": {
+        if (opts.includePatch) {
+          contentParts.push({ type: "text", text: typeof data.patch === "string" ? data.patch : JSON.stringify(data.patch) });
+        }
+        break;
+      }
+      default: {
+        if (opts.includeOther) {
+          const text = typeof data.content === "string" ? data.content : JSON.stringify(data);
+          if (text) contentParts.push({ type: "text", text });
+        }
+        break;
+      }
+    }
+  }
+
+  const out: CoreMessage[] = [];
+  if (contentParts.length > 0) out.push({ role: "assistant", content: contentParts });
+  out.push(...toolResultMessages);
+  return out;
+}
+
+/**
+ * Reconstructs per-step raw inspection data for a turn.
+ * Replays stepParts up to each step boundary with that step's prompt snapshot as instructions.
+ * Returns turn-level raw + per-step detail array.
+ */
+export async function getTurnStepRawCapture(
+  sessionId: string,
+  turnNumber: number,
+  dataDir?: string,
+): Promise<TurnRawCapture | null> {
+  const db = dbFor(dataDir);
+  const t = db
+    .select()
+    .from(turns)
+    .where(and(eq(turns.sessionId, sessionId), eq(turns.turnNumber, turnNumber)))
+    .get();
+  if (!t) return null;
+
+  // Turn-level raw fallback
+  let turnRawRequest: unknown = null;
+  let turnRawResponse: unknown = null;
+  if (t.rawRequestJson) { try { turnRawRequest = JSON.parse(t.rawRequestJson); } catch {} }
+  if (t.rawResponseJson) { try { turnRawResponse = JSON.parse(t.rawResponseJson); } catch {} }
+
+  // Turn-level system prompt fallback
+  let turnSystemPrompt: string | undefined;
+  if (t.systemPromptSnapshotId) {
+    const sp = db
+      .select({ content: promptSnapshots.content })
+      .from(promptSnapshots)
+      .where(eq(promptSnapshots.id, t.systemPromptSnapshotId))
+      .get();
+    if (sp) turnSystemPrompt = sp.content;
+  }
+
+  // Steps for this turn
+  const stepRows = db
+    .select()
+    .from(steps)
+    .where(eq(steps.turnId, t.id))
+    .orderBy(steps.stepIndex)
+    .all();
+
+  // Load step prompt snapshots + step parts
+  const stepIds = stepRows.map(s => s.id);
+  const stepPartsRows = stepIds.length
+    ? db
+        .select()
+        .from(stepParts)
+        .where(and(eq(stepParts.turnId, t.id), inArray(stepParts.stepId, stepIds)))
+        .orderBy(stepParts.seq)
+        .all()
+    : [];
+
+  const partsByStepId = new Map<number, typeof stepPartsRows>();
+  for (const p of stepPartsRows) {
+    const list = partsByStepId.get(p.stepId);
+    if (list) list.push(p); else partsByStepId.set(p.stepId, [p]);
+  }
+
+  const snapIds = [...new Set(stepRows.map(s => s.promptSnapshotId).filter((v): v is number => v != null))];
+  const snapMap = new Map<number, string>();
+  if (snapIds.length) {
+    const snaps = db
+      .select({ id: promptSnapshots.id, content: promptSnapshots.content })
+      .from(promptSnapshots)
+      .where(inArray(promptSnapshots.id, snapIds))
+      .all();
+    for (const s of snaps) snapMap.set(s.id, s.content);
+  }
+
+  // Config snapshot for reconstruction flags
+  interface ConfigSnap {
+    includeFailedTurnsInHistory: boolean;
+    includeToolCallsInHistory: boolean;
+    includeReasoningInHistory: boolean;
+    includePatchesInHistory: boolean;
+    includeOtherPartsInHistory: boolean;
+    contextMaxTurns?: number;
+  }
+  let configSnap: ConfigSnap | undefined;
+  if (t.configSnapshotJson) { try { configSnap = JSON.parse(t.configSnapshotJson); } catch {} }
+
+  // Base SDK messages: context turns + current user
+  const ctxIds = listContextTurnIds(t.id, dataDir);
+  let baseMessages: CoreMessage[] = [];
+  let systemBlock = turnSystemPrompt ?? "";
+  if (configSnap) {
+    const built = await buildModelMessages(sessionId, systemBlock, {
+      contextTurnIds: ctxIds,
+      includeIncompleteTurns: configSnap.includeFailedTurnsInHistory,
+      includeTextParts: true,
+      includeTools: configSnap.includeToolCallsInHistory ?? true,
+      includeReasoningParts: configSnap.includeReasoningInHistory ?? false,
+      includePatchParts: configSnap.includePatchesInHistory ?? false,
+      includeOtherParts: configSnap.includeOtherPartsInHistory ?? false,
+      maxTurns: configSnap.contextMaxTurns,
+      currentTurnNumber: turnNumber,
+      currentUserMessage: t.userContent,
+    }, dataDir);
+    baseMessages = built.messages;
+    systemBlock = built.systemBlock;
+  } else {
+    baseMessages = [{ role: "user", content: t.userContent }];
+  }
+
+  // Strip leading system message — instructions goes in `instructions` param, not messages array
+  const systemMsg = baseMessages[0]?.role === "system" ? baseMessages[0].content : undefined;
+  const sdkBase = systemMsg ? baseMessages.slice(1) : baseMessages;
+
+  // Replay: accumulate per-step assistant + tool messages
+  const stepsOut: TurnStepRawDetail[] = [];
+  const accumulated: CoreMessage[] = [];
+  for (const s of stepRows) {
+    const stepSystemPrompt = s.promptSnapshotId != null
+      ? (snapMap.get(s.promptSnapshotId) ?? turnSystemPrompt)
+      : turnSystemPrompt;
+    const instructions = stepSystemPrompt ?? systemMsg ?? "";
+    const messages: CoreMessage[] = [
+      ...sdkBase,
+      ...accumulated,
+    ];
+    const sdkRequest: Record<string, unknown> = {
+      model: t.modelName ?? "unknown",
+      ...(instructions ? { instructions } : {}),
+      messages,
+      temperature: t.temperature ?? undefined,
+      maxSteps: t.maxSteps ?? undefined,
+    };
+    // Verbatim per-step raw (fallback to turn-level)
+    let providerRequest: Record<string, unknown> | null = null;
+    let response: Record<string, unknown> | null = null;
+    if (s.rawRequestJson) { try { providerRequest = JSON.parse(s.rawRequestJson); } catch {} }
+    if (s.rawResponseJson) { try { response = JSON.parse(s.rawResponseJson); } catch {} }
+    const hasPerStepRaw = !!(s.rawRequestJson || s.rawResponseJson);
+    if (!providerRequest) providerRequest = turnRawRequest as Record<string, unknown> | null;
+    if (!response) response = turnRawResponse as Record<string, unknown> | null;
+
+    stepsOut.push({
+      stepIndex: s.stepIndex,
+      status: s.status,
+      finishReason: s.finishReason ?? undefined,
+      modelId: s.modelId ?? undefined,
+      providerName: s.providerName ?? undefined,
+      promptSnapshotId: s.promptSnapshotId ?? undefined,
+      systemPrompt: stepSystemPrompt,
+      sdkRequest,
+      providerRequest,
+      response,
+      hasPerStepRaw,
+    });
+
+    // Accumulate this step's parts for next step
+    const parts = partsByStepId.get(s.id) ?? [];
+    accumulated.push(...replayStepPartsToMessages(parts, {
+      includeText: true,
+      includeTools: configSnap?.includeToolCallsInHistory ?? true,
+      includeReasoning: configSnap?.includeReasoningInHistory ?? false,
+      includePatch: configSnap?.includePatchesInHistory ?? false,
+      includeOther: configSnap?.includeOtherPartsInHistory ?? false,
+    }));
+  }
+
+  return { rawRequest: turnRawRequest, rawResponse: turnRawResponse, steps: stepsOut };
 }

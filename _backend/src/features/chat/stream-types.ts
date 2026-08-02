@@ -1,5 +1,5 @@
 import type { Message, MessagePartType, ProviderConfig, ThinkingEffort, TurnDebugInfo } from "../../../../_shared/types";
-import type { ToolSet, LanguageModelUsage, FinishReason } from "ai";
+import type { ToolSet, LanguageModelUsage, FinishReason, PrepareStepFunction } from "ai";
 import type { HookContext } from "../hooks";
 import type { StepFinishMeta } from "./step-finish-meta";
 
@@ -24,8 +24,10 @@ export interface StreamStepSummary {
   responseId?: string;
   responseModelId?: string;
   warnings?: unknown[];
-  /** Full parsed finish-step meta for persistence */
   meta?: StepFinishMeta;
+  /** Verbatim provider exchange attributed to this step. */
+  rawRequest?: Record<string, unknown>;
+  rawResponse?: Record<string, unknown>;
 }
 
 export interface StreamChatOptions {
@@ -40,6 +42,8 @@ export interface StreamChatOptions {
   onStepStart?: (info: { stepIndex: number; request?: unknown; warnings?: unknown[] }) => void;
   /** Full finish-step payload — prefer `meta` for DB writes */
   onStepFinish?: (info: StepFinishMeta) => void;
+  /** Per-step instructions rebuild. Must return the complete system block, never a delta. */
+  prepareStep?: PrepareStepFunction<ToolSet>;
   tools?: ToolSet;
   maxSteps?: number;
   temperature?: number;

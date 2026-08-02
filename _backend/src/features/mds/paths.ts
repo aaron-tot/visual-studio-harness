@@ -36,6 +36,27 @@ export function projectScopedMdsDir(workspaceRoot: string): string {
   return join(resolve(workspaceRoot), ".agentHarness", "mds");
 }
 
+export type MdsScope = "global" | "project" | "session";
+
+/** Resolve the MDS directory for a scope. Returns null when the scope can't be resolved (no workspace / no session). */
+export function resolveMdsScopeDir(
+  scope: MdsScope,
+  dataDir: string,
+  workspaceRoot?: string,
+  sessionId?: string
+): string | null {
+  switch (scope) {
+    case "project":
+      if (!workspaceRoot) return null;
+      return projectScopedMdsDir(workspaceRoot);
+    case "session":
+      if (!sessionId) return null;
+      return join(dataDir, "session", sessionId, "mds");
+    default:
+      return join(dataDir, "mds");
+  }
+}
+
 export function seedConfigPath(mode: string): string | null {
   const sDir = seedsDir();
   if (!sDir) return null;

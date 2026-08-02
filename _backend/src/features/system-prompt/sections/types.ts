@@ -7,6 +7,7 @@ export interface SectionContext {
   mode: string;
   sessionId?: string;
   now?: Date;
+  turnStart?: Date;
   agentSettings?: AgentSettings;
   workspaceManifest?: WorkspaceManifestSettings;
   graphService?: WorkspaceGraphService;

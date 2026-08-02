@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ToolDef, ToolFieldDef } from "../types";
 import { createSpecDocument, createPlanDocument } from "../../../rest/plans";
+import type { DesignsScope } from "../../../rest/plans";
 
 export const designCreateTool: ToolDef = {
   name: "design_create",
@@ -18,6 +19,7 @@ export const designCreateTool: ToolDef = {
     type: z.enum(["spec", "plan"]).describe("Document type: 'spec' for specifications (what), 'plan' for implementation plans (how)"),
     goal: z.string().optional().describe("For specs: the goal statement. For plans: the end-goal. Omit to leave empty."),
     specReference: z.string().optional().describe("For plans only: name of the spec this plan implements"),
+    scope: z.enum(["global", "project", "session"]).optional().describe("Scope (default: global)"),
     content: z.record(z.unknown()).optional().describe(
       "Optional full or partial document body. Fields here override the default empty template. " +
       "Keys for specs: goal, requirements (string[]), constraints (string[]), assumptions (string[]), acceptanceCriteria (string[]), parts (SpecPlanPart[]). " +
@@ -28,10 +30,12 @@ export const designCreateTool: ToolDef = {
     ),
   }),
   execute: async (args, ctx) => {
+    const scope = (args.scope || "global") as DesignsScope;
     if (args.type === "spec") {
       const result = await createSpecDocument({
         name: args.name, goal: args.goal || "", dataDir: ctx.dataDir,
         workspaceRoot: ctx.workspaceRoot, sessionId: ctx.sessionId, createdBy: "agent",
+        scope,
         content: args.content,
       });
       return { title: "Spec created", output: `Created spec v${result.version} for design "${args.name}" at ${result.path}`,
@@ -40,6 +44,7 @@ export const designCreateTool: ToolDef = {
       const result = await createPlanDocument({
         name: args.name, endGoal: args.goal || "", dataDir: ctx.dataDir,
         workspaceRoot: ctx.workspaceRoot, sessionId: ctx.sessionId, createdBy: "agent", specReference: args.specReference,
+        scope,
         content: args.content,
       });
       return { title: "Plan created", output: `Created plan v${result.version} for design "${args.name}" at ${result.path}`,

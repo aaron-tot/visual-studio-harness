@@ -1,11 +1,14 @@
 import { z } from "zod";
-import type { ToolDef } from "../types";
+import type { ToolDef, ToolFieldDef } from "../types";
 
 export const graphManifestTool: ToolDef = {
   name: "graph_manifest",
   description:
     "Get the workspace tree as structured text. Shows the folder/file hierarchy of all indexed source files. Use max_depth to limit tree depth.",
   permissionDefault: "allow",
+  outputFields: [
+    { name: "manifest", type: "string", description: "Workspace tree as structured text", required: true },
+  ],
   inputSchema: z.object({
     max_depth: z
       .number()

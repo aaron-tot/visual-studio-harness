@@ -13,13 +13,11 @@ export const graphInfoTool: ToolDef = {
     if (!ctx.graphService) {
       return { title: "graph_info", output: "Graph service not available", isError: true };
     }
-    const [imports, exports, allSymbols] = await Promise.all([
+    const [imports, exports, symbols] = await Promise.all([
       ctx.graphService.query.listImports(args.file_path),
       ctx.graphService.query.listExports(args.file_path),
-      ctx.graphService.query.findSymbol(""),
+      ctx.graphService.query.findSymbolsByFile(args.file_path),
     ]);
-
-    const symbols = allSymbols.filter((s) => s.filePath === args.file_path);
 
     const sections: string[] = [];
 

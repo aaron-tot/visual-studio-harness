@@ -77,6 +77,20 @@ describe("system-prompt assembly", () => {
     expect(datetimeIdx).toBeGreaterThan(runtimeIdx);
   });
 
+  test("buildSystemBlock renders turn_elapsed from turnStart", async () => {
+    const block = await buildSystemBlock({
+      dataDir,
+      workspaceRoot,
+      mode: "dev",
+      sessionId: "sess-1",
+      now: new Date("2026-07-12T21:00:12.500Z"),
+      turnStart: new Date("2026-07-12T21:00:00.000Z"),
+    });
+
+    expect(block).toContain("- datetime: 2026-07-12T21:00:12.500Z");
+    expect(block).toContain("- turn_elapsed: 12.5s");
+  });
+
   test("edited global file is used; defaults are not re-injected", async () => {
     await ensureGlobalSystemPromptFile(dataDir, "dev");
     await writeFile(globalSystemPromptPath(dataDir), "# Edited global\n\n- never force-push\n");

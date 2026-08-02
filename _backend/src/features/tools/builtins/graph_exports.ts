@@ -1,11 +1,15 @@
 import { z } from "zod";
-import type { ToolDef } from "../types";
+import type { ToolDef, ToolFieldDef } from "../types";
 
 export const graphExportsTool: ToolDef = {
   name: "graph_exports",
   description:
     "List all export statements for a file. Returns exported symbol names and whether they are default exports.",
   permissionDefault: "allow",
+  outputFields: [
+    { name: "symbol", type: "string", description: "Exported symbol name", required: true },
+    { name: "isDefault", type: "boolean", description: "Whether this is a default export", required: true },
+  ],
   inputSchema: z.object({
     file_path: z.string().describe("File path relative to workspace root"),
   }),

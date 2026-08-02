@@ -29,11 +29,9 @@ export const designReadTool: ToolDef = {
     const pattern = args.type === "spec" ? SPEC_RE : PLAN_RE;
     const designsDir = resolveDesignsDir(ctx.dataDir, "global" as DesignsScope, ctx.workspaceRoot, ctx.sessionId);
     const pd = join(designsDir, args.name);
-    const { existsSync } = await import("node:fs");
     if (!existsSync(pd)) {
       return { title: "Not found", output: `Design "${args.name}" not found`, metadata: { found: false } };
     }
-    const { readdir } = await import("node:fs/promises");
     const entries = await readdir(pd);
     const matched: { version: number; file: string }[] = [];
     for (const f of entries) {

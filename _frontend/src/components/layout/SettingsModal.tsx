@@ -16,10 +16,13 @@ import { McpServersPanel } from "../settings/McpServersPanel";
 import { McpServerEditor } from "../settings/McpServerEditor";
 import { useConfigStore } from "../../stores/config";
 import { PRECONFIGURED_PROVIDERS } from "../../../../_shared/provider-registry";
+import { ScopePicker } from "../../features/info-panel/components/ScopePicker";
+import type { PlanScope } from "../../features/info-panel/types";
+import { MdsScopePaths } from "../../features/mds/MdsScopePaths";
 
 const TEMPLATE_NAMES = PRECONFIGURED_PROVIDERS.map((d) => d.name);
 
-type Tab = "general" | "providers" | "mcp" | "agents" | "mds" | "tools" | "system" | "shortcuts" | "test-models" | "knowledge";
+type Tab = "general" | "providers" | "mcp" | "agents" | "mds" | "mdsV2" | "tools" | "system" | "shortcuts" | "test-models" | "knowledge";
 
 interface SettingsModalProps {
   open: boolean;
@@ -39,6 +42,7 @@ export function SettingsModal({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [mcpSelectedIndex, setMcpSelectedIndex] = useState<number | null>(null);
   const { config } = useConfigStore();
+  const [selectedMdsScope, setSelectedMdsScope] = useState<PlanScope>("global");
 
   const selectedProvider = tab === "providers" && selectedIndex !== null ? config.providers[selectedIndex] : null;
   const isTemplate = selectedProvider
@@ -80,6 +84,7 @@ export function SettingsModal({
           {tabBtn("mcp", "MCP")}
           {tabBtn("agents", "Agents")}
           {tabBtn("mds", "MD Files")}
+          {tabBtn("mdsV2", "MDS V2")}
           {tabBtn("tools", "Tools")}
           {tabBtn("system", "System Prompt")}
           {tabBtn("shortcuts", "Shortcuts")}
@@ -157,6 +162,20 @@ export function SettingsModal({
           {tab === "mds" && (
             <div key={`mds-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
               <MdManager sessionId={sessionId} />
+            </div>
+          )}
+          {tab === "mdsV2" && (
+            <div key={`mds-v2-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-zinc-100">MDS V2 — Scoped Prompt Files</h2>
+                  <ScopePicker
+                    scope={selectedMdsScope}
+                    onChange={setSelectedMdsScope}
+                  />
+                </div>
+                <MdsScopePaths scope={selectedMdsScope} sessionId={sessionId} />
+              </div>
             </div>
           )}
 

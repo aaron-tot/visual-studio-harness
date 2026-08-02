@@ -1,11 +1,16 @@
 import { z } from "zod";
-import type { ToolDef } from "../types";
+import type { ToolDef, ToolFieldDef } from "../types";
 
 export const graphImportsTool: ToolDef = {
   name: "graph_imports",
   description:
     "List all import statements for a file. Returns module paths, imported symbols, and import types (default, named, namespace, sideEffect).",
   permissionDefault: "allow",
+  outputFields: [
+    { name: "module", type: "string", description: "Imported module path", required: true },
+    { name: "importType", type: "string", description: "Import type (default, named, namespace, sideEffect)", required: true },
+    { name: "symbols", type: "string[]", description: "Imported symbol names", required: false },
+  ],
   inputSchema: z.object({
     file_path: z.string().describe("File path relative to workspace root"),
   }),

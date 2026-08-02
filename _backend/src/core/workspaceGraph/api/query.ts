@@ -54,6 +54,33 @@ export function createQueryApi(
       }));
     },
 
+    async findSymbolsByFile(filePath: string): Promise<SymbolMatch[]> {
+      const rows = await db
+        .select()
+        .from(schema.symbols)
+        .innerJoin(schema.files, eq(schema.symbols.fileId, schema.files.id))
+        .where(eq(schema.files.path, filePath));
+
+      return rows.map((r: any) => ({
+        symbol: {
+          id: r.symbols.id,
+          name: r.symbols.name,
+          kind: r.symbols.kind,
+          fileId: r.symbols.fileId,
+          exported: r.symbols.exported,
+          async: r.symbols.async,
+          static: r.symbols.static,
+          visibility: r.symbols.visibility as any,
+          signature: r.symbols.signature,
+          startLine: r.symbols.startLine,
+          endLine: r.symbols.endLine,
+          structuralHash: r.symbols.structuralHash,
+        },
+        filePath: r.files.path,
+        fileName: r.files.filename,
+      }));
+    },
+
     async findFunction(name: string): Promise<SymbolMatch[]> {
       return this.findSymbol(name, "function");
     },

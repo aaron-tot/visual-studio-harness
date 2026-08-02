@@ -28,12 +28,16 @@ export interface BuildSystemBlockInput {
   mode: string;
   sessionId?: string;
   now?: Date;
+  /** Turn start timestamp; renders `- turn_elapsed:` in the runtime block. */
+  turnStart?: Date;
   extras?: string[];
   agentSettings?: AgentSettings;
   noSystemPrompt?: boolean;
   systemPromptJoiners?: SystemPromptJoiners;
   workspaceManifest?: WorkspaceManifestSettings;
   graphService?: WorkspaceGraphService;
+  /** When true, skip ensureGlobalSystemPromptFile seeding (caller already seeded once per turn). */
+  skipSeed?: boolean;
 }
 
 export type JoinerKey = keyof SystemPromptJoiners;

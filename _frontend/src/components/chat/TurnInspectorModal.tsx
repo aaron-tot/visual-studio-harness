@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import type { TurnDetail, StepSummary } from "../../../_shared/types/trace";
-import { getTurn, getReconstructedRequests } from "../../lib/api";
+import { useState, useEffect, useMemo } from "react";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import type { TurnDetail, StepSummary, TurnRawCapture } from "../../../_shared/types/trace";
+import { getTurn, getReconstructedRequests, getTurnRaw } from "../../lib/api";
 import { ToolCacheGroups } from "./ToolCacheGroups";
 
 interface ReconstructedData {
@@ -126,10 +126,12 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reconstructed, setReconstructed] = useState<ReconstructedData | null>(null);
+  const [rawCapture, setRawCapture] = useState<TurnRawCapture | null>(null);
   const [rawLoading, setRawLoading] = useState(true);
   const [rawError, setRawError] = useState<string | null>(null);
-  const [rawResponse, setRawResponse] = useState<unknown>(null);
   const [rawTab, setRawTab] = useState<"sdk" | "provider" | "output">("sdk");
+  const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
+  const [stepFilter, setStepFilter] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -154,11 +156,15 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
     setRawError(null);
     Promise.all([
       getReconstructedRequests(sessionId, turnNumber).catch(() => null),
-      import("../../lib/api").then(m => m.getTurnRaw(sessionId, turnNumber)).catch(() => null),
+      getTurnRaw(sessionId, turnNumber).catch(() => null),
     ]).then(([rec, raw]) => {
       if (cancelled) return;
       setReconstructed(rec);
-      setRawResponse(raw?.rawResponse ?? null);
+      setRawCapture(raw);
+      if (raw?.steps?.length) {
+        const lastIdx = raw.steps.length - 1;
+        setSelectedStepIndex(raw.steps[lastIdx].stepIndex);
+      }
     }).catch(() => {
       if (!cancelled) setRawError("Failed to load raw capture");
     }).finally(() => {
@@ -166,6 +172,22 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
     });
     return () => { cancelled = true; };
   }, [sessionId, turnNumber]);
+
+  const selectedStep = useMemo(() => {
+    if (!rawCapture?.steps || selectedStepIndex === null) return null;
+    return rawCapture.steps.find(s => s.stepIndex === selectedStepIndex) ?? null;
+  }, [rawCapture, selectedStepIndex]);
+
+  const filteredSteps = useMemo(() => {
+    if (!rawCapture?.steps) return [];
+    return rawCapture.steps.filter(s =>
+      String(s.stepIndex).includes(stepFilter) ||
+      (s.modelId ?? "").toLowerCase().includes(stepFilter.toLowerCase()) ||
+      (s.providerName ?? "").toLowerCase().includes(stepFilter.toLowerCase()) ||
+      (s.finishReason ?? "").toLowerCase().includes(stepFilter.toLowerCase()) ||
+      (s.status ?? "").toLowerCase().includes(stepFilter.toLowerCase())
+    );
+  }, [rawCapture, stepFilter]);
 
   if (loading) {
     return (
@@ -272,7 +294,16 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
                   </thead>
                   <tbody>
                     {turn.steps.map((step: StepSummary) => (
-                      <tr key={step.stepIndex} className="border-b border-zinc-800/50 hover:bg-zinc-800/20">
+                      <tr
+                        key={step.stepIndex}
+                        onClick={() => {
+                          setSelectedStepIndex(step.stepIndex);
+                          setRawTab("sdk");
+                        }}
+                        className={`border-b border-zinc-800/50 hover:bg-zinc-800/20 cursor-pointer ${
+                          selectedStepIndex === step.stepIndex ? "bg-zinc-800/30" : ""
+                        }`}
+                      >
                         <td className="py-1 px-2 text-zinc-400 font-mono">{step.stepIndex}</td>
                         <td className="py-1 px-2">
                           <span className={`text-[10px] px-1 py-0.5 rounded ${stepStatusBadge(step.status)}`}>
@@ -335,57 +366,204 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
             </Collapsible>
           )}
 
-          {/* Raw Request/Response */}
-          <Collapsible title="Raw Request/Response">
-            <div className="space-y-2">
-              <div className="flex items-center gap-1 mb-2">
-                <button
-                  type="button"
-                  className={`text-xs px-2 py-1 rounded ${rawTab === "sdk" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
-                  onClick={() => setRawTab("sdk")}
-                >
-                  Request to SDK
-                </button>
-                <button
-                  type="button"
-                  className={`text-xs px-2 py-1 rounded ${rawTab === "provider" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
-                  onClick={() => setRawTab("provider")}
-                >
-                  Request to Provider
-                </button>
-                <button
-                  type="button"
-                  className={`text-xs px-2 py-1 rounded ${rawTab === "output" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
-                  onClick={() => setRawTab("output")}
-                >
-                  Response
-                </button>
-              </div>
-              {rawLoading && (
-                <div className="text-xs text-zinc-500 py-4 text-center">Loading raw capture...</div>
-              )}
-              {rawError && (
-                <div className="text-xs text-red-400 py-4 text-center">{rawError}</div>
-              )}
-              {!rawLoading && !rawError && (
-                <pre className="text-xs text-zinc-300 font-mono whitespace-pre-wrap break-all bg-zinc-950 rounded p-3 max-h-[40vh] overflow-auto">
-                  {rawTab === "output" ? (
-                    <JsonValue value={rawResponse} />
-                  ) : rawTab === "sdk" ? (
-                    <JsonValue value={reconstructed?.sdkRequest ?? null} />
-                  ) : (
-                    <JsonValue value={reconstructed?.providerRequest ?? null} />
+          {/* Raw Request/Response (step-scoped) */}
+          {rawCapture?.steps && rawCapture.steps.length > 0 && (
+            <Collapsible title="Raw Request/Response" defaultOpen={true}>
+              <div className="space-y-3">
+                {/* Step selector */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-zinc-500">Step:</label>
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600" size={12} />
+                      <input
+                        type="text"
+                        value={stepFilter}
+                        onChange={e => setStepFilter(e.target.value)}
+                        placeholder="Filter steps (index, model, finish reason, status)..."
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded px-6 py-1 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {filteredSteps.map(s => (
+                        <button
+                          key={s.stepIndex}
+                          type="button"
+                          onClick={() => setSelectedStepIndex(s.stepIndex)}
+                          className={`text-xs px-2 py-1 rounded transition-colors ${
+                            selectedStepIndex === s.stepIndex
+                              ? "bg-zinc-700 text-zinc-200"
+                              : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                          }`}
+                        >
+                          #{s.stepIndex}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {stepFilter && (
+                    <div className="text-[10px] text-zinc-500 ml-10">
+                      {filteredSteps.length} step{filteredSteps.length !== 1 ? "s" : ""} match
+                    </div>
                   )}
-                </pre>
-              )}
-              {!rawLoading && !rawError && !reconstructed && rawTab !== "output" && (
-                <div className="text-xs text-zinc-500 py-4 text-center">No reconstruction available.</div>
-              )}
-              {!rawLoading && !rawError && !rawResponse && rawTab === "output" && (
-                <div className="text-xs text-zinc-500 py-4 text-center">No raw response available.</div>
-              )}
-            </div>
-          </Collapsible>
+                </div>
+
+                {/* Per-step tabs */}
+                <div className="flex items-center gap-1 mb-2">
+                  <button
+                    type="button"
+                    className={`text-xs px-2 py-1 rounded ${rawTab === "sdk" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+                    onClick={() => setRawTab("sdk")}
+                  >
+                    Request to SDK
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-xs px-2 py-1 rounded ${rawTab === "provider" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+                    onClick={() => setRawTab("provider")}
+                  >
+                    Request to Provider
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-xs px-2 py-1 rounded ${rawTab === "output" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+                    onClick={() => setRawTab("output")}
+                  >
+                    Response
+                  </button>
+                </div>
+
+                {/* Step detail header */}
+                {selectedStep && (
+                  <div className="text-xs text-zinc-500 border-t border-zinc-800 pt-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono">Step #{selectedStep.stepIndex}</span>
+                      <span className={`px-1.5 py-0.5 rounded ${stepStatusBadge(selectedStep.status ?? "")}`}>
+                        {selectedStep.status}
+                      </span>
+                      {selectedStep.finishReason && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                          {selectedStep.finishReason}
+                        </span>
+                      )}
+                      {selectedStep.modelId && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                          {selectedStep.modelId}
+                        </span>
+                      )}
+                      {selectedStep.providerName && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                          {selectedStep.providerName}
+                        </span>
+                      )}
+                      {selectedStep.promptSnapshotId && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-blue-400">
+                          promptSnap:{selectedStep.promptSnapshotId}
+                        </span>
+                      )}
+                      {!selectedStep.hasPerStepRaw && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-amber-400">
+                          (fallback to turn-level)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-step system prompt */}
+                {selectedStep?.systemPrompt && (
+                  <details className="border border-zinc-800 rounded p-2">
+                    <summary className="text-xs text-zinc-500 cursor-pointer">System Prompt (this step)</summary>
+                    <pre className="text-[10px] text-zinc-300 font-mono whitespace-pre-wrap break-all mt-1 max-h-[30vh] overflow-auto">
+                      {selectedStep.systemPrompt}
+                    </pre>
+                  </details>
+                )}
+
+                {/* Content */}
+                {rawLoading && (
+                  <div className="text-xs text-zinc-500 py-4 text-center">Loading raw capture...</div>
+                )}
+                {rawError && (
+                  <div className="text-xs text-red-400 py-4 text-center">{rawError}</div>
+                )}
+                {!rawLoading && !rawError && selectedStep && (
+                  <pre className="text-xs text-zinc-300 font-mono whitespace-pre-wrap break-all bg-zinc-950 rounded p-3 max-h-[40vh] overflow-auto">
+                    {rawTab === "output" ? (
+                      <JsonValue value={selectedStep.response ?? null} />
+                    ) : rawTab === "sdk" ? (
+                      <JsonValue value={selectedStep.sdkRequest ?? null} />
+                    ) : (
+                      <JsonValue value={selectedStep.providerRequest ?? null} />
+                    )}
+                  </pre>
+                )}
+                {!rawLoading && !rawError && !selectedStep && (
+                  <div className="text-xs text-zinc-500 py-4 text-center">Select a step to view raw data</div>
+                )}
+                {!rawLoading && !rawError && selectedStep && rawTab === "output" && !selectedStep.response && (
+                  <div className="text-xs text-zinc-500 py-4 text-center">No raw response available for this step.</div>
+                )}
+                {!rawLoading && !rawError && selectedStep && rawTab !== "output" && !selectedStep.sdkRequest && !selectedStep.providerRequest && (
+                  <div className="text-xs text-zinc-500 py-4 text-center">No reconstruction available for this step.</div>
+                )}
+              </div>
+            </Collapsible>
+          )}
+
+          {/* Legacy turn-level raw (fallback when no per-step data) */}
+          {!rawCapture?.steps?.length && (
+            <Collapsible title="Raw Request/Response" defaultOpen={true}>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1 mb-2">
+                  <button
+                    type="button"
+                    className={`text-xs px-2 py-1 rounded ${rawTab === "sdk" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+                    onClick={() => setRawTab("sdk")}
+                  >
+                    Request to SDK
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-xs px-2 py-1 rounded ${rawTab === "provider" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+                    onClick={() => setRawTab("provider")}
+                  >
+                    Request to Provider
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-xs px-2 py-1 rounded ${rawTab === "output" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+                    onClick={() => setRawTab("output")}
+                  >
+                    Response
+                  </button>
+                </div>
+                {rawLoading && (
+                  <div className="text-xs text-zinc-500 py-4 text-center">Loading raw capture...</div>
+                )}
+                {rawError && (
+                  <div className="text-xs text-red-400 py-4 text-center">{rawError}</div>
+                )}
+                {!rawLoading && !rawError && (
+                  <pre className="text-xs text-zinc-300 font-mono whitespace-pre-wrap break-all bg-zinc-950 rounded p-3 max-h-[40vh] overflow-auto">
+                    {rawTab === "output" ? (
+                      <JsonValue value={rawCapture?.rawResponse ?? null} />
+                    ) : rawTab === "sdk" ? (
+                      <JsonValue value={reconstructed?.sdkRequest ?? null} />
+                    ) : (
+                      <JsonValue value={reconstructed?.providerRequest ?? null} />
+                    )}
+                  </pre>
+                )}
+                {!rawLoading && !rawError && !reconstructed && rawTab !== "output" && (
+                  <div className="text-xs text-zinc-500 py-4 text-center">No reconstruction available.</div>
+                )}
+                {!rawLoading && !rawError && !rawCapture?.rawResponse && rawTab === "output" && (
+                  <div className="text-xs text-zinc-500 py-4 text-center">No raw response available.</div>
+                )}
+              </div>
+            </Collapsible>
+          )}
         </div>
       </div>
     </div>

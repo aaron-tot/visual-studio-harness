@@ -8,5 +8,6 @@ export async function buildSection(ctx: SectionContext): Promise<string | null> 
     mode: ctx.mode,
     sessionId: ctx.sessionId,
     now: ctx.now,
+    turnStart: ctx.turnStart,
   });
 }

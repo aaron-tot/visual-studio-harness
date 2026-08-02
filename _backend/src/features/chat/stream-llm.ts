@@ -15,7 +15,7 @@ import { createVerboseFetch } from "./raw-capture-fetch";
 import { parseFinishStepEvent, flattenUsage } from "./step-finish-meta";
 
 export async function streamChat(options: StreamChatOptions): Promise<StreamChatResult> {
-  const { provider, model, messages, onToken, onReasoning, onToolCall, onToolResult, tools, maxSteps = 30, temperature, thinkingEffort, signal, hookCtx } = options;
+  const { provider, model, messages, onToken, onReasoning, onToolCall, onToolResult, tools, maxSteps = 30, temperature, thinkingEffort, signal, hookCtx, prepareStep } = options;
 
   const errCtx = { provider: provider.displayName, model };
   const retryConfig = {
@@ -24,15 +24,16 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
     errorName: options.streamRetryErrorName ?? DEFAULT_STREAM_RETRY_CONFIG.errorName,
     delayMs: options.streamRetryDelayMs ?? DEFAULT_STREAM_RETRY_CONFIG.delayMs,
   };
-  const cap = createVerboseFetch();
-  const { fetch: verboseFetch, captureDone: rawCaptureDone, getResponse: getRawResponse, getRequest: getRawRequest } = cap;
   let rawRequest: Record<string, unknown> | undefined;
   let rawResponse: Record<string, unknown> | undefined;
+  // Per-attempt capture/provider are recreated on retry so stale exchanges don't pollute step attribution
+  let lastCap: ReturnType<typeof createVerboseFetch> | undefined;
 
-  const sdkProvider = provider.displayName === "Test" ? null : createOpenAICompatible({
-    baseURL: provider.baseUrl, apiKey: provider.apiKey || "no-key",
-    headers: provider.headers, name: provider.displayName, fetch: verboseFetch,
-  });
+  const makeSdkProvider = (fetchImpl: typeof fetch) =>
+    provider.displayName === "Test" ? null : createOpenAICompatible({
+      baseURL: provider.baseUrl, apiKey: provider.apiKey || "no-key",
+      headers: provider.headers, name: provider.displayName, fetch: fetchImpl,
+    });
 
   const hasTools = tools && Object.keys(tools).length > 0;
   const bus = hookCtx ? getBus() : null;
@@ -58,6 +59,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   // Step tracking
   let steps: import("./stream-types").StreamStepSummary[] = [];
+  let stepExchangeStart: number[] = [];
   let stepIndexCounter = 0;
   let streamFinishReason: string | undefined;
   let streamRawFinishReason: string | undefined;
@@ -87,6 +89,10 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
         pendingTools = 0; turnEnded = false;
         options.onRetryAttempt?.(attempt);
       }
+      // Fresh capture per attempt so retried steps don't inherit stale exchanges
+      lastCap = createVerboseFetch();
+      const sdkProvider = makeSdkProvider(lastCap.fetch);
+      stepExchangeStart = [];
       if (DEBUG_CHAT_MESSAGES) {
         const ts = new Date().toISOString().slice(11, 19);
         console.log(`\n\n[${ts}] DEBUG: instructions`, instructions, "\n");
@@ -108,6 +114,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           : streamText({
               model: sdkProvider!(model),
               ...(instructions ? { instructions } : {}),
+              ...(prepareStep ? { prepareStep } : {}),
               messages: chatMessages,
               abortSignal: signal,
               maxRetries: 0,
@@ -146,6 +153,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
               ? (event as any).stepNumber
               : stepIndexCounter;
             stepIndexCounter = stepIndex + 1;
+            stepExchangeStart.push(lastCap!.getExchanges().length);
             const request = (event as any).request;
             const warnings = (event as any).warnings;
             options.onStepStart?.({ stepIndex, request, warnings });
@@ -290,9 +298,27 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   const finalParts = parts.length > 0 ? parts : undefined;
 
-  await Promise.race([rawCaptureDone, new Promise<void>((r) => setTimeout(r, 3000))]);
-  rawResponse = getRawResponse();
-  rawRequest = getRawRequest() ?? undefined;
+  await Promise.race([lastCap?.captureDone, new Promise<void>((r) => setTimeout(r, 3000))]);
+  rawResponse = lastCap?.getResponse();
+  rawRequest = lastCap?.getRequest() ?? undefined;
+
+  // Attribute captured exchanges to their step: step N owns exchanges from its
+  // recorded start up to the start of step N+1 (usually exactly one per step).
+  if (lastCap && stepExchangeStart.length > 0) {
+    const exchanges = lastCap.getExchanges();
+    steps.forEach((s, idx) => {
+      const start = stepExchangeStart[idx];
+      if (start === undefined) return;
+      const end = idx + 1 < stepExchangeStart.length ? stepExchangeStart[idx + 1] : exchanges.length;
+      const own = exchanges.slice(start, end);
+      const req = own[0]?.request;
+      const resp = own[own.length - 1]?.response;
+      if (req !== undefined || resp !== undefined) {
+        s.rawRequest = req;
+        s.rawResponse = resp;
+      }
+    });
+  }
 
   const totalUsage = streamTotalUsage ?? (steps.length > 0
     ? {

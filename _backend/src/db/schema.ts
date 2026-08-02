@@ -179,6 +179,13 @@ export const steps = sqliteTable("steps", {
   warningsJson: text("warnings_json"),
   requestMetaJson: text("request_meta_json"),
 
+  /** Per-step system prompt snapshot (what was actually sent for this step). */
+  promptSnapshotId: integer("prompt_snapshot_id")
+    .references(() => promptSnapshots.id),
+  /** Verbatim provider exchange for this step (request + parsed response). */
+  rawRequestJson: text("raw_request_json"),
+  rawResponseJson: text("raw_response_json"),
+
   startedAt: text("started_at"),
   completedAt: text("completed_at"),
 }, (t) => ({

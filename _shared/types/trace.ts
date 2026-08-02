@@ -67,6 +67,11 @@ export interface TraceStep {
   providerMetadataJson?: string;
   warningsJson?: string;
   requestMetaJson?: string;
+  /** Per-step system prompt snapshot (what was actually sent for this step). */
+  promptSnapshotId?: number;
+  /** Verbatim provider exchange for this step. */
+  rawRequestJson?: string;
+  rawResponseJson?: string;
   startedAt?: string;
   completedAt?: string;
 }
@@ -146,6 +151,34 @@ export interface StepSummary {
   responseModelId?: string;
   providerName?: string;
   responseId?: string;
+  /** Per-step system prompt snapshot id (what was sent for this step). */
+  promptSnapshotId?: number;
+}
+
+/** Per-step raw inspection payload served by /turns/:turnId/raw. */
+export interface TurnStepRawDetail {
+  stepIndex: number;
+  status?: string;
+  finishReason?: string;
+  modelId?: string;
+  providerName?: string;
+  promptSnapshotId?: number;
+  /** The system prompt actually used for this step (step snapshot, else turn-level). */
+  systemPrompt?: string;
+  /** Reconstructed SDK-level request (instructions = this step's prompt). */
+  sdkRequest?: Record<string, unknown> | null;
+  /** Verbatim provider request captured for this step (fallback: turn-level). */
+  providerRequest?: Record<string, unknown> | null;
+  /** Verbatim provider response captured for this step (fallback: turn-level). */
+  response?: Record<string, unknown> | null;
+  /** True when this step has its own per-step raw capture (not a turn-level fallback). */
+  hasPerStepRaw: boolean;
+}
+
+export interface TurnRawCapture {
+  rawRequest: unknown;
+  rawResponse: unknown;
+  steps: TurnStepRawDetail[];
 }
 
 export interface TurnDetail extends TurnSummary {

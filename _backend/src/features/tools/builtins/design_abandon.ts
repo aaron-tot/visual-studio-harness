@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { join } from "node:path";
 import { readFile, writeFile as writeFileAsync } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import type { ToolDef, ToolFieldDef } from "../types";
 import { resolveDesignsDir } from "../../../rest/plans";
 import type { DesignsScope, DesignMeta } from "../../../rest/plans";
@@ -24,7 +25,6 @@ export const designAbandonTool: ToolDef = {
     const designsDir = resolveDesignsDir(ctx.dataDir, "global" as DesignsScope, ctx.workspaceRoot, ctx.sessionId);
     const pd = join(designsDir, args.name);
     const metaPath = join(pd, "meta.json");
-    const { existsSync } = await import("node:fs");
     if (!existsSync(pd)) {
       return { title: "Not found", output: `Design "${args.name}" not found`, metadata: { abandoned: false } };
     }

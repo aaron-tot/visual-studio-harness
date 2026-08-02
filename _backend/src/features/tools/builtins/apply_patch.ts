@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ToolDef, ToolFieldDef } from "../types";
+import { resolveAccessiblePath } from "../path-access";
 import { applyPatchText } from "../host/patch";
 
 export const applyPatchTool: ToolDef = {

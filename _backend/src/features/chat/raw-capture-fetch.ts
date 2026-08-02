@@ -28,10 +28,22 @@ export function parseCapturedBody(rawText: string): Record<string, unknown> {
   }
 }
 
-export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promise<void>; getResponse: () => Record<string, unknown> | undefined; getRequest: () => Record<string, unknown> | undefined } {
+export interface CapturedExchange {
+  request?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+}
+
+export function createVerboseFetch(): {
+  fetch: typeof fetch;
+  captureDone: Promise<void>;
+  getResponse: () => Record<string, unknown> | undefined;
+  getRequest: () => Record<string, unknown> | undefined;
+  getExchanges: () => CapturedExchange[];
+} {
   const MAX_CAPTURE_SIZE_BYTES = 500 * 1024; // 500 KB (reduced from 10 MB to lower memory per turn)
   let rawRequest: Record<string, unknown> | undefined;
   let rawResponse: Record<string, unknown> | undefined;
+  const exchanges: CapturedExchange[] = [];
   let resolveCapture!: () => void;
   let settled = false;
   let captureSizeBytes = 0;
@@ -40,9 +52,10 @@ export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promis
 
   const verboseFetch: typeof fetch = async (input, init) => {
     // Capture the exact HTTP request body the SDK sends
+    const exchange: CapturedExchange = {};
     if (init && typeof init.body === "string") {
       try {
-        rawRequest = JSON.parse(init.body);
+        exchange.request = JSON.parse(init.body);
       } catch {}
     }
     const res = await fetch(input, { ...init, verbose: true } as RequestInit & { verbose: boolean });
@@ -52,17 +65,20 @@ export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promis
 
     const finishCapture = () => {
       if (captureOversized) {
-        rawResponse = { object: "chat.completion", _capture: "truncated (exceeded 500 KB)" } as Record<string, unknown>;
-        resolveCapture();
-        return;
+        exchange.response = { object: "chat.completion", _capture: "truncated (exceeded 500 KB)" } as Record<string, unknown>;
+      } else {
+        try {
+          const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+          const combined = new Uint8Array(totalLen);
+          let offset = 0;
+          for (const c of chunks) { combined.set(c, offset); offset += c.length; }
+          exchange.response = parseCapturedBody(new TextDecoder().decode(combined));
+        } catch {}
       }
-      try {
-        const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
-        const combined = new Uint8Array(totalLen);
-        let offset = 0;
-        for (const c of chunks) { combined.set(c, offset); offset += c.length; }
-        rawResponse = parseCapturedBody(new TextDecoder().decode(combined));
-      } catch {} finally { resolveCapture(); }
+      if (exchange.request !== undefined) rawRequest = exchange.request;
+      if (exchange.response !== undefined) rawResponse = exchange.response;
+      exchanges.push(exchange);
+      resolveCapture();
     };
 
     const capture = new TransformStream<Uint8Array, Uint8Array>({
@@ -86,5 +102,5 @@ export function createVerboseFetch(): { fetch: typeof fetch; captureDone: Promis
     });
   };
 
-  return { fetch: verboseFetch, captureDone, getResponse: () => rawResponse, getRequest: () => rawRequest };
+  return { fetch: verboseFetch, captureDone, getResponse: () => rawResponse, getRequest: () => rawRequest, getExchanges: () => exchanges };
 }

@@ -9,6 +9,8 @@ import type {
   TurnsFile,
   TurnData,
   AgentSettings,
+  TurnStepRawDetail,
+  TurnRawCapture,
 } from "../../_shared/types";
 
 const BASE = "/api";
@@ -211,7 +213,7 @@ export function getTurns(sessionId: string) {
 }
 
 export function getTurnRaw(sessionId: string, turnId: number) {
-  return fetchJson<{ rawRequest: unknown; rawResponse: unknown }>(
+  return fetchJson<TurnRawCapture>(
     `${BASE}/sessions/${encodeURIComponent(sessionId)}/turns/${turnId}/raw`
   );
 }
@@ -302,6 +304,123 @@ export async function updateMd(sessionId: string, path: string, opts: { newPath?
 export async function deleteMd(sessionId: string, path: string) {
   return fetchJson<{ ok: boolean }>(
     `${BASE}/mds/delete?sessionId=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(path)}`,
+    { method: "DELETE" }
+  );
+}
+
+export interface ScopeDirNode {
+  name: string;
+  type: "file" | "dir";
+  ext: string;
+  children: ScopeDirNode[];
+}
+
+export type ScopePathEntry =
+  | { available: true; path: string; tree: ScopeDirNode[]; tags: string[] }
+  | { available: false; reason: string };
+
+export interface ScopePathsResult {
+  mode: string;
+  dataDirSource: "env" | "portable" | "installed" | "dev" | "cwd";
+  dataDir: string;
+  workspaceRoot: string | null;
+  sessionId: string | null;
+  scopes: Record<"global" | "project" | "session", ScopePathEntry>;
+}
+
+export async function getMdsScopePaths(opts: { sessionId?: string; workspaceRoot?: string }) {
+  const params = new URLSearchParams();
+  if (opts.sessionId) params.set("sessionId", opts.sessionId);
+  if (opts.workspaceRoot) params.set("workspaceRoot", opts.workspaceRoot);
+  const qs = params.toString();
+  return fetchJson<ScopePathsResult>(`${BASE}/mds/scope-paths${qs ? `?${qs}` : ""}`);
+}
+
+function mdsScopeQuery(opts: { sessionId?: string; workspaceRoot?: string }): string {
+  const params = new URLSearchParams();
+  if (opts.sessionId) params.set("sessionId", opts.sessionId);
+  if (opts.workspaceRoot) params.set("workspaceRoot", opts.workspaceRoot);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export function createMdsScopeFolder(opts: {
+  scope: "global" | "project" | "session";
+  name: string;
+  sessionId?: string;
+  workspaceRoot?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(
+    `${BASE}/mds/scope-mkdir${mdsScopeQuery(opts)}`,
+    { method: "POST", body: JSON.stringify({ scope: opts.scope, name: opts.name }) }
+  );
+}
+
+export function renameMdsScopeFolder(opts: {
+  scope: "global" | "project" | "session";
+  from: string;
+  to: string;
+  sessionId?: string;
+  workspaceRoot?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(
+    `${BASE}/mds/scope-rename${mdsScopeQuery(opts)}`,
+    { method: "PUT", body: JSON.stringify({ scope: opts.scope, from: opts.from, to: opts.to }) }
+  );
+}
+
+export function createMdsScopeMd(opts: {
+  scope: "global" | "project" | "session";
+  name: string;
+  sessionId?: string;
+  workspaceRoot?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(
+    `${BASE}/mds/scope-create-md${mdsScopeQuery(opts)}`,
+    { method: "POST", body: JSON.stringify({ scope: opts.scope, name: opts.name }) }
+  );
+}
+
+function mdsScopeFileQuery(opts: { scope?: string; path?: string; sessionId?: string; workspaceRoot?: string }): string {
+  const params = new URLSearchParams();
+  if (opts.scope) params.set("scope", opts.scope);
+  if (opts.path) params.set("path", opts.path);
+  if (opts.sessionId) params.set("sessionId", opts.sessionId);
+  if (opts.workspaceRoot) params.set("workspaceRoot", opts.workspaceRoot);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export function readMdsScopeFile(opts: {
+  scope: "global" | "project" | "session";
+  path: string;
+  sessionId?: string;
+  workspaceRoot?: string;
+}) {
+  return fetchJson<{ content: string }>(`${BASE}/mds/scope-read-file${mdsScopeFileQuery(opts)}`);
+}
+
+export function writeMdsScopeFile(opts: {
+  scope: "global" | "project" | "session";
+  path: string;
+  content: string;
+  sessionId?: string;
+  workspaceRoot?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(
+    `${BASE}/mds/scope-write-file${mdsScopeQuery(opts)}`,
+    { method: "PUT", body: JSON.stringify({ scope: opts.scope, path: opts.path, content: opts.content }) }
+  );
+}
+
+export function deleteMdsScopeFolder(opts: {
+  scope: "global" | "project" | "session";
+  path: string;
+  sessionId?: string;
+  workspaceRoot?: string;
+}) {
+  return fetchJson<{ ok: boolean; path: string }>(
+    `${BASE}/mds/scope-delete${mdsScopeFileQuery(opts)}`,
     { method: "DELETE" }
   );
 }

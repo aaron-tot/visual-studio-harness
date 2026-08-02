@@ -6,3 +6,4 @@ export * from "./types/ws-protocol";
 export * from "./types/md";
 export * from "./types/plan";
 export * from "./types/research";
+export * from "./types/trace";

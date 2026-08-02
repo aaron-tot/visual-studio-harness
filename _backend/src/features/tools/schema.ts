@@ -11,6 +11,18 @@ function resolveInner(def: any): { typeName: string; inner: any } {
   if (def.typeName === "ZodOptional") {
     return resolveInner(def.innerType._def);
   }
+  if (def.typeName === "ZodNullable") {
+    return resolveInner(def.innerType._def);
+  }
+  if (def.typeName === "ZodDefault") {
+    return resolveInner(def.innerType._def);
+  }
+  if (def.typeName === "ZodEffects") {
+    return resolveInner(def.schema._def);
+  }
+  if (def.typeName === "ZodPipeline") {
+    return resolveInner(def.out._def);
+  }
   return { typeName: def.typeName, inner: def };
 }
 

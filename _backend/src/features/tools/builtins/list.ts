@@ -62,7 +62,7 @@ export const listTool: ToolDef = {
   execute: async (args, ctx) => {
     const explicitScope = args.scope as Scope | undefined;
     const feature = args.feature as Feature | undefined;
-    const config = args.configs?.[0];
+    const configs = args.configs ?? [];
     const groups: GroupData[] = [];
     let totalCount = 0;
 
@@ -92,22 +92,28 @@ export const listTool: ToolDef = {
           }
           case "knowledge": {
             const kb = getKbService();
-            const docs = await kb.listDocuments(
-              s,
-              {
-                extension: config?.extension,
-                status: config?.status,
-                createdBy: config?.createdBy,
-              },
-              ctx.workspaceRoot,
-              ctx.sessionId,
-            );
-            return (docs as any[]).map(
-              (d) =>
-                `  ID:${d.id}  ${d.filename}  (${d.extension}, ${d.fileSize} bytes, status: ${d.status}` +
-                `${d.tags?.length ? `, tags: ${d.tags.join(", ")}` : ""}` +
-                `${d.createdBy ? `, by: ${d.createdBy}` : ""})`,
-            );
+            const configsArr = configs.length > 0 ? configs : [undefined];
+            const lines: string[] = [];
+            for (const config of configsArr) {
+              const docs = await kb.listDocuments(
+                s,
+                {
+                  extension: config?.extension,
+                  status: config?.status,
+                  createdBy: config?.createdBy,
+                },
+                ctx.workspaceRoot,
+                ctx.sessionId,
+              );
+              for (const d of docs) {
+                lines.push(
+                  `  ID:${d.id}  ${d.filename}  (${d.extension ?? ""}, ${d.fileSize} bytes, status: ${d.status}` +
+                    `${d.tags?.length ? `, tags: ${d.tags.join(", ")}` : ""}` +
+                    `${d.createdBy ? `, by: ${d.createdBy}` : ""})`,
+                );
+              }
+            }
+            return lines;
           }
         }
       }, explicitScope);

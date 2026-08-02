@@ -15,7 +15,15 @@ export function setSkillRoots(roots: string[]) {
   skillRoots = roots;
 }
 
+/** Cached skill names with timestamp for TTL invalidation. */
+let skillNamesCache: { names: string[]; timestamp: number } | null = null;
+const SKILL_CACHE_TTL = 30_000; // 30 seconds
+
 async function listSkillNames(): Promise<string[]> {
+  const now = Date.now();
+  if (skillNamesCache && now - skillNamesCache.timestamp < SKILL_CACHE_TTL) {
+    return skillNamesCache.names;
+  }
   const names = new Set<string>();
   for (const root of skillRoots) {
     if (!existsSync(root)) continue;
@@ -33,7 +41,9 @@ async function listSkillNames(): Promise<string[]> {
       // ignore
     }
   }
-  return [...names].sort();
+  const sorted = [...names].sort();
+  skillNamesCache = { names: sorted, timestamp: now };
+  return sorted;
 }
 
 async function resolveSkillFile(name: string): Promise<string | null> {

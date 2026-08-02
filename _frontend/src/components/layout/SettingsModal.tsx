@@ -7,10 +7,10 @@ import { TemplateProviderEditor } from "../settings/TemplateProviderEditor";
 import { AgentsPanel } from "../settings/AgentsPanel";
 import { ToolsPanel } from "../settings/ToolsPanel";
 import { GeneralPanel } from "../settings/GeneralPanel";
-import { SystemPromptPanel } from "../settings/SystemPromptPanel";
 import { ShortcutsPanel } from "../settings/ShortcutsPanel";
 import { TestModelsPanel } from "../settings/TestModelsPanel";
 import { KnowledgeSettingsPanel } from "../settings/KnowledgeSettingsPanel";
+import { SystemPromptPanel } from "../settings/SystemPromptPanel";
 import { McpServersPanel } from "../settings/McpServersPanel";
 import { McpServerEditor } from "../settings/McpServerEditor";
 import { useConfigStore } from "../../stores/config";
@@ -21,7 +21,9 @@ import { MdsScopePaths } from "../../features/mds/MdsScopePaths";
 
 const TEMPLATE_NAMES = PRECONFIGURED_PROVIDERS.map((d) => d.name);
 
-type Tab = "general" | "providers" | "mcp" | "agents" | "mdsV2" | "tools" | "system" | "shortcuts" | "test-models" | "knowledge";
+type Tab = "general" | "providers" | "agents" | "prompts" | "tools" | "knowledge" | "test-models";
+type ToolsSubTab = "builtin" | "custom" | "mcp";
+type PromptsSubTab = "mds" | "system";
 
 interface SettingsModalProps {
   open: boolean;
@@ -42,6 +44,10 @@ export function SettingsModal({
   const [mcpSelectedIndex, setMcpSelectedIndex] = useState<number | null>(null);
   const { config } = useConfigStore();
   const [selectedMdsScope, setSelectedMdsScope] = useState<PlanScope>("global");
+  const [toolsSubTab, setToolsSubTab] = useState<ToolsSubTab>("builtin");
+  const [promptsSubTab, setPromptsSubTab] = useState<PromptsSubTab>("mds");
+
+  const isDev = import.meta.env.DEV;
 
   const selectedProvider = tab === "providers" && selectedIndex !== null ? config.providers[selectedIndex] : null;
   const isTemplate = selectedProvider
@@ -68,6 +74,20 @@ export function SettingsModal({
     </button>
   );
 
+  const subTabBtn = <T extends string>(current: T, value: T, label: string, setter: (v: T) => void) => (
+    <button
+      type="button"
+      onClick={() => setter(value)}
+      className={`rounded px-2 py-1 text-xs ${
+        current === value
+          ? "bg-zinc-700 text-zinc-100"
+          : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-start justify-center pt-[10vh] z-50"
@@ -80,14 +100,11 @@ export function SettingsModal({
         <div className="flex items-center gap-1 px-3 pt-3 pb-2 border-b border-zinc-800">
           {tabBtn("general", "General")}
           {tabBtn("providers", "Providers")}
-          {tabBtn("mcp", "MCP")}
           {tabBtn("agents", "Agents")}
-          {tabBtn("mdsV2", "MDS V2")}
+          {tabBtn("prompts", "Prompts & Skills")}
           {tabBtn("tools", "Tools")}
-          {tabBtn("system", "System Prompt")}
-          {tabBtn("shortcuts", "Shortcuts")}
-          {tabBtn("test-models", "Test Models")}
           {tabBtn("knowledge", "Knowledge")}
+          {isDev && tabBtn("test-models", "Test Models")}
           <button
             onClick={onClose}
             className="ml-auto text-zinc-400 hover:text-zinc-200 p-1"
@@ -99,8 +116,12 @@ export function SettingsModal({
 
         <div className="flex-1 min-h-0 flex overflow-hidden">
           {tab === "general" && (
-            <div key={`general-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
+            <div key={`general-${tabVersion}`} className="flex-1 p-4 overflow-y-auto space-y-6">
               <GeneralPanel />
+              <div className="border-t border-zinc-800 pt-4">
+                <h3 className="text-sm font-medium text-zinc-300 mb-3">Keyboard Shortcuts</h3>
+                <ShortcutsPanel />
+              </div>
             </div>
           )}
 
@@ -131,62 +152,67 @@ export function SettingsModal({
             </>
           )}
 
-          {tab === "mcp" && (
-            <>
-              <div className="w-64 border-r border-zinc-800 flex flex-col overflow-clip">
-                <div className="flex-1 min-h-0 overflow-y-auto p-3">
-                  <McpServersPanel
-                    onSelect={(i) => setMcpSelectedIndex(i >= 0 ? i : null)}
-                    selectedIndex={mcpSelectedIndex}
-                  />
-                </div>
-              </div>
-              <div className="flex-1 p-4 overflow-y-auto">
-                {mcpSelectedIndex !== null ? (
-                  <McpServerEditor serverIndex={mcpSelectedIndex} />
-                ) : (
-                  <p className="text-sm text-zinc-500">Select an MCP server to edit</p>
-                )}
-              </div>
-            </>
-          )}
-
           {tab === "agents" && (
             <div key={`agents-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
               <AgentsPanel />
             </div>
           )}
 
-          {tab === "mdsV2" && (
-            <div key={`mds-v2-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-medium text-zinc-100">MDS V2 — Scoped Prompt Files</h2>
-                  <ScopePicker
-                    scope={selectedMdsScope}
-                    onChange={setSelectedMdsScope}
-                  />
-                </div>
-                <MdsScopePaths scope={selectedMdsScope} sessionId={sessionId} />
+          {tab === "prompts" && (
+            <div key={`prompts-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
+              <div className="flex gap-2 mb-4">
+                {subTabBtn(promptsSubTab, "mds", "MDS", setPromptsSubTab)}
+                {subTabBtn(promptsSubTab, "system", "System Prompt", setPromptsSubTab)}
               </div>
+              {promptsSubTab === "mds" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-medium text-zinc-100">Scoped Prompt Files</h2>
+                    <ScopePicker scope={selectedMdsScope} onChange={setSelectedMdsScope} />
+                  </div>
+                  <MdsScopePaths scope={selectedMdsScope} sessionId={sessionId} />
+                </div>
+              )}
+              {promptsSubTab === "system" && <SystemPromptPanel />}
             </div>
           )}
 
           {tab === "tools" && (
-            <div key={`tools-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
-              <ToolsPanel sessionId={sessionId || ""} />
-            </div>
-          )}
-
-          {tab === "system" && (
-            <div key={`system-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
-              <SystemPromptPanel />
-            </div>
-          )}
-
-          {tab === "shortcuts" && (
-            <div key={`shortcuts-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
-              <ShortcutsPanel />
+            <div key={`tools-${tabVersion}`} className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex gap-2 px-4 pt-3 pb-2 border-b border-zinc-800">
+                {subTabBtn(toolsSubTab, "builtin", "Builtin", setToolsSubTab)}
+                {subTabBtn(toolsSubTab, "custom", "Custom", setToolsSubTab)}
+                {subTabBtn(toolsSubTab, "mcp", "MCP", setToolsSubTab)}
+              </div>
+              {toolsSubTab === "builtin" && (
+                <div className="flex-1 p-4 overflow-y-auto">
+                  <ToolsPanel sessionId={sessionId || ""} />
+                </div>
+              )}
+              {toolsSubTab === "custom" && (
+                <div className="flex-1 flex items-center justify-center text-sm text-zinc-500">
+                  Coming soon...
+                </div>
+              )}
+              {toolsSubTab === "mcp" && (
+                <div className="flex-1 flex overflow-hidden">
+                  <div className="w-64 border-r border-zinc-800 flex flex-col overflow-clip">
+                    <div className="flex-1 min-h-0 overflow-y-auto p-3">
+                      <McpServersPanel
+                        onSelect={(i) => setMcpSelectedIndex(i >= 0 ? i : null)}
+                        selectedIndex={mcpSelectedIndex}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex-1 p-4 overflow-y-auto">
+                    {mcpSelectedIndex !== null ? (
+                      <McpServerEditor serverIndex={mcpSelectedIndex} />
+                    ) : (
+                      <p className="text-sm text-zinc-500">Select an MCP server to edit</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -206,7 +206,7 @@ function CustomToolModal({
                 className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-200"
                 title="Fill sample schema"
               >
-                <FlaskConical className="h-3 w-3" /> Sample
+                <Beaker className="h-3 w-3" /> Sample
               </button>
             </div>
             <textarea
@@ -230,7 +230,7 @@ function CustomToolModal({
                 className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-200"
                 title="Fill sample code"
               >
-                <FlaskConical className="h-3 w-3" /> Sample
+                <Beaker className="h-3 w-3" /> Sample
               </button>
             </div>
             <textarea

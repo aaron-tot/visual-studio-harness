@@ -448,6 +448,35 @@ export function getTools() {
   return fetchJson<{ tools: ToolMeta[] }>(`${BASE}/tools`);
 }
 
+export interface CustomTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  code: string;
+  enabled: boolean;
+  permissionDefault?: string;
+}
+
+export function getCustomTools() {
+  return fetchJson<{ tools: CustomTool[] }>(`${BASE}/custom-tools`);
+}
+
+export function createCustomTool(tool: Partial<CustomTool>) {
+  return fetchJson<{ ok: boolean; tool: CustomTool }>(`${BASE}/custom-tools`, { method: "POST", body: JSON.stringify(tool) });
+}
+
+export function updateCustomTool(name: string, tool: Partial<CustomTool>) {
+  return fetchJson<{ ok: boolean; tool: CustomTool }>(`${BASE}/custom-tools/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(tool) });
+}
+
+export function deleteCustomTool(name: string) {
+  return fetchJson<{ ok: boolean }>(`${BASE}/custom-tools/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+export function toggleCustomTool(name: string) {
+  return fetchJson<{ ok: boolean; enabled: boolean }>(`${BASE}/custom-tools/${encodeURIComponent(name)}/toggle`, { method: "POST" });
+}
+
 export function getTurn(sessionId: string, turnId: number) {
   return fetchJson<{ turn: TurnData }>(
     `${BASE}/sessions/${encodeURIComponent(sessionId)}/turns/${turnId}`

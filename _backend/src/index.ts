@@ -22,6 +22,7 @@ import { registerNotesRoutes } from "./rest/notes";
 import { registerAuditsRoutes } from "./rest/audits";
 import { registerResearchRoutes } from "./rest/research";
 import { registerAuditPromptsRoutes } from "./rest/audit-prompts";
+import { registerCustomToolsRoutes } from "./rest/custom-tools";
 import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
 import { setWorkspaceGraphManager, getWorkspaceGraphManager } from "./core/workspaceGraph/service-singleton";

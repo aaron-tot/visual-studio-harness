@@ -195,7 +195,20 @@ function CustomToolModal({
 
           {/* Schema */}
           <div>
-            <label className="mb-1 block text-xs text-zinc-400">Input Schema (JSON)</label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs text-zinc-400">Input Schema (JSON)</label>
+              <button
+                onClick={() => setSchemaRaw(JSON.stringify({
+                  type: "object",
+                  properties: { name: { type: "string", description: "Name to greet" } },
+                  required: ["name"],
+                }, null, 2))}
+                className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-200"
+                title="Fill sample schema"
+              >
+                <Beaker className="h-3 w-3" /> Sample
+              </button>
+            </div>
             <textarea
               value={schemaRaw}
               onChange={(e) => setSchemaRaw(e.target.value)}
@@ -206,7 +219,20 @@ function CustomToolModal({
 
           {/* Code */}
           <div>
-            <label className="mb-1 block text-xs text-zinc-400">Code</label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs text-zinc-400">Code</label>
+              <button
+                onClick={() => setCode([
+                  "// args: { name: string }",
+                  "// ctx: { sessionId, workspaceRoot, dataDir, callId }",
+                  "return `Hello, ${args.name}!`;",
+                ].join("\n"))}
+                className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-200"
+                title="Fill sample code"
+              >
+                <Beaker className="h-3 w-3" /> Sample
+              </button>
+            </div>
             <textarea
               value={code}
               onChange={(e) => setCode(e.target.value)}

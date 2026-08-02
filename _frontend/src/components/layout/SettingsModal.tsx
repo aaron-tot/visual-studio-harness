@@ -191,8 +191,8 @@ export function SettingsModal({
                 </div>
               )}
               {toolsSubTab === "custom" && (
-                <div className="flex-1 flex items-center justify-center text-sm text-zinc-500">
-                  Coming soon...
+                <div className="flex-1 overflow-y-auto">
+                  <CustomToolsPanel />
                 </div>
               )}
               {toolsSubTab === "mcp" && (

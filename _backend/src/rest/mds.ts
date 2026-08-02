@@ -71,6 +71,9 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
     }
     const rel = safeRelPath(body.name);
     if (!rel) return reply.code(400).send({ error: "invalid folder name" });
+    if (RESERVED_MDS_DIRS.has(rel)) {
+      return reply.code(400).send({ error: `"${rel}" is a reserved folder name` });
+    }
 
     const { resolvedDataDir, wsRoot } = await resolveMdsContext(q);
     const base = resolveMdsScopeDir(scope, resolvedDataDir, wsRoot || undefined, q.sessionId);

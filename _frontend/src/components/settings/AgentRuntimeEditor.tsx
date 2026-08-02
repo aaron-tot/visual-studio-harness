@@ -332,14 +332,11 @@ export function AgentRuntimeEditor({
                 )}
               </div>
             </div>
+            {/* AGENTS.md is a separate mechanism (project root, not an MDS scope item) — display only. */}
             {workspaceAgentsMd && (
-              <button
-                onClick={() => setEditTarget({ scope: "project", relPath: "agents.md", ext: "md" })}
-                className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
-              >
-                <Edit3 className="h-3 w-3" />
-                Edit
-              </button>
+              <span className="shrink-0 rounded border border-zinc-800 px-1.5 py-1 text-[10px] uppercase tracking-wide text-zinc-600">
+                auto-loaded
+              </span>
             )}
           </div>
           <p className="mt-1.5 text-[11px] text-zinc-500">

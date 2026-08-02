@@ -1,11 +1,9 @@
-import { join, resolve, extname } from "node:path";
+import { join, dirname, extname } from "node:path";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { getSession } from "../storage/session";
-import { resolveDataDirInfo } from "../paths";
-import { projectScopedMdsDir, resolveMdsScopeDir, seedsDir } from "../features/mds/paths";
-
-import type { FastifyInstance } from "fastify";
+import { getSession } from "../../storage/session";
+import { resolveDataDirInfo } from "../../paths";
+import { seedsDir } from "./paths";
 
 export interface ScopeDirNode {
   name: string;
@@ -19,7 +17,7 @@ export interface ScopeDirNode {
 /**
  * Collect unique tags across all prompt.json files under `dir` (recursive).
  */
-async function collectScopeTags(dir: string): Promise<string[]> {
+export async function collectScopeTags(dir: string): Promise<string[]> {
   const tags = new Set<string>();
   async function walk(d: string): Promise<void> {
     let entries;
@@ -63,7 +61,7 @@ export interface ScopeItem {
  * List MDS item folders (dirs containing prompt.md) under `dir`, recursively.
  * Item tags come from each item's own prompt.json (not from folder location).
  */
-async function listScopeItems(dir: string): Promise<ScopeItem[]> {
+export async function listScopeItems(dir: string): Promise<ScopeItem[]> {
   const items: ScopeItem[] = [];
   async function walk(d: string, rel: string): Promise<void> {
     let entries;
@@ -100,7 +98,7 @@ async function listScopeItems(dir: string): Promise<ScopeItem[]> {
 }
 
 /** Walk a directory recursively, returning a full tree (dirs first, then files, alphabetical). */
-async function walkDir(dir: string): Promise<ScopeDirNode[]> {
+export async function walkDir(dir: string): Promise<ScopeDirNode[]> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     const nodes: ScopeDirNode[] = [];
@@ -131,7 +129,7 @@ async function walkDir(dir: string): Promise<ScopeDirNode[]> {
  * Bump `updatedAt` in the prompt.json inside `folder` (if it exists).
  * Preserves every other field. Safe when the edited file IS prompt.json.
  */
-async function bumpPromptJson(folder: string): Promise<void> {
+export async function bumpPromptJson(folder: string): Promise<void> {
   const jsonPath = join(folder, "prompt.json");
   if (!existsSync(jsonPath)) return;
   try {
@@ -148,10 +146,10 @@ async function bumpPromptJson(folder: string): Promise<void> {
 }
 
 /** Reserved top-level MDS dirs — auto-created in every scope, protected from delete/rename. */
-const RESERVED_MDS_DIRS = new Set(["_skills", "_SystemBase"]);
+export const RESERVED_MDS_DIRS = new Set(["_skills", "_SystemBase"]);
 
 /** Ensure the default reserved folders exist in a scope dir (global / project / session). */
-async function ensureDefaultMdsDirs(dir: string): Promise<void> {
+export async function ensureDefaultMdsDirs(dir: string): Promise<void> {
   for (const name of RESERVED_MDS_DIRS) {
     await mkdir(join(dir, name), { recursive: true });
   }
@@ -170,4 +168,25 @@ async function ensureDefaultMdsDirs(dir: string): Promise<void> {
       }
     }
   }
+}
+
+/** Validate a relative path: no `..`, no traversal, no empty segments. Returns normalized path or null. */
+export function safeRelPath(rel: string | undefined): string | null {
+  if (!rel) return null;
+  const normalized = rel.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normalized || normalized.length > 200) return null;
+  const segments = normalized.split("/");
+  if (segments.some((s) => !s || s === "." || s === "..")) return null;
+  return normalized;
+}
+
+/** Resolve the data dir + workspace root for scope routes (workspace falls back to the session's). */
+export async function resolveMdsContext(q: { sessionId?: string; workspaceRoot?: string }) {
+  const { dataDir: resolvedDataDir } = resolveDataDirInfo();
+  let wsRoot = (q.workspaceRoot || "").trim();
+  if (q.sessionId) {
+    const session = await getSession(resolvedDataDir, q.sessionId);
+    if (session?.meta?.workspaceRoot) wsRoot = session.meta.workspaceRoot;
+  }
+  return { resolvedDataDir, wsRoot };
 }

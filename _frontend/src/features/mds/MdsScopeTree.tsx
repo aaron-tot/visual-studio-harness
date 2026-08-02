@@ -143,7 +143,6 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
         onEditFile={onEditFile}
         onDeleteFolder={onDeleteFolder}
         onFolderDrop={onFolderDrop}
-        onFolderDrop={onFolderDrop}
       />
 
       {menu && (

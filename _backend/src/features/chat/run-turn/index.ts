@@ -194,8 +194,9 @@ export async function runTurn(
 
   const useTools = toolsEnabled();
   const mcpTools = getMcpManager().getTools();
+  const customTools = dataDir ? await loadCustomToolDefs(dataDir) : [];
   const registry = useTools
-    ? createDefaultRegistry({ exclude: input.excludeTools, extraTools: mcpTools }, config.agents)
+    ? createDefaultRegistry({ exclude: input.excludeTools, extraTools: [...mcpTools, ...customTools] }, config.agents)
     : null;
 
   setTodoDataDir(dataDir);

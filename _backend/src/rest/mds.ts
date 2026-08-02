@@ -120,6 +120,47 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
     } catch (err) {
       return reply.code(400).send({ error: `rename failed: ${err instanceof Error ? err.message : String(err)}` });
     }
+
+    // Update every path stored in config.json that references the moved folder.
+    const configPath = join(resolvedDataDir, "config.json");
+    try {
+      const configRaw = await readFile(configPath, "utf-8");
+      const config = JSON.parse(configRaw) as Record<string, unknown>;
+      const agents = config.agents as Record<string, Record<string, unknown>> | undefined;
+      if (agents && typeof agents === "object") {
+        let changed = false;
+        const oldPrefix = join(base, fromRel);
+        const newPrefix = join(base, toRel);
+        for (const key of Object.keys(agents)) {
+          const a = agents[key];
+          if (!a || typeof a !== "object") continue;
+          // agentMd.path
+          const amd = a.agentMd as Record<string, unknown> | undefined;
+          if (amd?.path && typeof amd.path === "string" && amd.path.startsWith(oldPrefix)) {
+            amd.path = amd.path.replace(oldPrefix, newPrefix);
+            changed = true;
+          }
+          // skillMds[].path
+          const skills = a.skillMds as Record<string, unknown>[] | undefined;
+          if (Array.isArray(skills)) {
+            for (const sk of skills) {
+              if (sk.path && typeof sk.path === "string" && sk.path.startsWith(oldPrefix)) {
+                sk.path = sk.path.replace(oldPrefix, newPrefix);
+                changed = true;
+              }
+            }
+          }
+        }
+        if (changed) {
+          await writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+          console.log(`[mds] auto-updated config paths for moved folder: ${fromRel} -> ${toRel}`);
+        }
+      }
+    } catch (err) {
+      // Config update is best-effort — don't fail the rename if config write fails.
+      console.warn(`[mds] failed to update config paths after rename:`, err instanceof Error ? err.message : err);
+    }
+
     return { ok: true, path: to };
   });
 

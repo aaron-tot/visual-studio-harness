@@ -97,6 +97,41 @@ def migrate(data_dir: str) -> None:
     elif os.path.exists(base_dst):
         print(f"  [skip] _SystemBase/systemPromptBase/prompt.md already exists")
 
+def fix_config_paths(data_dir: str) -> None:
+    """Update agent config.json paths: V1 flat .md -> V2 item folder prompt.md."""
+    cfg = os.path.join(data_dir, "config.json")
+    if not os.path.isfile(cfg):
+        return
+    try:
+        d = json.load(open(cfg, "r", encoding="utf-8"))
+    except Exception as e:
+        print(f"  [warn] can't read config.json: {e}")
+        return
+    agents = d.get("agents", {})
+    changed = False
+    for k, a in agents.items():
+        amd = a.get("agentMd", {})
+        path = amd.get("path", "")
+        if path and "/agent/" in path:
+            amd["path"] = path.replace("/agent/", "/").replace(".md", "/prompt.md")
+            changed = True
+            print(f"  config: {k} agentMd.path -> {amd['path']}")
+        skills = a.get("skillMds", [])
+        for si, s in enumerate(skills):
+            if not isinstance(s, dict):
+                continue
+            path = s.get("path", "")
+            if path and ("/skill/" in path or "/_skills/" in path):
+                s["path"] = path.replace("/skill/", "/_skills/").replace(".md", "/prompt.md")
+                changed = True
+                print(f"  config: {k} skillMds[{si}].path -> {s['path']}")
+    if changed:
+        with open(cfg, "w", encoding="utf-8") as f:
+            json.dump(d, f, indent=2)
+            f.write("\n")
+        print(f"  config: updated {cfg}")
+
 if __name__ == "__main__":
     for d in sys.argv[1:]:
         migrate(d)
+        fix_config_paths(d)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FolderPlus, Pencil, FilePlus } from "lucide-react";
 import { createMdsScopeFolder, createMdsScopeMd, renameMdsScopeFolder, deleteMdsScopeFolder, type ScopeDirNode } from "../../lib/api";
 import type { PlanScope } from "../info-panel/types";
@@ -88,6 +88,19 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
     onChanged();
   };
 
+  const onFolderDrop = useCallback(async (draggedRel: string, targetRel: string) => {
+    if (draggedRel === targetRel) return;
+    if (targetRel.startsWith(draggedRel + "/")) return; // can't drop into own descendant
+    const name = draggedRel.split("/").pop() || draggedRel;
+    const to = targetRel ? `${targetRel}/${name}` : name;
+    try {
+      await renameMdsScopeFolder({ scope, from: draggedRel, to, sessionId, workspaceRoot });
+      onChanged();
+    } catch (e) {
+      console.error("Move failed:", e);
+    }
+  }, [scope, sessionId, workspaceRoot, onChanged]);
+
   const onNewFolder = () => {
     const parent = menu?.mode === "folder" ? menu.relPath : undefined;
     setMenu(null);
@@ -129,6 +142,8 @@ export function MdsScopeTree({ scope, tree, sessionId, workspaceRoot, allTags, o
         }}
         onEditFile={onEditFile}
         onDeleteFolder={onDeleteFolder}
+        onFolderDrop={onFolderDrop}
+        onFolderDrop={onFolderDrop}
       />
 
       {menu && (

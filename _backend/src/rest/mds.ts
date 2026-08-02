@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { mkdir, writeFile, stat, rename, rm, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { getSession } from "../storage/session";

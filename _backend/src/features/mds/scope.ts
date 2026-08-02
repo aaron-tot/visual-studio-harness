@@ -155,13 +155,15 @@ async function ensureDefaultMdsDirs(dir: string): Promise<void> {
   for (const name of RESERVED_MDS_DIRS) {
     await mkdir(join(dir, name), { recursive: true });
   }
-  // Seed _SystemBase/prompt.md from the repo seeds when available (fresh installs only).
-  const base = join(dir, "_SystemBase", "prompt.md");
+  // Seed _SystemBase/{name}/prompt.md from the repo seeds when available (fresh installs only).
+  // _SystemBase is a container: the prompt lives in a sub-folder, like _skills.
+  const base = join(dir, "_SystemBase", "systemPromptBase", "prompt.md");
   if (!existsSync(base)) {
     const sDir = seedsDir();
     if (sDir) {
       try {
         const seed = await readFile(join(sDir, "dev", "mds", "systemPromptBase.md"), "utf-8");
+        await mkdir(dirname(base), { recursive: true });
         await writeFile(base, seed, "utf-8");
       } catch {
         // no seed file — leave _SystemBase empty

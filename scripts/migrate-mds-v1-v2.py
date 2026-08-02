@@ -81,9 +81,10 @@ def migrate(data_dir: str) -> None:
                 stem = name[:-3]
                 make_item(f"_skills/{name}", "_skills", stem)
 
-    # systemPromptBase.md -> _SystemBase/prompt.md
+    # systemPromptBase.md -> _SystemBase/systemPromptBase/prompt.md
+    # (_SystemBase is a container: the prompt lives in a sub-folder, like _skills)
     base_src = os.path.join(mds, "systemPromptBase.md")
-    base_dir = os.path.join(mds, "_SystemBase")
+    base_dir = os.path.join(mds, "_SystemBase", "systemPromptBase")
     base_dst = os.path.join(base_dir, "prompt.md")
     if os.path.isfile(base_src) and not os.path.exists(base_dst):
         os.makedirs(base_dir, exist_ok=True)
@@ -92,9 +93,9 @@ def migrate(data_dir: str) -> None:
         with open(os.path.join(base_dir, "prompt.json"), "w", encoding="utf-8") as f:
             json.dump({"createdAt": now, "updatedAt": now, "tags": ["global"]}, f, indent=2)
             f.write("\n")
-        print(f"  [ok] systemPromptBase.md -> _SystemBase/prompt.md")
+        print(f"  [ok] systemPromptBase.md -> _SystemBase/systemPromptBase/prompt.md")
     elif os.path.exists(base_dst):
-        print(f"  [skip] _SystemBase/prompt.md already exists")
+        print(f"  [skip] _SystemBase/systemPromptBase/prompt.md already exists")
 
 if __name__ == "__main__":
     for d in sys.argv[1:]:

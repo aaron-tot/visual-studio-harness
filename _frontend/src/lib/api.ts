@@ -343,6 +343,19 @@ export function renameMdsScopeFolder(opts: {
   );
 }
 
+export function transferMdsScopeFolder(opts: {
+  fromScope: "global" | "project" | "session";
+  relPath: string;
+  toScope: "global" | "project" | "session";
+  sessionId?: string;
+  workspaceRoot?: string;
+}) {
+  return fetchJson<{ ok: boolean; fromPath: string; toPath: string }>(
+    `${BASE}/mds/scope-transfer${mdsScopeQuery(opts)}`,
+    { method: "POST", body: JSON.stringify({ fromScope: opts.fromScope, toScope: opts.toScope, relPath: opts.relPath }) }
+  );
+}
+
 export function createMdsScopeMd(opts: {
   scope: "global" | "project" | "session";
   name: string;

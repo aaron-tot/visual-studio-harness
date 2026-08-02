@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 import type { SystemPromptJoiners } from "../../../_shared/types";
 import { AGENTS_MD_NAMES } from "./constants";
 
-/** Path to the global system prompt base file (the "constitution"). Not an AGENTS.md file. */
+/** Path to the global system prompt base file inside the _SystemBase container (V2 layout). */
 export function globalSystemPromptPath(dataDir: string): string {
-  return join(resolve(dataDir), "mds", "systemPromptBase.md");
+  return join(resolve(dataDir), "mds", "_SystemBase", "systemPromptBase", "prompt.md");
 }
 
 /** Legacy path (mds/global/agents.md) used prior to the switch to systemPromptBase.md — kept for migration. */

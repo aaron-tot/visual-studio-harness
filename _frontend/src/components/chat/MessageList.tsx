@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useCallback, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useChatStore } from "../../stores/chat";
 import { MessageRow } from "./MessageRow";
+import { ContextHistoryLine } from "./ContextHistoryLine";
 import { ThinkingIndicator } from "./parts/ThinkingIndicator";
 import type { MessagePartType } from "../../../_shared/types";
 
@@ -132,15 +133,21 @@ export function MessageList() {
   const visibleMessages = messages.filter((m) => m.role !== "system");
 
   return (
-    <div
-      className="flex-1 overflow-y-auto px-[5%] py-4 space-y-1 relative"
-      ref={scrollRef}
-      onScroll={handleScroll}
-      style={frozen ? { visibility: "hidden" } : undefined}
-      data-scroll
-    >
+    <div className="flex flex-1 overflow-hidden">
+      {sessionId && (
+        <div className="w-6 flex-shrink-0 relative z-10">
+          <ContextHistoryLine sessionId={sessionId} scrollRef={scrollRef} messageCount={visibleMessages.filter(m => m.turnId != null).length} />
+        </div>
+      )}
+      <div
+        className="flex-1 overflow-y-auto px-[5%] py-4 space-y-1"
+        ref={scrollRef}
+        onScroll={handleScroll}
+        style={frozen ? { visibility: "hidden" } : undefined}
+        data-scroll
+      >
       {visibleMessages.map((msg, i) => (
-        <div key={i} className="animate-in fade-in slide-in-from-bottom-1 duration-200">
+        <div key={i} data-turn-number={msg.turnId != null ? msg.turnId : undefined} className="animate-in fade-in slide-in-from-bottom-1 duration-200">
           <MessageRow message={msg} />
         </div>
       ))}
@@ -176,6 +183,7 @@ providerName: _pendingProviderName || sessionMeta?.providerName || undefined,
           </button>
         </div>
       )}
+    </div>
     </div>
   );
 }

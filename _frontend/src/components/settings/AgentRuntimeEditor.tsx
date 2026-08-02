@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { FileText, Edit3, Plus, AlertTriangle } from "lucide-react";
+import { FileText, Edit3, Plus, AlertTriangle, Undo2 } from "lucide-react";
 import type {
   AgentSettings,
+  AgentMdConfig,
   SkillMdConfig,
   ThinkingEffort,
 } from "../../../../_shared/types";
@@ -50,6 +51,9 @@ export function AgentRuntimeEditor({
   const [skillTagFilter, setSkillTagFilter] = useState("");
   const [skillSearch, setSkillSearch] = useState("");
   const [fileErrors, setFileErrors] = useState<Set<string>>(new Set());
+  const [showSysPromptBasePicker, setShowSysPromptBasePicker] = useState(false);
+  const [sysPromptBaseTab, setSysPromptBaseTab] = useState<"discover" | "custom">("discover");
+  const [customSysPromptBasePath, setCustomSysPromptBasePath] = useState("");
 
   useEffect(() => {
     const paths: string[] = [];

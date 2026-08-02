@@ -55,6 +55,7 @@ import {
 } from "../db-trace";
 import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
+import { getSessionModelConfigJson } from "../../sessions/db";
 import type { TurnCreateMeta, TurnInput, TurnEvents, TurnResult } from "../types";
 import { generateId, autoTitle, isAbortError } from "./util";
 import { asSchema } from "ai";
@@ -177,7 +178,20 @@ export async function runTurn(
 
   // ── Context refs ─────────────────────────────────────────────────
   const includeFailedTurns = config.includeFailedTurnsInHistory ?? true;
-  const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns });
+
+  // Read per-session context config (firstTurnNumber)
+  let firstTurnNumber: number | null = null;
+  if (sessionId && !isNew) {
+    try {
+      const raw = getSessionModelConfigJson(sessionId, dataDir);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        firstTurnNumber = parsed?.context?.firstTurnNumber ?? null;
+      }
+    } catch { /* ignore */ }
+  }
+
+  const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns, firstTurnNumber });
 
   await bus?.emit("message.user_persisted", hookCtx, { message: userMessage, sessionId });
   const session = await getSession(dataDir, sessionId);

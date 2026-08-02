@@ -1,7 +1,8 @@
 import { access, readdir, readFile, stat } from "node:fs/promises";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { AgentSettings, SkillMdConfig } from "../../../_shared/types";
+import type { SkillMdConfig, AgentMdConfig } from "../../../_shared/types";
+import { resolveMdsScopeDir } from "./paths";
 
 async function fileExists(path: string): Promise<boolean> {
   try { await access(path, constants.F_OK); return true; } catch { return false; }
@@ -71,14 +72,88 @@ async function readPromptPath(path: string): Promise<string | null> {
   }
 }
 
-export async function resolveAgentMd(agentMd: AgentSettings["agentMd"]): Promise<string | null> {
+export interface ResolveContext {
+  dataDir: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}
+
+/**
+ * Collect all MDS items matching a tag across available scopes.
+ * Scopes searched in order: session > project > global (most specific wins).
+ */
+async function resolveByTag(tag: string, scope: string | undefined, ctx?: ResolveContext): Promise<{ path: string; promptPath: string } | null> {
+  if (!ctx) return null;
+  const scopes: { name: string; dir: string | null }[] = [
+    { name: "session", dir: ctx.sessionId ? resolveMdsScopeDir("session", ctx.dataDir, undefined, ctx.sessionId) : null },
+    { name: "project", dir: ctx.workspaceRoot ? resolveMdsScopeDir("project", ctx.dataDir, ctx.workspaceRoot) : null },
+    { name: "global", dir: resolveMdsScopeDir("global", ctx.dataDir) },
+  ];
+
+  // If a specific scope is requested, search only that one
+  const searchScopes = scope ? scopes.filter((s) => s.name === scope) : scopes;
+
+  for (const { dir } of searchScopes) {
+    if (!dir || !existsSync(dir)) continue;
+    try {
+      const item = await findItemInScopeByTag(dir, tag);
+      if (item) return item;
+    } catch {
+      // skip unreadable scope
+    }
+  }
+  return null;
+}
+
+async function findItemInScopeByTag(scopeDir: string, tag: string): Promise<{ path: string; promptPath: string } | null> {
+  const entries = await readdir(scopeDir, { withFileTypes: true });
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const full = join(scopeDir, e.name);
+    // Check if this dir is an item folder (has prompt.md)
+    const mdPath = join(full, "prompt.md");
+    const jsonPath = join(full, "prompt.json");
+    if (existsSync(mdPath)) {
+      // Item folder — check tags
+      try {
+        const raw = await readFile(jsonPath, "utf-8");
+        const parsed = JSON.parse(raw) as { tags?: unknown };
+        const tags = Array.isArray(parsed.tags) ? parsed.tags.filter((t): t is string => typeof t === "string") : [];
+        if (tags.includes(tag)) {
+          return { path: full, promptPath: mdPath };
+        }
+      } catch {
+        // unreadable prompt.json — skip
+      }
+    } else {
+      // Container folder — recurse
+      const found = await findItemInScopeByTag(full, tag);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+export async function resolveAgentMd(agentMd: AgentMdConfig | undefined, ctx?: ResolveContext): Promise<string | null> {
   if (!agentMd) return null;
+  // Tag-based resolution (resilient to moves/renames)
+  if (agentMd.tag) {
+    const found = await resolveByTag(agentMd.tag, agentMd.scope, ctx);
+    if (found) return readPromptPath(found.promptPath);
+    // Tag not found — fall through to path-based as fallback
+  }
   if (agentMd.mode === "inline") return agentMd.content?.trim() || null;
   if (!agentMd.path) return null;
   return readPromptPath(agentMd.path);
 }
 
-async function resolveSingleSkillMd(skill: SkillMdConfig): Promise<string | null> {
+async function resolveSingleSkillMd(skill: SkillMdConfig, ctx?: ResolveContext): Promise<string | null> {
+  // Tag-based resolution
+  if (skill.tag) {
+    const found = await resolveByTag(skill.tag, skill.scope, ctx);
+    if (found) return readPromptPath(found.promptPath);
+    // Tag not found — fall through
+  }
   if (skill.mode === "custom") {
     if (!skill.path) return null;
     return readPromptPath(skill.path);
@@ -86,11 +161,11 @@ async function resolveSingleSkillMd(skill: SkillMdConfig): Promise<string | null
   return null;
 }
 
-export async function resolveSkillMds(skillMds: SkillMdConfig[] | undefined): Promise<string[]> {
+export async function resolveSkillMds(skillMds: SkillMdConfig[] | undefined, ctx?: ResolveContext): Promise<string[]> {
   if (!skillMds?.length) return [];
   const results: string[] = [];
   for (const skill of skillMds) {
-    const content = await resolveSingleSkillMd(skill);
+    const content = await resolveSingleSkillMd(skill, ctx);
     if (content) results.push(content);
   }
   return results;

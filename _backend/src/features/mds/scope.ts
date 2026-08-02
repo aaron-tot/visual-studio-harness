@@ -1,11 +1,11 @@
-import { join, dirname, extname } from "node:path";
+import { join, extname } from "node:path";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { getSession } from "../../storage/session";
 import { resolveDataDirInfo } from "../../paths";
 import { seedsDir, seedSubdirForMode } from "./paths";
 
-export interface ScopeDirNode {
+interface ScopeDirNode {
   name: string;
   type: "file" | "dir";
   ext: string;
@@ -49,7 +49,7 @@ export async function collectScopeTags(dir: string): Promise<string[]> {
   return [...tags].sort((a, b) => a.localeCompare(b));
 }
 
-export interface ScopeItem {
+interface ScopeItem {
   name: string;
   relPath: string;
   path: string;
@@ -153,10 +153,11 @@ export async function ensureDefaultMdsDirs(dir: string, mode: string): Promise<v
   for (const name of RESERVED_MDS_DIRS) {
     await mkdir(join(dir, name), { recursive: true });
   }
-  // Seed _SystemBase/{name}/prompt.md from the repo seeds when available (fresh installs only).
+  // Seed _SystemBase/{name}/prompt.md + prompt.json from the repo seeds when available (fresh installs only).
   // _SystemBase is a container: the prompt lives in a sub-folder, like _skills.
-  const base = join(dir, "_SystemBase", "systemPromptBase", "prompt.md");
-  if (!existsSync(base)) {
+  const itemDir = join(dir, "_SystemBase", "systemPromptBase");
+  const mdPath = join(itemDir, "prompt.md");
+  if (!existsSync(mdPath)) {
     const sDir = seedsDir();
     if (sDir) {
       try {
@@ -164,8 +165,18 @@ export async function ensureDefaultMdsDirs(dir: string, mode: string): Promise<v
           join(sDir, seedSubdirForMode(mode), "mds", "systemPromptBase.md"),
           "utf-8"
         );
-        await mkdir(dirname(base), { recursive: true });
-        await writeFile(base, seed, "utf-8");
+        await mkdir(itemDir, { recursive: true });
+        await writeFile(mdPath, seed, "utf-8");
+        // Seed prompt.json metadata alongside the md
+        const now = new Date().toISOString();
+        const jsonPath = join(itemDir, "prompt.json");
+        if (!existsSync(jsonPath)) {
+          await writeFile(
+            jsonPath,
+            JSON.stringify({ createdAt: now, updatedAt: now, tags: ["system-base"] }, null, 2) + "\n",
+            "utf-8"
+          );
+        }
       } catch {
         // no seed file — leave _SystemBase empty
       }

@@ -1190,3 +1190,20 @@ export function knowledgeUploadFile(file: File, scope?: string) {
     { method: "POST", body: formData }
   );
 }
+
+// ── Session context config (turn range for SDK history) ──────────────
+
+export interface SessionContextConfig {
+  firstTurnNumber: number | null;
+}
+
+export function getSessionContextConfig(sessionId: string) {
+  return fetchJson<SessionContextConfig>(`${BASE}/sessions/${sessionId}/context-config`);
+}
+
+export function putSessionContextConfig(sessionId: string, config: SessionContextConfig) {
+  return fetchJson<{ ok: boolean }>(`${BASE}/sessions/${sessionId}/context-config`, {
+    method: "PUT",
+    body: JSON.stringify(config),
+  });
+}

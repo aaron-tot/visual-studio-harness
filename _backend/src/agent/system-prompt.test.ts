@@ -285,14 +285,12 @@ describe("system-prompt assembly", () => {
 
   describe("resolveAgentMd", () => {
   test("returns null when agentMd is undefined", async () => {
-    expect(await resolveAgentMd(undefined, "", "")).toBeNull();
+    expect(await resolveAgentMd(undefined)).toBeNull();
   });
 
   test("returns trimmed inline content", async () => {
     const result = await resolveAgentMd(
       { mode: "inline", content: "  Hello Agent  " },
-      "",
-      ""
     );
     expect(result).toBe("Hello Agent");
   });
@@ -300,8 +298,6 @@ describe("system-prompt assembly", () => {
   test("returns null for inline content that is whitespace only", async () => {
     const result = await resolveAgentMd(
       { mode: "inline", content: "   " },
-      "",
-      ""
     );
     expect(result).toBeNull();
   });
@@ -311,8 +307,6 @@ describe("system-prompt assembly", () => {
     await writeFile(file, "# Agent Instructions\n\n- rule1\n");
     const result = await resolveAgentMd(
       { mode: "existing", path: file },
-      dataDir,
-      workspaceRoot
     );
     expect(result).toBe("# Agent Instructions\n\n- rule1");
   });
@@ -320,8 +314,6 @@ describe("system-prompt assembly", () => {
   test("returns null when existing mode file is missing", async () => {
     const result = await resolveAgentMd(
       { mode: "existing", path: "/nonexistent/file.md" },
-      "",
-      ""
     );
     expect(result).toBeNull();
   });
@@ -329,8 +321,6 @@ describe("system-prompt assembly", () => {
   test("returns null when existing mode has no path", async () => {
     const result = await resolveAgentMd(
       { mode: "existing" } as any,
-      "",
-      ""
     );
     expect(result).toBeNull();
   });

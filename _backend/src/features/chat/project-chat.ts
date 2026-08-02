@@ -146,7 +146,7 @@ export function projectStreamingContent(sessionId: string, dataDir?: string): st
 export function resolveContextTurnIds(
   sessionId: string,
   dataDir?: string,
-  opts?: { includeFailedTurns?: boolean },
+  opts?: { includeFailedTurns?: boolean; firstTurnNumber?: number | null },
 ): number[] {
   const db = dbFor(dataDir);
   const includeFailed = opts?.includeFailedTurns ?? true;
@@ -157,13 +157,27 @@ export function resolveContextTurnIds(
     : and(eq(turns.sessionId, sessionId), eq(turns.success, true));
 
   const rows = db
-    .select({ id: turns.id })
+    .select({ id: turns.id, turnNumber: turns.turnNumber })
     .from(turns)
     .where(whereClause)
     .orderBy(turns.turnNumber)
     .all();
 
-  return rows.map((r) => r.id);
+  let results = rows.map((r) => r.id);
+
+  // Apply firstTurnNumber filter (null = all turns, current behavior)
+  const firstTn = opts?.firstTurnNumber;
+  if (firstTn != null && firstTn > 0) {
+    const firstId = rows.find((r) => r.turnNumber >= firstTn)?.id;
+    if (firstId != null) {
+      const idx = results.indexOf(firstId);
+      if (idx > 0) {
+        results = results.slice(idx);
+      }
+    }
+  }
+
+  return results;
 }
 
 // ── Turn summary/detail projections ───────────────────────────────────

@@ -36,12 +36,20 @@ export interface AgentMdConfig {
   mode: "existing" | "inline";
   path?: string;
   content?: string;
+  /** Tag-based resolution — scan scope roots for an item whose prompt.json has this tag. */
+  tag?: string;
+  /** Scope to search for tag-based resolution. If omitted, all scopes are searched (session > project > global). */
+  scope?: "global" | "project" | "session";
 }
 
 export interface SkillMdConfig {
   mode: "existing" | "custom";
   name?: string;
   path?: string;
+  /** Tag-based resolution — scan scope roots for an item whose prompt.json has this tag. */
+  tag?: string;
+  /** Scope to limit tag search. If omitted, all scopes are searched. */
+  scope?: "global" | "project" | "session";
 }
 
 export interface AgentSettings {

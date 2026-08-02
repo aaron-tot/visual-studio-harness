@@ -17,6 +17,7 @@ export {
   readProjectAgentsMd,
   resolveAgentMd,
   resolveSkillMds,
+  type ResolveContext,
 } from "./reader";
 export { formatRuntimeInfo } from "./runtime-format";
 export { formatTodoList } from "./todo-list-format";

@@ -98,7 +98,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     return { ok: true, todos };
   });
 
-  /** Per-session model config — sessions.model_config_json in SQLite. */
+  /** Per-session model config — sessions.model_config_json in SQLite.
+   *  Also stores a `context` key for context-range controls. */
   app.get("/api/sessions/:id/model-config", async (request, reply) => {
     const { id } = request.params as { id: string };
     const session = await getSession(dataDir, id);
@@ -116,12 +117,61 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const { id } = request.params as { id: string };
     const session = await getSession(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
-    const body = (request.body || {}) as { models?: Record<string, { thinkingEffort?: string }> };
-    setSessionModelConfigJson(
-      id,
-      JSON.stringify({ models: body.models ?? {} }),
-      dataDir
-    );
+    const body = (request.body || {}) as Record<string, unknown>;
+
+    // Merge with existing config to preserve other keys (e.g. context)
+    const existingRaw = getSessionModelConfigJson(id, dataDir);
+    let existing: Record<string, unknown> = {};
+    if (existingRaw) {
+      try { existing = JSON.parse(existingRaw); } catch { /* ignore */ }
+    }
+
+    // If body.models is set, update models; otherwise preserve existing models
+    if (body.models !== undefined) {
+      existing.models = body.models;
+    }
+
+    // Merge any other top-level keys (context, etc.)
+    for (const [key, val] of Object.entries(body)) {
+      if (key !== "models") {
+        existing[key] = val;
+      }
+    }
+
+    setSessionModelConfigJson(id, JSON.stringify(existing), dataDir);
+    return { ok: true };
+  });
+
+  /** Per-session context config — stored inside model_config_json.context. */
+  app.get("/api/sessions/:id/context-config", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const session = await getSession(dataDir, id);
+    if (!session) return reply.code(404).send({ error: "session not found" });
+    try {
+      const raw = getSessionModelConfigJson(id, dataDir);
+      if (!raw) return { firstTurnNumber: null };
+      const parsed = JSON.parse(raw);
+      return parsed?.context ?? { firstTurnNumber: null };
+    } catch {
+      return { firstTurnNumber: null };
+    }
+  });
+
+  app.put("/api/sessions/:id/context-config", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const session = await getSession(dataDir, id);
+    if (!session) return reply.code(404).send({ error: "session not found" });
+    const body = (request.body || {}) as { firstTurnNumber?: number | null };
+
+    // Merge with existing config
+    const existingRaw = getSessionModelConfigJson(id, dataDir);
+    let existing: Record<string, unknown> = {};
+    if (existingRaw) {
+      try { existing = JSON.parse(existingRaw); } catch { /* ignore */ }
+    }
+
+    existing.context = { firstTurnNumber: body.firstTurnNumber ?? null };
+    setSessionModelConfigJson(id, JSON.stringify(existing), dataDir);
     return { ok: true };
   });
 

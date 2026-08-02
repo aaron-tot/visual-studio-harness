@@ -168,6 +168,8 @@ export interface ConfigFile {
   defaultAgent?: string;
   defaultProvider?: string;
   defaultModel?: string;
+  /** Config-level default system prompt base. New agents inherit this. Overridable per-agent. */
+  systemPromptBase?: AgentMdConfig;
   testModels?: Record<string, TestModelConfig>;
   mcpServers?: McpServerConfig[];
   workspaceManifest?: WorkspaceManifestSettings;

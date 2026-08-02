@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import { resolve } from "node:path";
+import { resolve, join, dirname } from "node:path";
 import { existsSync, statSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
   listSessions,
   listChildSessions,
@@ -161,7 +162,11 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const { id } = request.params as { id: string };
     const session = await getSession(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
-    const body = (request.body || {}) as { firstTurnNumber?: number | null };
+    const body = (request.body || {}) as {
+      firstTurnNumber?: number | null;
+      mode?: "auto" | "manual";
+      maxTurns?: number;
+    };
 
     // Merge with existing config
     const existingRaw = getSessionModelConfigJson(id, dataDir);
@@ -170,9 +175,110 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       try { existing = JSON.parse(existingRaw); } catch { /* ignore */ }
     }
 
-    existing.context = { firstTurnNumber: body.firstTurnNumber ?? null };
+    // Merge context fields — preserve existing when not provided
+    const existingCtx = (existing.context as Record<string, unknown>) ?? {};
+    existing.context = {
+      ...existingCtx,
+      firstTurnNumber: body.firstTurnNumber !== undefined ? body.firstTurnNumber : existingCtx.firstTurnNumber ?? null,
+      mode: body.mode !== undefined ? body.mode : existingCtx.mode ?? "manual",
+      maxTurns: body.maxTurns !== undefined ? body.maxTurns : existingCtx.maxTurns ?? 10,
+    };
     setSessionModelConfigJson(id, JSON.stringify(existing), dataDir);
     return { ok: true };
+  });
+
+  // ── Scoped context config (global / project) ──────────────────────────
+  const contextConfigPath = join(dataDir, "context-config.json");
+
+  async function readScopedCtx(): Promise<Record<string, unknown>> {
+    try { return JSON.parse(await readFile(contextConfigPath, "utf-8")); } catch { return {}; }
+  }
+  async function writeScopedCtx(config: Record<string, unknown>): Promise<void> {
+    await mkdir(dirname(contextConfigPath), { recursive: true });
+    await writeFile(contextConfigPath, JSON.stringify(config, null, 2));
+  }
+
+  app.get("/api/context-config/scoped", async (request) => {
+    const q = request.query as { scope?: string; workspaceRoot?: string };
+    const config = await readScopedCtx();
+    if (q.scope === "global") {
+      return (config.global as Record<string, unknown>) ?? { mode: "manual", maxTurns: 10, firstTurnNumber: null };
+    }
+    if (q.scope === "project") {
+      const ws = q.workspaceRoot;
+      if (!ws) return { mode: "manual", maxTurns: 10, firstTurnNumber: null };
+      return ((config.workspaces as Record<string, unknown>)?.[ws] as Record<string, unknown>) ?? { mode: "manual", maxTurns: 10, firstTurnNumber: null };
+    }
+    return { mode: "manual", maxTurns: 10, firstTurnNumber: null };
+  });
+
+  app.put("/api/context-config/scoped", async (request) => {
+    const q = request.query as { scope?: string; workspaceRoot?: string };
+    const body = (request.body || {}) as Record<string, unknown>;
+    const config = await readScopedCtx();
+    if (q.scope === "global") {
+      config.global = { ...((config.global as Record<string, unknown>) ?? {}), ...body };
+    } else if (q.scope === "project") {
+      const ws = q.workspaceRoot;
+      if (!ws) return { error: "workspaceRoot required" };
+      if (!config.workspaces) config.workspaces = {};
+      (config.workspaces as Record<string, unknown>)[ws] = {
+        ...(((config.workspaces as Record<string, unknown>)[ws] as Record<string, unknown>) ?? {}),
+        ...body,
+      };
+    }
+    await writeScopedCtx(config);
+    return { ok: true };
+  });
+
+  // ── Effective context config resolution (session > project > global) ──
+  app.get("/api/context-config/effective", async (request) => {
+    const q = request.query as { sessionId?: string; workspaceRoot?: string };
+    const scopedCfg = await readScopedCtx();
+    const global = (scopedCfg.global as Record<string, unknown>) ?? {};
+    const project = (q.workspaceRoot
+      ? ((scopedCfg.workspaces as Record<string, unknown>)?.[q.workspaceRoot] as Record<string, unknown>)
+      : undefined) ?? {};
+
+    // Session scope lives in the session's modelConfigJson .context
+    let session: Record<string, unknown> = {};
+    if (q.sessionId) {
+      const s = await getSession(dataDir, q.sessionId);
+      if (s) {
+        const raw = getSessionModelConfigJson(q.sessionId, dataDir);
+        if (raw) {
+          try {
+            const p = JSON.parse(raw);
+            session = (p?.context as Record<string, unknown>) ?? {};
+          } catch { /* ignore */ }
+        }
+      }
+    }
+
+    // Per-field resolution: session overrides project overrides global
+    const pick = (key: string) => {
+      if (session[key] !== undefined) return session[key];
+      if (project[key] !== undefined) return project[key];
+      if (global[key] !== undefined) return global[key];
+      return undefined;
+    };
+
+    // Owning scope = the highest-priority scope that defines any setting.
+    const hasOwn =
+      (o: Record<string, unknown>) =>
+        o["mode"] !== undefined || o["maxTurns"] !== undefined || o["firstTurnNumber"] !== undefined;
+    const owner =
+      hasOwn(session) ? "session"
+      : hasOwn(project) ? "project"
+      : hasOwn(global) ? "global"
+      : "none";
+
+    return {
+      mode: (pick("mode") as string) ?? "manual",
+      maxTurns: (pick("maxTurns") as number) ?? 10,
+      firstTurnNumber: (pick("firstTurnNumber") as number | null) ?? null,
+      owner,
+    };
   });
 
   app.delete("/api/sessions/:id", async (request) => {

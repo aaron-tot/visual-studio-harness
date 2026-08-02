@@ -8,7 +8,9 @@ function PartsList({ parts, depth = 0 }: { parts?: SpecPlanPart[]; depth?: numbe
   if (!parts || parts.length === 0) return null;
   return (
     <ul className="space-y-1" style={{ marginLeft: depth > 0 ? 8 : 0 }}>
-      {parts.map((part) => (
+      {parts.map((part) => {
+        if (!part || typeof part !== "object") return null;
+        return (
         <li key={part.id}>
           <div className="flex items-center gap-1.5">
             <span
@@ -26,7 +28,8 @@ function PartsList({ parts, depth = 0 }: { parts?: SpecPlanPart[]; depth?: numbe
           )}
           <PartsList parts={part.parts} depth={depth + 1} />
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

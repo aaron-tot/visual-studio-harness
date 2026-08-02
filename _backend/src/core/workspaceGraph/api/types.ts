@@ -69,6 +69,7 @@ export interface ManifestOptions {
 
 export interface WorkspaceGraphQueryApi {
   findSymbol(name: string, kind?: SymbolKind): Promise<SymbolMatch[]>;
+  findSymbolsByFile(filePath: string): Promise<SymbolMatch[]>;
   findFunction(name: string): Promise<SymbolMatch[]>;
   findClass(name: string): Promise<SymbolMatch[]>;
   findInterface(name: string): Promise<SymbolMatch[]>;

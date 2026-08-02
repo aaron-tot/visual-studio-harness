@@ -29,6 +29,10 @@ export async function createWorkspaceGraphService(
       if (!_db) return [];
       return createQueryApi(_db, createWorkspaceGraphRepository(_db)).findFunction(_name);
     },
+    async findSymbolsByFile(_filePath: string) {
+      if (!_db) return [];
+      return createQueryApi(_db, createWorkspaceGraphRepository(_db)).findSymbolsByFile(_filePath);
+    },
     async findClass(_name: string) {
       if (!_db) return [];
       return createQueryApi(_db, createWorkspaceGraphRepository(_db)).findClass(_name);

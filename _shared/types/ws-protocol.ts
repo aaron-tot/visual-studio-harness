@@ -1,6 +1,7 @@
 import type { PermissionDecision, ToolCallStatus } from "./tools";
 import type { SessionMeta, ThinkingEffort } from "./session";
 import type { ConfigFile } from "./config";
+import type { StepToolCall, StepToolBatchResult } from "./step-batch";
 
 export type WsClientMessage =
   | { type: "chat"; sessionId: string; content: string; workspaceRoot?: string; agentName?: string | null }
@@ -22,6 +23,8 @@ export type WsServerMessage =
   | { type: "tool_start"; sessionId: string; toolCallId: string; toolName: string; args: unknown; parentToolCallId?: string }
   | { type: "tool_update"; sessionId: string; toolCallId: string; status: ToolCallStatus; partial?: string; parentToolCallId?: string }
   | { type: "tool_end"; sessionId: string; toolCallId: string; status: ToolCallStatus; result?: unknown; error?: string; parentToolCallId?: string }
+  | { type: "step_tool_start"; sessionId: string; stepIndex: number; toolCalls: StepToolCall[] }
+  | { type: "step_tool_end"; sessionId: string; stepIndex: number; toolCalls: (StepToolBatchResult & { status: ToolCallStatus })[] }
   | { type: "permission_request"; sessionId: string; toolCallId: string; toolName: string; args: unknown }
   | { type: "subagent_config_request"; sessionId: string; requestId: string; toolCallId?: string; reason: string; suggestedProvider?: string; suggestedModel?: string }
   | { type: "slot_busy_request"; sessionId: string; requestId: string; toolCallId?: string; detail: string; free: number; total: number; modelAlias?: string; baseUrl: string; defaultPollIntervalSec: number; defaultWaitTimeoutSec: number }

@@ -12,6 +12,10 @@ import type {
   BeforeDataExportPayload,
   RateLimitApproachPayload,
 } from "./reserved";
+import type {
+  StepToolBatchBeforePayload,
+  StepToolBatchAfterPayload,
+} from "./step";
 
 /**
  * Active + reserved hook names and their payloads.
@@ -30,6 +34,8 @@ export interface HookPayloadMap {
   "tool.before": ToolBeforePayload;
   "tool.after": ToolAfterPayload;
   "tool.error": ToolErrorPayload;
+  "step.tool_batch.before": StepToolBatchBeforePayload;
+  "step.tool_batch.after": StepToolBatchAfterPayload;
   "session.abort": SessionAbortPayload;
 
   // --- reserved (feature not built; do not emit) ---
@@ -60,4 +66,6 @@ export type {
   PromptInjectionDetectedPayload,
   BeforeDataExportPayload,
   RateLimitApproachPayload,
+  StepToolBatchBeforePayload,
+  StepToolBatchAfterPayload,
 };

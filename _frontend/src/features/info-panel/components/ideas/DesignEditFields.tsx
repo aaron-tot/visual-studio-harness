@@ -187,10 +187,12 @@ export function EditablePartsField({
 }
 
 /** Flat count of parts done/total (non-recursive for JSON editor summary) */
-function countPartsFlat(parts: SpecPlanPart[]): { done: number; total: number } {
+function countPartsFlat(parts: SpecPlanPart[] | undefined): { done: number; total: number } {
   let done = 0;
   let total = 0;
+  if (!Array.isArray(parts)) return { done, total };
   for (const p of parts) {
+    if (!p || typeof p !== "object" || typeof (p as { status?: unknown }).status !== "string") continue;
     total++;
     if (isPartDone(p.status)) done++;
   }

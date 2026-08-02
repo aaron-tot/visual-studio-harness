@@ -1,95 +1,61 @@
 import { describe, it, expect } from "bun:test";
 import { createDefaultRegistry } from "../index";
+import { knowledgeTool } from "../consolidated/knowledge";
 
-const KNOWLEDGE_TOOL_NAMES = [
-  "knowledge_search",
-  "knowledge_open",
-  "knowledge_ingest",
-  "knowledge_document_create",
-  "knowledge_document_edit",
-  "knowledge_document_delete",
-];
-
-describe("knowledge tools registration", () => {
-  it("all 7 knowledge tools are registered in the default registry", () => {
+describe("knowledge tool consolidation", () => {
+  it("registers a single consolidated 'knowledge' tool", () => {
     const registry = createDefaultRegistry();
-    const tools = registry.list();
-    const knowledgeTools = tools.filter((t) => t.name.startsWith("knowledge_"));
-    const names = knowledgeTools.map((t) => t.name).sort();
+    const names = registry.list().map((t) => t.name);
 
-    expect(names).toEqual(KNOWLEDGE_TOOL_NAMES.sort());
-    expect(knowledgeTools.length).toBe(6);
+    expect(names).toContain("knowledge");
+    expect(names.filter((n) => n.startsWith("knowledge_"))).toEqual([]);
   });
 
-  it("each knowledge tool has name, description, inputSchema, and execute", () => {
+  it("consolidated knowledge tool has name, description, inputSchema, and execute", () => {
     const registry = createDefaultRegistry();
     const tools = registry.list();
 
-    for (const name of KNOWLEDGE_TOOL_NAMES) {
-      const tool = tools.find((t) => t.name === name);
-      expect(tool).toBeDefined();
-      expect(tool!.name).toBe(name);
-      expect(tool!.description).toBeTruthy();
-      expect(tool!.inputSchema).toBeDefined();
-      expect(typeof tool!.execute).toBe("function");
-    }
+    const tool = tools.find((t) => t.name === "knowledge");
+    expect(tool).toBeDefined();
+    expect(tool!.name).toBe("knowledge");
+    expect(tool!.description).toBeTruthy();
+    expect(tool!.inputSchema).toBeDefined();
+    expect(typeof tool!.execute).toBe("function");
+    expect(tool!.permissionDefault).toBe("allow");
   });
 
-  it("all 7 knowledge tools have permissionDefault 'allow'", () => {
+  it("knowledge tool has outputFields for agent consumption", () => {
     const registry = createDefaultRegistry();
     const tools = registry.list();
-    const knowledgeTools = tools.filter((t) => t.name.startsWith("knowledge_"));
+    const tool = tools.find((t) => t.name === "knowledge");
 
-    expect(knowledgeTools.length).toBe(6);
-    for (const t of knowledgeTools) {
-      expect(t.permissionDefault).toBe("allow");
-    }
+    expect(tool!.outputFields).toBeDefined();
+    expect(tool!.outputFields!.length).toBeGreaterThan(0);
   });
 
-  it("knowledge tools have outputFields for agent consumption", () => {
-    const registry = createDefaultRegistry();
-    const tools = registry.list();
-    const searchTool = tools.find((t) => t.name === "knowledge_search");
-
-    expect(searchTool).toBeDefined();
-    expect(searchTool!.outputFields).toBeDefined();
-    expect(searchTool!.outputFields!.length).toBeGreaterThan(0);
+  it("knowledge tool action enum includes all 6 sub-commands", () => {
+    const schema = knowledgeTool.inputSchema as any;
+    const values = schema.shape.action._def.values as string[];
+    expect(values.sort()).toEqual(["doc_create", "doc_delete", "doc_edit", "ingest", "open", "search"].sort());
   });
 
-  it("knowledge_search outputFields include count, total, and hybrid", () => {
-    const registry = createDefaultRegistry();
-    const tools = registry.list();
-    const searchTool = tools.find((t) => t.name === "knowledge_search");
-
-    expect(searchTool).toBeDefined();
-    const names = searchTool!.outputFields!.map((f) => f.name);
-    expect(names).toContain("count");
-    expect(names).toContain("total");
-    expect(names).toContain("hybrid");
-  });
-
-  it("knowledge_search limit is optional so the mode preset chunk count applies", () => {
-    const registry = createDefaultRegistry();
-    const tools = registry.list();
-    const searchTool = tools.find((t) => t.name === "knowledge_search");
+  it("search action: limit is optional so the mode preset chunk count applies", () => {
+    const schema = knowledgeTool.inputSchema as any;
 
     // No limit provided — mode preset topK should be used.
-    const noLimit = searchTool!.inputSchema.safeParse({ query: "hello", mode: "code" });
+    const noLimit = schema.safeParse({ action: "search", query: "hello", mode: "code" });
     expect(noLimit.success).toBe(true);
     // Explicit limit still honored.
-    const withLimit = searchTool!.inputSchema.safeParse({ query: "hello", limit: 3 });
+    const withLimit = schema.safeParse({ action: "search", query: "hello", limit: 3 });
     expect(withLimit.success).toBe(true);
     expect(withLimit.data.limit).toBe(3);
   });
 
-  it("knowledge_open accepts filename.ext as documentId and resolves to UUID", () => {
-    const registry = createDefaultRegistry();
-    const tools = registry.list();
-    const openTool = tools.find((t) => t.name === "knowledge_open");
-    expect(openTool).toBeDefined();
+  it("open action accepts filename.ext as documentId and resolves to UUID", () => {
+    const schema = knowledgeTool.inputSchema as any;
 
     // Schema should accept any string, not just UUID format
-    const result = openTool!.inputSchema.safeParse({ documentId: "TESTFILE.txt", scope: "global" });
+    const result = schema.safeParse({ action: "open", documentId: "TESTFILE.txt", scope: "global" });
     expect(result.success).toBe(true);
   });
 

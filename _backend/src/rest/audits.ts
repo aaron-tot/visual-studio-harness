@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { join, resolve } from "node:path";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { AuditDocument } from "../../../_shared/types/audit";
+import { mkdirDurable, writeFileDurable } from "../utils/fs";
 
 export type AuditScope = "global" | "project" | "session";
 
@@ -96,8 +97,8 @@ export async function createAudit(
   }
 
   const nd = join(auditsDir, params.name);
-  await mkdir(nd, { recursive: true });
-  await writeFile(
+  await mkdirDurable(nd);
+  await writeFileDurable(
     join(nd, "audit.json"),
     JSON.stringify(params.document, null, 2) + "\n"
   );

@@ -104,6 +104,33 @@ describe("workspaceGraph query and manifest", () => {
       expect(files.length).toBe(2);
     });
 
+    it("listFiles with '.' (root) returns all indexed files", async () => {
+      const query = createQueryApi(db, createWorkspaceGraphRepository(db));
+
+      const files = await query.listFiles(".");
+      expect(files.length).toBe(2);
+    });
+
+    it("listFiles normalizes a leading './' prefix", async () => {
+      const query = createQueryApi(db, createWorkspaceGraphRepository(db));
+
+      const root = await query.listFiles("./");
+      expect(root.length).toBe(2);
+
+      const src = await query.listFiles("./src");
+      expect(src.length).toBe(2);
+      for (const f of src) expect(f.path.startsWith("src/")).toBe(true);
+    });
+
+    it("findSymbolsByFile returns symbols defined in a file", async () => {
+      const query = createQueryApi(db, createWorkspaceGraphRepository(db));
+
+      const matches = await query.findSymbolsByFile("src/utils/greet.ts");
+      expect(matches.length).toBeGreaterThan(0);
+      expect(matches.every((m) => m.filePath.endsWith("src/utils/greet.ts"))).toBe(true);
+    });
+
+
     it("workspaceSummary returns correct counts", async () => {
       const query = createQueryApi(db, createWorkspaceGraphRepository(db));
 

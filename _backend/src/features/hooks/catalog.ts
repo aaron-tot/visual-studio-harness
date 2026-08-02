@@ -85,6 +85,18 @@ export const HOOK_CATALOG: readonly CatalogEntry[] = [
     kind: "observe",
     description: "User cancel / socket close abort",
   },
+  {
+    name: "step.tool_batch.before",
+    status: "active",
+    kind: "observe",
+    description: "Once per step, before the step's tools execute, with the full tool-call list",
+  },
+  {
+    name: "step.tool_batch.after",
+    status: "active",
+    kind: "observe",
+    description: "Once per step, after all tools complete, with calls + results",
+  },
 
   // reserved
   {

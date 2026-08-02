@@ -64,6 +64,22 @@ export function registerLoggingHandler(bus: HookBus): void {
   );
 
   bus.on(
+    "step.tool_batch.before",
+    (ctx, p) => {
+      log("step.tool_batch.before", ctx, { count: p.toolCalls.length, stepIndex: p.stepIndex });
+    },
+    { id: "builtin.logging.step.tool_batch.before", priority: 0 }
+  );
+
+  bus.on(
+    "step.tool_batch.after",
+    (ctx, p) => {
+      log("step.tool_batch.after", ctx, { count: p.toolCalls.length, stepIndex: p.stepIndex });
+    },
+    { id: "builtin.logging.step.tool_batch.after", priority: 0 }
+  );
+
+  bus.on(
     "session.abort",
     (ctx, p) => {
       log("session.abort", ctx, { reason: p.reason });

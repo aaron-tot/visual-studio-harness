@@ -33,6 +33,16 @@ describe("catalog", () => {
     expect(isInterceptHook("tool.before")).toBe(true);
     expect(getCatalogEntry("turn.start")?.kind).toBe("observe");
   });
+
+  test("batch hooks are active and observe-kind", () => {
+    const active = listActiveHooks();
+    expect(active).toContain("step.tool_batch.before");
+    expect(active).toContain("step.tool_batch.after");
+    expect(getCatalogEntry("step.tool_batch.before")?.kind).toBe("observe");
+    expect(getCatalogEntry("step.tool_batch.after")?.kind).toBe("observe");
+    expect(getCatalogEntry("step.tool_batch.before")?.status).toBe("active");
+    expect(getCatalogEntry("step.tool_batch.after")?.status).toBe("active");
+  });
 });
 
 describe("HookBus", () => {
@@ -157,6 +167,68 @@ describe("HookBus", () => {
 
     expect(outcome.cancelled).toBe(false);
     expect(outcome.patch).toEqual({ note: "ok" });
+  });
+
+  test("step.tool_batch.before emits correct payload to handler", async () => {
+    let received: { stepIndex: number; toolCalls: { toolCallId: string; toolName: string; args: unknown }[] } | null = null;
+    bus.on(
+      "step.tool_batch.before",
+      (_, p) => {
+        received = p;
+      },
+      { id: "batch-before-test", priority: 1 }
+    );
+
+    await bus.emit("step.tool_batch.before", ctx(), {
+      stepIndex: 2,
+      toolCalls: [
+        { toolCallId: "tc-1", toolName: "bash", args: { command: "ls" } },
+        { toolCallId: "tc-2", toolName: "read", args: { path: "a.ts" } },
+      ],
+    });
+
+    expect(received).not.toBeNull();
+    expect(received!.stepIndex).toBe(2);
+    expect(received!.toolCalls).toHaveLength(2);
+    expect(received!.toolCalls[0]).toEqual({ toolCallId: "tc-1", toolName: "bash", args: { command: "ls" } });
+    expect(received!.toolCalls[1]).toEqual({ toolCallId: "tc-2", toolName: "read", args: { path: "a.ts" } });
+  });
+
+  test("step.tool_batch.after emits correct payload to handler", async () => {
+    let received: { stepIndex: number; toolCalls: { toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean }[] } | null = null;
+    bus.on(
+      "step.tool_batch.after",
+      (_, p) => {
+        received = p;
+      },
+      { id: "batch-after-test", priority: 1 }
+    );
+
+    await bus.emit("step.tool_batch.after", ctx(), {
+      stepIndex: 2,
+      toolCalls: [
+        { toolCallId: "tc-1", toolName: "bash", args: { command: "ls" }, result: "file1\nfile2", isError: false },
+        { toolCallId: "tc-2", toolName: "read", args: { path: "a.ts" }, result: null, isError: true },
+      ],
+    });
+
+    expect(received).not.toBeNull();
+    expect(received!.stepIndex).toBe(2);
+    expect(received!.toolCalls).toHaveLength(2);
+    expect(received!.toolCalls[0]).toEqual({
+      toolCallId: "tc-1",
+      toolName: "bash",
+      args: { command: "ls" },
+      result: "file1\nfile2",
+      isError: false,
+    });
+    expect(received!.toolCalls[1]).toEqual({
+      toolCallId: "tc-2",
+      toolName: "read",
+      args: { path: "a.ts" },
+      result: null,
+      isError: true,
+    });
   });
 
   test("same id replaces previous handler", async () => {

@@ -31,6 +31,8 @@ export interface ChatState {
   sendMessage: (content: string, config: SessionConfig) => void;
   contextFirstTurnNumber: number | null;
   setContextFirstTurnNumber: (tn: number | null) => void;
+  contextConfigVersion: number;
+  bumpContextConfigVersion: () => void;
   clearMessages: () => void;
   stopStreaming: () => void;
   appendToken: (token: string, seq?: number) => void;

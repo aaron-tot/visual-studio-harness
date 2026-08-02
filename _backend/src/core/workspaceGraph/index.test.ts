@@ -12,6 +12,7 @@ describe("createWorkspaceGraphService", () => {
     expect(typeof service.stop).toBe("function");
     expect(typeof service.reindexAll).toBe("function");
     expect(typeof service.query.findSymbol).toBe("function");
+    expect(typeof service.query.findSymbolsByFile).toBe("function");
     expect(typeof service.query.listFiles).toBe("function");
     expect(typeof service.query.listFolders).toBe("function");
     expect(typeof service.query.workspaceSummary).toBe("function");

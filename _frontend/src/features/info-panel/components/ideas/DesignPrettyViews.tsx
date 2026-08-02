@@ -3,13 +3,15 @@ import type { SpecPlanPart, SpecDocument, PlanDocument } from "../../../../lib/a
 import { isPartDone } from "../../lib/plan-status";
 
 /** Count done vs total for a parts array (recursive) */
-export function countPartsDone(parts: SpecPlanPart[]): { done: number; total: number } {
+export function countPartsDone(parts: SpecPlanPart[] | undefined): { done: number; total: number } {
   let done = 0;
   let total = 0;
+  if (!Array.isArray(parts)) return { done, total };
   for (const p of parts) {
+    if (!p || typeof p !== "object" || typeof (p as { status?: unknown }).status !== "string") continue;
     total++;
     if (isPartDone(p.status)) done++;
-    if (p.parts) {
+    if (Array.isArray(p.parts) && p.parts.length > 0) {
       const sub = countPartsDone(p.parts);
       done += sub.done;
       total += sub.total;
@@ -41,8 +43,9 @@ function PartsTree({ parts, depth = 0, showSummary = false }: { parts: SpecPlanP
       )}
       <ul className="space-y-1" style={{ marginLeft: depth > 0 ? 12 : 0 }}>
         {parts.map((part) => {
+          if (!part || typeof part !== "object") return null;
           const done = isPartDone(part.status);
-          const subCount = part.parts ? countPartsDone(part.parts) : null;
+          const subCount = Array.isArray(part.parts) ? countPartsDone(part.parts) : null;
           return (
             <li key={part.id}>
               <div className="flex items-center gap-1.5">

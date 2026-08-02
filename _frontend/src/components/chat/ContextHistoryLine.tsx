@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { getSessionContextConfig, putSessionContextConfig } from "../../lib/api";
+import { putSessionContextConfig, getEffectiveContextConfig } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
 
 /**
@@ -19,7 +19,11 @@ export function ContextHistoryLine({
 }) {
   const barRef = useRef<HTMLDivElement>(null);
   const [firstTurnNumber, setFirstTurnNumber] = useState<number | null>(null);
+  const [contextMode, setContextMode] = useState<"auto" | "manual">("manual");
+  const [contextMaxTurns, setContextMaxTurns] = useState(10);
+  const [contextOwner, setContextOwner] = useState<"session" | "project" | "global" | "none">("none");
   const [dragging, setDragging] = useState(false);
+  const [dragClientY, setDragClientY] = useState(0);
 
   // Turn Y positions (scroll-dependent — recalculated on every scroll)
   const [turnPositions, setTurnPositions] = useState<{ number: number; y: number }[]>([]);
@@ -32,17 +36,20 @@ export function ContextHistoryLine({
     const containerRect = sc.getBoundingClientRect();
     const scrollTop = sc.scrollTop;
 
-    // Turn positions in scroll-container-relative coords
+    // Turn positions — one per turn (dedupe: both user & assistant of the
+    // same turn carry data-turn-number, so keep the topmost = turn start)
     const turnEls = sc.querySelectorAll<HTMLElement>("[data-turn-number]");
-    const turns: { number: number; y: number }[] = [];
+    const turnMap = new Map<number, number>();
     turnEls.forEach((msgEl) => {
       const tn = parseInt(msgEl.dataset.turnNumber || "0", 10);
       if (!tn) return;
       const rect = msgEl.getBoundingClientRect();
-      // Convert viewport-relative Y to scroll-container-relative Y
-      const y = rect.top - containerRect.top + scrollTop + rect.height / 2;
-      turns.push({ number: tn, y });
+      const y = rect.top - containerRect.top + scrollTop;
+      const existing = turnMap.get(tn);
+      if (existing === undefined || y < existing) turnMap.set(tn, y);
     });
+    const turns: { number: number; y: number }[] = [];
+    turnMap.forEach((y, number) => turns.push({ number, y }));
     turns.sort((a, b) => a.number - b.number);
     setTurnPositions(turns);
   }, [scrollRef]);
@@ -54,16 +61,20 @@ export function ContextHistoryLine({
     const containerRect = sc.getBoundingClientRect();
     const scrollTop = sc.scrollTop;
 
-    // Turn positions
+    // Turn positions — one per turn (dedupe: both user & assistant of the
+    // same turn carry data-turn-number, so keep the topmost = turn start)
     const turnEls = sc.querySelectorAll<HTMLElement>("[data-turn-number]");
-    const turns: { number: number; y: number }[] = [];
+    const turnMap = new Map<number, number>();
     turnEls.forEach((msgEl) => {
       const tn = parseInt(msgEl.dataset.turnNumber || "0", 10);
       if (!tn) return;
       const rect = msgEl.getBoundingClientRect();
-      const y = rect.top - containerRect.top + scrollTop + rect.height / 2;
-      turns.push({ number: tn, y });
+      const y = rect.top - containerRect.top + scrollTop;
+      const existing = turnMap.get(tn);
+      if (existing === undefined || y < existing) turnMap.set(tn, y);
     });
+    const turns: { number: number; y: number }[] = [];
+    turnMap.forEach((y, number) => turns.push({ number, y }));
     turns.sort((a, b) => a.number - b.number);
     setTurnPositions(turns);
 
@@ -107,22 +118,62 @@ export function ContextHistoryLine({
     if (scrollRef.current) fullMeasure();
   }, [messageCount, fullMeasure, scrollRef]);
 
-  // Load persisted config into local state (for handle rendering)
-  useEffect(() => {
-    if (!sessionId) return;
-    getSessionContextConfig(sessionId)
-      .then((c) => setFirstTurnNumber(c.firstTurnNumber))
-      .catch(() => {});
-  }, [sessionId]);
+  const workspaceRoot = useChatStore((s) => s.workspaceRoot);
+  const setStoreCtxMode = useChatStore((s) => s.setContextConfigMode);
+  const setStoreCtxMaxTurns = useChatStore((s) => s.setContextConfigMaxTurns);
 
-  // Sync store value when dragging changes firstTurnNumber
+  // Sync store value immediately when local firstTurnNumber changes
   const setStoreCtxTn = useChatStore((s) => s.setContextFirstTurnNumber);
   useEffect(() => {
     if (!sessionId) return;
     setStoreCtxTn(firstTurnNumber);
   }, [firstTurnNumber, sessionId, setStoreCtxTn]);
 
-  // Find snap target from cursor Y
+  // ── Auto-mode: recompute firstTurnNumber from maxTurns ────────────
+  useEffect(() => {
+    if (contextMode !== "auto" || turnPositions.length === 0) return;
+    const numbers = turnPositions.map((t) => t.number).sort((a, b) => a - b);
+    const lastTurn = numbers[numbers.length - 1];
+    let firstTn: number | null;
+    if (contextMaxTurns === -1) {
+      firstTn = null; // all turns (no filtering)
+    } else if (contextMaxTurns === 0) {
+      firstTn = lastTurn + 1; // no turns (beyond last turn)
+    } else {
+      // "N turns" = N previous completed turns + current (N+1 total)
+      // firstTurnNumber = the (N)-th turn from the end
+      // e.g., N=1 (1 previous + current): idx = length - 1 → last completed turn
+      const idx = numbers.length - contextMaxTurns;
+      const tn = idx >= 0 ? numbers[Math.min(idx, numbers.length - 1)] : numbers[0];
+      firstTn = tn > numbers[0] ? tn : null;
+    }
+    setFirstTurnNumber(firstTn);
+    // Immediate sync to store so sendMessage sees the value without extra render cycle
+    setStoreCtxTn(firstTn);
+    setStoreCtxMode(contextMode);
+    setStoreCtxMaxTurns(contextMaxTurns);
+  }, [contextMode, contextMaxTurns, turnPositions]);
+
+  // Re-load when store version bumps (ContextPanel saves)
+  const ctxCfgVersion = useChatStore((s) => s.contextConfigVersion);
+
+  // ── Load context config (also reads mode/maxTurns) ────────────────
+  useEffect(() => {
+    if (!sessionId) return;
+    getEffectiveContextConfig(sessionId, workspaceRoot || undefined)
+      .then((c) => {
+        setFirstTurnNumber(c.firstTurnNumber);
+        setContextMode(c.mode ?? "manual");
+        setContextMaxTurns(c.maxTurns ?? 10);
+        setContextOwner(c.owner ?? "none");
+        // Sync to store so sendMessage always has the effective config
+        setStoreCtxMode(c.mode ?? "manual");
+        setStoreCtxMaxTurns(c.maxTurns ?? 10);
+      })
+      .catch(() => {});
+  }, [sessionId, ctxCfgVersion, workspaceRoot]);
+
+  // Find snap target from cursor Y using midpoints between turn positions
   const getSnapTurn = useCallback(
     (clientY: number): number | null => {
       const sc = scrollRef.current;
@@ -130,16 +181,22 @@ export function ContextHistoryLine({
       const containerRect = sc.getBoundingClientRect();
       const cursorY = clientY - containerRect.top + sc.scrollTop;
 
-      let closest = turnPositions[0];
-      let minDist = Math.abs(cursorY - closest.y);
-      for (let i = 1; i < turnPositions.length; i++) {
-        const dist = Math.abs(cursorY - turnPositions[i].y);
-        if (dist < minDist) {
-          minDist = dist;
-          closest = turnPositions[i];
+      // Walk turn positions and find which region the cursor falls into.
+      // The boundary between two adjacent turns is their midpoint.
+      for (let i = 0; i < turnPositions.length; i++) {
+        const currentY = turnPositions[i].y;
+        const prevBoundary =
+          i > 0 ? (turnPositions[i - 1].y + currentY) / 2 : -Infinity;
+        const nextBoundary =
+          i < turnPositions.length - 1
+            ? (currentY + turnPositions[i + 1].y) / 2
+            : Infinity;
+
+        if (cursorY >= prevBoundary && cursorY < nextBoundary) {
+          return turnPositions[i].number;
         }
       }
-      return closest.number;
+      return turnPositions[0].number;
     },
     [turnPositions, scrollRef],
   );
@@ -154,10 +211,10 @@ export function ContextHistoryLine({
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!dragging) return;
-      const snap = getSnapTurn(e.clientY);
-      if (snap != null) setFirstTurnNumber(snap);
+      // Track raw cursor for free-floating handle (no snap until release)
+      setDragClientY(e.clientY);
     },
-    [dragging, getSnapTurn],
+    [dragging],
   );
 
   const handlePointerUp = useCallback(
@@ -167,8 +224,10 @@ export function ContextHistoryLine({
       if (snap == null || !sessionId) return;
       const minTurn = turnPositions.length > 0 ? turnPositions[0].number : 1;
       const value = snap <= minTurn ? null : snap;
+      // Switch to manual mode (user explicitly adjusted)
+      setContextMode("manual");
       setFirstTurnNumber(value);
-      putSessionContextConfig(sessionId, { firstTurnNumber: value }).catch(() => {});
+      putSessionContextConfig(sessionId, { firstTurnNumber: value, mode: "manual" }).catch(() => {});
     },
     [getSnapTurn, sessionId, turnPositions],
   );
@@ -176,7 +235,14 @@ export function ContextHistoryLine({
   // Handle Y in scroll-container-relative coords
   let handleY: number | null = null;
   if (turnPositions.length > 0) {
-    if (firstTurnNumber == null) {
+    if (dragging) {
+      // During drag: raw cursor position (free, no snap)
+      const sc = scrollRef.current;
+      if (sc) {
+        const containerRect = sc.getBoundingClientRect();
+        handleY = dragClientY - containerRect.top + sc.scrollTop;
+      }
+    } else if (firstTurnNumber == null) {
       handleY = turnPositions[0].y;
     } else {
       const found = turnPositions.find((t) => t.number === firstTurnNumber);
@@ -194,6 +260,40 @@ export function ContextHistoryLine({
 
   const barH = sc ? sc.getBoundingClientRect().height : 0;
 
+  // ── Snap direction during drag ─────────────────────────────────────
+  let snapAbove = true;
+  if (dragging && sc) {
+    const snapTn = getSnapTurn(dragClientY);
+    if (snapTn != null) {
+      const found = turnPositions.find((t) => t.number === snapTn);
+      if (found) {
+        const rawHandleY = dragClientY - sc.getBoundingClientRect().top + sc.scrollTop;
+        snapAbove = found.y <= rawHandleY;
+      }
+    }
+  }
+
+  // ── Tooltip label: scope : mode : turn count ───────────────────────
+  const ownerLabel =
+    contextOwner === "session" ? "Session"
+    : contextOwner === "project" ? "Project"
+    : contextOwner === "global" ? "Global"
+    : "Default";
+  const totalTurnsNow = turnPositions.length;
+  let turnsLabel: string;
+  if (contextMode === "auto") {
+    if (contextMaxTurns === -1) turnsLabel = "All turns";
+    else if (contextMaxTurns === 0) turnsLabel = "None";
+    else turnsLabel = `${contextMaxTurns} turn${contextMaxTurns === 1 ? "" : "s"}`;
+  } else {
+    // Manual: count drives from firstTurnNumber to end (or all if null)
+    if (firstTurnNumber == null) turnsLabel = "All turns";
+    else turnsLabel = `${Math.max(0, totalTurnsNow - firstTurnNumber + 1)} turn${totalTurnsNow - firstTurnNumber + 1 === 1 ? "" : "s"}`;
+  }
+  const tooltipText = contextMode === "auto"
+    ? `${ownerLabel} · Auto · ${turnsLabel}`
+    : `${ownerLabel} · Manual · ${turnsLabel}`;
+
   return (
     <div
       ref={barRef}
@@ -207,7 +307,9 @@ export function ContextHistoryLine({
         <>
           {/* Gray line above the handle */}
           <div
-            className="absolute left-[9px] w-[3px] rounded-full transition-colors pointer-events-none"
+            className={`absolute left-[9px] w-[3px] rounded-full transition-colors pointer-events-none ${
+              contextMode === "auto" && !dragging ? "opacity-50" : ""
+            }`}
             style={{
               top: 0,
               height: Math.max(0, visibleHandleY),
@@ -217,7 +319,9 @@ export function ContextHistoryLine({
 
           {/* Colored line below the handle */}
           <div
-            className="absolute left-[9px] w-[3px] rounded-full pointer-events-none"
+            className={`absolute left-[9px] w-[3px] rounded-full pointer-events-none ${
+              contextMode === "auto" && !dragging ? "opacity-50" : ""
+            }`}
             style={{
               top: visibleHandleY,
               height: Math.max(0, visibleLineBottom - visibleHandleY),
@@ -227,9 +331,31 @@ export function ContextHistoryLine({
             }}
           />
 
+          {/* Snap direction chevron — positioned further from the handle */}
+          {dragging && (
+            <div
+              className="absolute left-0 z-30 pointer-events-none"
+              style={{
+                top: snapAbove
+                  ? visibleHandleY - 32  /* above */
+                  : visibleHandleY + 24, /* below */
+              }}
+            >
+              {snapAbove ? (
+                <svg width="22" height="12" viewBox="0 0 22 12" className="text-amber-400">
+                  <polygon points="11,0 0,12 22,12" fill="currentColor" />
+                </svg>
+              ) : (
+                <svg width="22" height="12" viewBox="0 0 22 12" className="text-amber-400">
+                  <polygon points="11,12 0,0 22,0" fill="currentColor" />
+                </svg>
+              )}
+            </div>
+          )}
+
           {/* Draggable handle */}
           <div
-            className="absolute left-[2px] z-20 cursor-ns-resize"
+            className="absolute left-[2px] z-20 cursor-ns-resize group/handle"
             style={{ top: visibleHandleY, pointerEvents: "auto" }}
             onPointerDown={handlePointerDown}
           >
@@ -237,9 +363,17 @@ export function ContextHistoryLine({
               className={`w-[17px] h-[17px] -translate-y-1/2 rounded-full border-2 shadow-lg transition-all ${
                 dragging
                   ? "border-blue-300 bg-blue-500 shadow-blue-500/40 scale-125"
-                  : "border-zinc-600 bg-zinc-800 hover:border-blue-400 hover:bg-blue-600/40"
+                  : `${
+                      contextMode === "auto"
+                        ? "border-zinc-600 bg-zinc-800/40 hover:border-blue-400 hover:bg-blue-600/40"
+                        : "border-zinc-600 bg-zinc-800 hover:border-blue-400 hover:bg-blue-600/40"
+                    }`
               }`}
             />
+            {/* Hover tooltip: scope · mode · turn count */}
+            <div className="absolute top-1/2 -translate-y-1/2 left-full ml-3 px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg opacity-0 group-hover/handle:opacity-100 transition-opacity pointer-events-none z-30">
+              {tooltipText}
+            </div>
           </div>
         </>
       )}

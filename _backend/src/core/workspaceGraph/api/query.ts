@@ -10,6 +10,16 @@ import type {
   WorkspaceSummary,
 } from "../api/types";
 
+/** Normalize a user-supplied folder path to a relative prefix, or "" for root. */
+function normalizeFolderPath(folderPath?: string): string {
+  if (!folderPath) return "";
+  const trimmed = folderPath.trim();
+  if (trimmed === "" || trimmed === "." || trimmed === "./" || trimmed === "/") {
+    return "";
+  }
+  return trimmed.replace(/^\.\//, "").replace(/\/+$/, "");
+}
+
 export function createQueryApi(
   db: import("../storage/db").WorkspaceGraphDb,
   repo: WorkspaceGraphRepository
@@ -124,9 +134,9 @@ export function createQueryApi(
 
     async listFiles(folderPath?: string): Promise<FileRecord[]> {
       const q = db.select().from(schema.files);
-      if (folderPath) {
-        const prefix = folderPath.endsWith("/") ? folderPath : folderPath + "/";
-        q.where(like(schema.files.path, prefix + "%"));
+      const normalized = normalizeFolderPath(folderPath);
+      if (normalized) {
+        q.where(like(schema.files.path, normalized + "/%"));
       }
       const rows = await q.limit(1000);
       return rows.map((r: any) => ({

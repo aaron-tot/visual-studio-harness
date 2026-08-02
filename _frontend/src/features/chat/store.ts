@@ -12,7 +12,7 @@ import type { ChatState } from "./types";
 import {
   getSession,
   getTurns,
-  getSessionContextConfig,
+  getEffectiveContextConfig,
 } from "../../lib/api";
 import type { SessionConfig } from "../../../_shared/types";
 import { chatDebug } from "./debug";
@@ -73,7 +73,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   turns: {},
   inspectedTurnId: null,
   contextFirstTurnNumber: null,
+  contextConfigMode: "manual" as "auto" | "manual",
+  contextConfigMaxTurns: 10,
   setContextFirstTurnNumber: (tn) => set({ contextFirstTurnNumber: tn }),
+  setContextConfigMode: (mode: "auto" | "manual") => set({ contextConfigMode: mode }),
+  setContextConfigMaxTurns: (n: number) => set({ contextConfigMaxTurns: n }),
+  contextConfigVersion: 0,
+  bumpContextConfigVersion: () => set((s) => ({ contextConfigVersion: s.contextConfigVersion + 1 })),
   stagedChatInput: "",
   subagentConfigPrompt: null,
   setSubagentConfigPrompt: (prompt) => set({ subagentConfigPrompt: prompt }),
@@ -145,10 +151,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch {
     }
 
-    // Load context config
+    // Load context config (effective: session > project > global)
     try {
-      const ctxCfg = await getSessionContextConfig(id);
-      set({ contextFirstTurnNumber: ctxCfg.firstTurnNumber });
+      const workspaceRootForCtx = get().workspaceRoot;
+      const ctxCfg = await getEffectiveContextConfig(id, workspaceRootForCtx || undefined);
+      set({
+        contextFirstTurnNumber: ctxCfg.firstTurnNumber,
+        contextConfigMode: ctxCfg.mode ?? "manual",
+        contextConfigMaxTurns: ctxCfg.maxTurns ?? 10,
+      });
     } catch { /* ignore */ }
   },
 

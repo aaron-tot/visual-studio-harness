@@ -3,6 +3,7 @@ import { broadcastToAll } from "../../ws/configPush";
 import type { ConfigFile, SessionMeta, ThinkingEffort } from "../../../_shared/types";
 import { runTurn } from "./run-turn";
 import type { TurnEvents } from "./types";
+import type { StepToolBatchBeforePayload, StepToolBatchAfterPayload } from "../../../../_shared/types/step-batch";
 import {
   sendToSession,
   sendSessionState,
@@ -55,13 +56,15 @@ export async function handleSessionUpdate(msg: SessionUpdateWsMessage, dataDir: 
   return updateSessionMeta(dataDir, msg.sessionId, fields);
 }
 
-function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate"> {
+function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate" | "onToolBatchStart" | "onToolBatchEnd"> {
   return {
     onToken: (token, seq) => { const sid = getSessionId(); sendToSession(sid, { type: "token", sessionId: sid, content: token, seq }); },
     onReasoning: (delta, seq) => { const sid = getSessionId(); sendToSession(sid, { type: "reasoning", sessionId: sid, content: delta, seq }); },
     onToolCall: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_start", sessionId: sid, toolCallId: e.toolCallId, toolName: e.toolName, args: e.args, ...(e.seq != null ? { seq: e.seq } : {}), ...(e.parentToolCallId ? { parentToolCallId: e.parentToolCallId } : {}) }); },
     onToolResult: (e) => { const sid = getSessionId(); const tid = getTurnId(); sendToSession(sid, { type: "tool_end", sessionId: sid, toolCallId: e.toolCallId, status: e.isError ? "error" : "completed", result: e.output, error: e.isError ? String(e.output) : undefined, ...(e.seq != null ? { seq: e.seq } : {}), ...(tid != null ? { turnId: tid } : {}) }); },
     onToolUpdate: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_update", sessionId: sid, toolCallId: e.toolCallId, status: e.status, ...(e.seq != null ? { seq: e.seq } : {}) }); },
+    onToolBatchStart: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_start", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls }); },
+    onToolBatchEnd: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_end", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls.map((t) => ({ toolCallId: t.toolCallId, toolName: t.toolName, result: t.result, status: t.isError ? "error" : "completed" })) }); },
   };
 }
 
@@ -107,6 +110,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
 
   try {
     logMemory("before LLM turn");
+    console.error("[ws-chat] sending ctxFirstTurnNumber:", msg.contextFirstTurnNumber ?? null);
     let result = await runTurn(dataDir, config, {
       content: msg.content, sessionId: msg.sessionId, workspaceRoot: msg.workspaceRoot,
       agentName: msg.agentName ?? undefined, providerName: msg.providerName,

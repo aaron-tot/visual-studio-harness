@@ -21,12 +21,14 @@ import { TextPart } from "./parts/TextPart";
 import { ThinkingPart } from "./parts/ThinkingPart";
 import { ErrorPart } from "./parts/ErrorPart";
 import { ContextToolGroup, groupContextParts } from "./tools/ContextToolGroup";
+import { StepToolGroup, groupByStep } from "./tools/StepToolGroup";
 import { useChatStore } from "../../stores/chat";
 import { TurnInspectorModal } from "./TurnInspectorModal";
 import { CopyButton } from "./CopyButton";
 import { extractPrimaryText, extractAllText } from "../../lib/extract-message-text";
 import { getTurn } from "../../lib/api";
 import { computeToolGroups } from "../../lib/turn-inspector/cache-hit";
+import { putSessionContextConfig } from "../../lib/api";
 
 interface MessageRowProps {
   message: Message;
@@ -76,9 +78,14 @@ function renderPart(
   isStreaming?: boolean,
   thinkingCollapsed?: boolean
 ) {
-  // Context tool group
+  // Parallel step batch (from groupByStep) -> StepToolGroup; category run -> ContextToolGroup
   if (Array.isArray(part)) {
-    return <ContextToolGroup key={`group-${i}`} parts={part} toolCacheByCallId={toolCacheByCallId} />;
+    const hasStep = part.some((p) => p.type === "tool" && p.stepIndex != null);
+    return hasStep ? (
+      <StepToolGroup key={`batch-${i}`} parts={part} />
+    ) : (
+      <ContextToolGroup key={`group-${i}`} parts={part} toolCacheByCallId={toolCacheByCallId} />
+    );
   }
 
   // Errors render under the bubble, not inline in the card body
@@ -183,10 +190,19 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
   }, [isUser, message.parts, sessionId, turnId, completedToolKey]);
 
   // User messages: simple right-aligned bubble
+  const [ctxMenuPos, setCtxMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const setCtxTn = useChatStore((s) => s.setContextFirstTurnNumber);
+
   if (isUser) {
     return (
       <>
-        <div className="flex flex-col items-end" data-user-msg>
+        <div className="flex flex-col items-end" data-user-msg
+          onContextMenu={(e) => {
+            if (turnId == null) return;
+            e.preventDefault();
+            setCtxMenuPos({ x: e.clientX, y: e.clientY });
+          }}
+        >
           <div className="rounded-lg px-4 py-2 text-sm max-w-[80%] bg-blue-600/20 border border-blue-600/30 text-zinc-100 relative group">
             <p className="whitespace-pre-wrap">{message.content}</p>
             {turnId !== null && (
@@ -208,6 +224,28 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
             {formatTime(message.timestamp)}
           </span>
         </div>
+        {ctxMenuPos && turnId != null && (
+          <>
+            <div className="fixed inset-0 z-50" onClick={() => setCtxMenuPos(null)} />
+            <div
+              className="fixed z-50 bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl py-1 min-w-[200px]"
+              style={{ left: ctxMenuPos.x, top: ctxMenuPos.y }}
+            >
+              <button
+                type="button"
+                className="w-full text-left px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700 transition-colors"
+                onClick={() => {
+                  const tn = turnId >= 2 ? turnId : null;
+                  setCtxTn(tn);
+                  putSessionContextConfig(sessionId!, { firstTurnNumber: tn }).catch(() => {});
+                  setCtxMenuPos(null);
+                }}
+              >
+                Set context start to turn #{turnId}
+              </button>
+            </div>
+          </>
+        )}
         {inspectedTurnId !== null && sessionId && (
           <TurnInspectorModal
             sessionId={sessionId}
@@ -221,7 +259,7 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
 
   // Single card per assistant turn
   const bodyParts = message.parts?.filter((p) => p.type !== "error") ?? [];
-  const groupedParts = bodyParts.length ? groupContextParts(bodyParts) : undefined;
+  const groupedParts = bodyParts.length ? groupByStep(bodyParts) : undefined;
   const hasReasoning = message.parts?.some((p) => p.type === "reasoning") ?? false;
   const errors = collectErrors(message);
   const isError = isFailedStatus || errors.length > 0;

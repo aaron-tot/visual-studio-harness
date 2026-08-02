@@ -14,6 +14,7 @@ import { SystemPromptPanel } from "../settings/SystemPromptPanel";
 import { McpServersPanel } from "../settings/McpServersPanel";
 import { McpServerEditor } from "../settings/McpServerEditor";
 import { CustomToolsPanel } from "../settings/CustomToolsPanel";
+import { ContextPanel } from "../settings/ContextPanel";
 import { useConfigStore } from "../../stores/config";
 import { PRECONFIGURED_PROVIDERS } from "../../../../_shared/provider-registry";
 import { ScopePicker } from "../../features/info-panel/components/ScopePicker";
@@ -22,7 +23,7 @@ import { MdsScopePaths } from "../../features/mds/MdsScopePaths";
 
 const TEMPLATE_NAMES = PRECONFIGURED_PROVIDERS.map((d) => d.name);
 
-type Tab = "general" | "providers" | "agents" | "prompts" | "tools" | "knowledge" | "test-models";
+type Tab = "general" | "providers" | "agents" | "prompts" | "tools" | "context" | "knowledge" | "test-models";
 type ToolsSubTab = "builtin" | "custom" | "mcp";
 type PromptsSubTab = "mds" | "system";
 
@@ -104,6 +105,7 @@ export function SettingsModal({
           {tabBtn("agents", "Agents")}
           {tabBtn("prompts", "Prompts & Skills")}
           {tabBtn("tools", "Tools")}
+          {tabBtn("context", "Context")}
           {tabBtn("knowledge", "Knowledge")}
           {isDev && tabBtn("test-models", "Test Models")}
           <button
@@ -192,7 +194,7 @@ export function SettingsModal({
               )}
               {toolsSubTab === "custom" && (
                 <div className="flex-1 overflow-y-auto">
-                  <CustomToolsPanel />
+                  <CustomToolsPanel sessionId={sessionId || ""} />
                 </div>
               )}
               {toolsSubTab === "mcp" && (
@@ -220,6 +222,12 @@ export function SettingsModal({
           {tab === "test-models" && (
             <div key={`test-models-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
               <TestModelsPanel />
+            </div>
+          )}
+
+          {tab === "context" && (
+            <div key={`context-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
+              <ContextPanel sessionId={sessionId} />
             </div>
           )}
 

@@ -1,10 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { join } from "node:path";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { AuditPrompt } from "../../../_shared/types/audit";
 import { SEED_PROMPTS } from "./audit-prompt-seeds";
 import { localISOString } from "../utils/datetime";
+import { mkdirDurable, writeFileDurable } from "../utils/fs";
 
 const PROMPTS_DIR = "audit-prompts";
 
@@ -31,7 +32,7 @@ export interface AuditPromptEntry {
 
 export async function seedPromptsIfNeeded(promptsDir: string): Promise<void> {
   if (!existsSync(promptsDir)) {
-    await mkdir(promptsDir, { recursive: true });
+    await mkdirDurable(promptsDir);
   }
   const existing = await readdir(promptsDir, { withFileTypes: true });
   const existingNames = new Set(
@@ -40,8 +41,8 @@ export async function seedPromptsIfNeeded(promptsDir: string): Promise<void> {
   for (const p of SEED_PROMPTS) {
     if (existingNames.has(p.id)) continue;
     const nd = join(promptsDir, p.id);
-    await mkdir(nd, { recursive: true });
-    await writeFile(join(nd, "prompt.json"), JSON.stringify(p, null, 2) + "\n");
+    await mkdirDurable(nd);
+    await writeFileDurable(join(nd, "prompt.json"), JSON.stringify(p, null, 2) + "\n");
   }
 }
 
@@ -89,8 +90,8 @@ export async function createPrompt(
     createdAt: now,
     updatedAt: now,
   };
-  await mkdir(nd, { recursive: true });
-  await writeFile(join(nd, "prompt.json"), JSON.stringify(prompt, null, 2) + "\n");
+  await mkdirDurable(nd);
+  await writeFileDurable(join(nd, "prompt.json"), JSON.stringify(prompt, null, 2) + "\n");
   return { prompt, path: nd };
 }
 
@@ -131,7 +132,7 @@ export async function editPrompt(
     ...(updates.templateInstructions !== undefined ? { templateInstructions: updates.templateInstructions.trim() } : {}),
     updatedAt: localISOString(),
   };
-  await writeFile(join(nd, "prompt.json"), JSON.stringify(updated, null, 2) + "\n");
+  await writeFileDurable(join(nd, "prompt.json"), JSON.stringify(updated, null, 2) + "\n");
   return { prompt: updated, path: nd };
 }
 

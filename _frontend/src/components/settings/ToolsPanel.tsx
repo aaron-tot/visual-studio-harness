@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Globe, FolderOpen, Layers } from "lucide-react";
 import {
   getTools,
   getGlobalPerms,
@@ -202,15 +202,30 @@ export function ToolsPanel({ sessionId }: Props) {
             <p className="text-[10px] text-zinc-600 mt-1 font-mono break-all truncate">{lp.path}</p>
           )}
         </div>
-        <select
-          className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 shrink-0"
-          value={layer}
-          onChange={(e) => switchLayer(e.target.value as PermLayer)}
-        >
-          <option value="global">Global</option>
-          {hasSession && <option value="workspace">Current workspace</option>}
-          {hasSession && <option value="session">Current session</option>}
-        </select>
+        <div className="flex gap-0.5 items-center justify-center shrink-0">
+          {([["global", "Global", Globe], ["workspace", "Workspace", FolderOpen], ["session", "Session", Layers]] as const).map(([key, label, Icon]) => {
+            const disabled = !hasSession && key !== "global";
+            return (
+              <button
+                key={key}
+                type="button"
+                title={label}
+                aria-label={label}
+                disabled={disabled}
+                className={`flex items-center justify-center w-7 h-7 rounded transition-colors ${
+                  disabled
+                    ? "text-zinc-700 cursor-not-allowed"
+                    : layer === key
+                      ? "bg-zinc-700 text-zinc-200"
+                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                }`}
+                onClick={() => !disabled && switchLayer(key as PermLayer)}
+              >
+                <Icon size={14} />
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {lp.error && <p className="text-xs text-red-400 mb-2">{lp.error}</p>}

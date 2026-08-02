@@ -1237,6 +1237,9 @@ export function knowledgeUploadFile(file: File, scope?: string) {
 
 export interface SessionContextConfig {
   firstTurnNumber: number | null;
+  mode: "auto" | "manual";
+  maxTurns: number;
+  owner?: "session" | "project" | "global" | "none";
 }
 
 export function getSessionContextConfig(sessionId: string) {
@@ -1247,5 +1250,34 @@ export function putSessionContextConfig(sessionId: string, config: SessionContex
   return fetchJson<{ ok: boolean }>(`${BASE}/sessions/${sessionId}/context-config`, {
     method: "PUT",
     body: JSON.stringify(config),
+  });
+}
+
+// ── Scoped context config (global / project / session) ────────────────
+
+export function getScopedContextConfig(scope: string, opts?: { workspaceRoot?: string }) {
+  const params = new URLSearchParams({ scope });
+  if (opts?.workspaceRoot) params.set("workspaceRoot", opts.workspaceRoot);
+  return fetchJson<SessionContextConfig>(`${BASE}/context-config/scoped?${params}`);
+}
+
+// Resolve the effective context config by merging scopes server-side
+// (session overrides project overrides global). This is what the actual
+// context-truncation path should use, not the raw session-scoped value.
+export function getEffectiveContextConfig(
+  sessionId: string,
+  workspaceRoot?: string,
+) {
+  const params = new URLSearchParams({ sessionId });
+  if (workspaceRoot) params.set("workspaceRoot", workspaceRoot);
+  return fetchJson<SessionContextConfig>(`${BASE}/context-config/effective?${params}`);
+}
+
+export function putScopedContextConfig(scope: string, body: Partial<SessionContextConfig>, opts?: { workspaceRoot?: string }) {
+  const params = new URLSearchParams({ scope });
+  if (opts?.workspaceRoot) params.set("workspaceRoot", opts.workspaceRoot);
+  return fetchJson<{ ok: boolean }>(`${BASE}/context-config/scoped?${params}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
   });
 }

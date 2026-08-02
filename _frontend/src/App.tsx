@@ -35,7 +35,7 @@ function SessionIdCopy({ id }: { id: string }) {
   );
 }
 
-type SettingsTab = "providers" | "agents" | "global" | "mds";
+type SettingsTab = "providers" | "agents" | "global" | "mdsV2";
 
 function App() {
   useBackendReload();

@@ -5,7 +5,6 @@ import { ProviderEditor } from "../settings/ProviderEditor";
 import { ModelList } from "../settings/ModelList";
 import { TemplateProviderEditor } from "../settings/TemplateProviderEditor";
 import { AgentsPanel } from "../settings/AgentsPanel";
-import { MdManager } from "../settings/MdManager";
 import { ToolsPanel } from "../settings/ToolsPanel";
 import { GeneralPanel } from "../settings/GeneralPanel";
 import { SystemPromptPanel } from "../settings/SystemPromptPanel";
@@ -22,7 +21,7 @@ import { MdsScopePaths } from "../../features/mds/MdsScopePaths";
 
 const TEMPLATE_NAMES = PRECONFIGURED_PROVIDERS.map((d) => d.name);
 
-type Tab = "general" | "providers" | "mcp" | "agents" | "mds" | "mdsV2" | "tools" | "system" | "shortcuts" | "test-models" | "knowledge";
+type Tab = "general" | "providers" | "mcp" | "agents" | "mdsV2" | "tools" | "system" | "shortcuts" | "test-models" | "knowledge";
 
 interface SettingsModalProps {
   open: boolean;
@@ -83,7 +82,6 @@ export function SettingsModal({
           {tabBtn("providers", "Providers")}
           {tabBtn("mcp", "MCP")}
           {tabBtn("agents", "Agents")}
-          {tabBtn("mds", "MD Files")}
           {tabBtn("mdsV2", "MDS V2")}
           {tabBtn("tools", "Tools")}
           {tabBtn("system", "System Prompt")}
@@ -159,11 +157,6 @@ export function SettingsModal({
             </div>
           )}
 
-          {tab === "mds" && (
-            <div key={`mds-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
-              <MdManager sessionId={sessionId} />
-            </div>
-          )}
           {tab === "mdsV2" && (
             <div key={`mds-v2-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
               <div className="space-y-4">

@@ -254,57 +254,21 @@ export function getUsageTree(sessionId: string) {
   );
 }
 
-export interface MdEntry {
-  path: string;
-  fullPath: string;
-  tags: string[];
-  lastEdited: string | null;
-  stats?: {
-    chars: number;
-    words: number;
-    lines: number;
-    tokens: number;
-  };
-}
-
-export interface MdListResult {
-  entries: Record<string, MdEntry[]>;
-  roots: {
-    mds: string;
-    workspace: string;
-  };
-}
-
-export async function listMds(sessionId: string) {
-  return fetchJson<MdListResult>(
-    `${BASE}/mds?sessionId=${encodeURIComponent(sessionId)}`
-  );
-}
-
 export async function readMd(sessionId: string, path: string) {
   return fetchJson<{ content: string }>(
     `${BASE}/mds/read?sessionId=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(path)}`
   );
 }
 
-export async function createMd(sessionId: string, path: string, content: string, tags?: string[]) {
-  return fetchJson<{ ok: boolean }>(`${BASE}/mds/create?sessionId=${encodeURIComponent(sessionId)}`, {
-    method: "POST",
-    body: JSON.stringify({ path, content, tags }),
-  });
+export interface MdsAgentsPaths {
+  globalBase: string;
+  workspaceAgents: string | null;
+  workspaceRoot: string | null;
 }
 
-export async function updateMd(sessionId: string, path: string, opts: { newPath?: string; content?: string; tags?: string[] }) {
-  return fetchJson<{ ok: boolean }>(`${BASE}/mds/update?sessionId=${encodeURIComponent(sessionId)}`, {
-    method: "PUT",
-    body: JSON.stringify({ path, ...opts }),
-  });
-}
-
-export async function deleteMd(sessionId: string, path: string) {
-  return fetchJson<{ ok: boolean }>(
-    `${BASE}/mds/delete?sessionId=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(path)}`,
-    { method: "DELETE" }
+export async function getMdsAgentsPaths(sessionId?: string) {
+  return fetchJson<MdsAgentsPaths>(
+    `${BASE}/mds/agents-paths${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""}`
   );
 }
 
@@ -313,6 +277,8 @@ export interface ScopeDirNode {
   type: "file" | "dir";
   ext: string;
   children: ScopeDirNode[];
+  /** true when this dir is an MDS item folder (contains prompt.md) */
+  isItem?: boolean;
 }
 
 export interface ScopeItem {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FolderOpen, File, ChevronRight, ChevronDown, Pencil, Trash2 } from "lucide-react";
+import { FolderOpen, File, ChevronRight, ChevronDown, Pencil, Trash2, BookOpenText } from "lucide-react";
 import type { ScopeDirNode } from "../../lib/api";
 
 const RESERVED_MDS_DIRS = new Set(["_skills", "_SystemBase"]);
@@ -32,7 +32,11 @@ function TreeNode({ node, depth, relPath, onFolderContext, onEditFile, onDeleteF
           }}
         >
           {open ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
-          <FolderOpen size={12} className="shrink-0 text-amber-500/70" />
+          {node.isItem ? (
+            <BookOpenText size={12} className="shrink-0 text-sky-400/80" />
+          ) : (
+            <FolderOpen size={12} className="shrink-0 text-amber-500/70" />
+          )}
           <span className="truncate font-mono text-[11px]">{node.name}/</span>
           {protectedDir && (
             <span className="ml-auto mr-1 shrink-0 text-[9px] uppercase tracking-wide text-zinc-600">locked</span>

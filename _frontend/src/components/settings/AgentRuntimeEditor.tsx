@@ -6,9 +6,10 @@ import type {
   ThinkingEffort,
 } from "../../../../_shared/types";
 import { useConfigStore } from "../../stores/config";
-import { listMds, readMd, getMdsScopePaths, type ScopeItem } from "../../lib/api";
+import { readMd, getMdsScopePaths, getMdsAgentsPaths, type ScopeItem, type ScopePathEntry } from "../../lib/api";
+import type { PlanScope } from "../../features/info-panel/types";
+import { MdsEditModal } from "../../features/mds/MdsEditModal";
 import { useSessionStore } from "../../stores/sessions";
-import { MdEditorModal } from "./MdEditorModal";
 
 const EFFORTS: ThinkingEffort[] = ["off", "low", "medium", "high"];
 
@@ -38,15 +39,16 @@ export function AgentRuntimeEditor({
   const [customAgentMdPath, setCustomAgentMdPath] = useState("");
 
   const sessionId = useSessionStore((s) => s.activeId ?? s.sessions[0]?.id);
-  const [roots, setRoots] = useState<{ mds: string; workspace: string } | null>(null);
   const [globalSystemPromptBasePath, setGlobalSystemPromptBasePath] = useState<string | null>(null);
   const [workspaceAgentsMd, setWorkspaceAgentsMd] = useState<string | null>(null);
+  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   const [scopeItems, setScopeItems] = useState<ScopeItem[]>([]);
+  const [scopeIndex, setScopeIndex] = useState<Record<string, { scope: PlanScope; relPath: string }>>({});
+  const [editTarget, setEditTarget] = useState<{ scope: PlanScope; relPath: string; ext: string } | null>(null);
   const [agentMdTagFilter, setAgentMdTagFilter] = useState("");
   const [agentMdSearch, setAgentMdSearch] = useState("");
   const [skillTagFilter, setSkillTagFilter] = useState("");
   const [skillSearch, setSkillSearch] = useState("");
-  const [editingMd, setEditingMd] = useState<{ path: string; tag: string; content: string; source?: string } | null>(null);
   const [fileErrors, setFileErrors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -67,24 +69,10 @@ export function AgentRuntimeEditor({
 
   useEffect(() => {
     if (!sessionId) return;
-    listMds(sessionId).then((result) => {
-      setRoots(result.roots);
-      let global: string | null = null;
-      let workspace: string | null = null;
-      for (const [section, entries] of Object.entries(result.entries)) {
-        for (const entry of entries) {
-          const name = entry.path.split("/").pop()?.toLowerCase();
-          if (name === "agents.md") {
-            if (section === "workspace") {
-              workspace = entry.fullPath ?? entry.path;
-            } else {
-              global = entry.fullPath ?? entry.path;
-            }
-          }
-        }
-      }
-      setGlobalSystemPromptBasePath(global);
-      setWorkspaceAgentsMd(workspace);
+    getMdsAgentsPaths(sessionId).then((paths) => {
+      setGlobalSystemPromptBasePath(paths.globalBase);
+      setWorkspaceAgentsMd(paths.workspaceAgents);
+      setWorkspaceRoot(paths.workspaceRoot);
     }).catch(() => {});
   }, [sessionId]);
 
@@ -95,10 +83,17 @@ export function AgentRuntimeEditor({
       .then((result) => {
         if (cancelled) return;
         const all: ScopeItem[] = [];
-        for (const scope of Object.values(result.scopes)) {
-          if (scope.available) all.push(...scope.items);
+        const index: Record<string, { scope: PlanScope; relPath: string }> = {};
+        for (const [scopeKey, scope] of Object.entries(result.scopes) as [PlanScope, ScopePathEntry][]) {
+          if (scope.available) {
+            all.push(...scope.items);
+            for (const item of scope.items) {
+              index[item.promptPath] = { scope: scopeKey, relPath: item.relPath };
+            }
+          }
         }
         setScopeItems(all);
+        setScopeIndex(index);
       })
       .catch(() => {});
     return () => {
@@ -307,12 +302,7 @@ export function AgentRuntimeEditor({
             </div>
             {globalSystemPromptBasePath && (
               <button
-                onClick={async () => {
-                  try {
-                    const { content } = await readMd(sessionId, globalSystemPromptBasePath);
-                    setEditingMd({ path: globalSystemPromptBasePath, tag: "agent", content, source: "global" });
-                  } catch {}
-                }}
+                onClick={() => setEditTarget({ scope: "global", relPath: "systemPromptBase.md", ext: "md" })}
                 className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
               >
                 <Edit3 className="h-3 w-3" />
@@ -337,19 +327,14 @@ export function AgentRuntimeEditor({
                   <p className="truncate text-[11px] text-zinc-500">{workspaceAgentsMd}</p>
                 ) : (
                   <p className="text-[11px] text-zinc-500">
-                    No agents.md / AGENTS.md found in workspace root{roots ? ` (${roots.workspace})` : ""}
+                    No agents.md / AGENTS.md found in workspace root{workspaceRoot ? ` (${workspaceRoot})` : ""}
                   </p>
                 )}
               </div>
             </div>
             {workspaceAgentsMd && (
               <button
-                onClick={async () => {
-                  try {
-                    const { content } = await readMd(sessionId, workspaceAgentsMd);
-                    setEditingMd({ path: workspaceAgentsMd, tag: "agent", content, source: "workspace" });
-                  } catch {}
-                }}
+                onClick={() => setEditTarget({ scope: "project", relPath: "agents.md", ext: "md" })}
                 className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
               >
                 <Edit3 className="h-3 w-3" />
@@ -390,13 +375,11 @@ export function AgentRuntimeEditor({
             <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${fileErrors.has(value.agentMd.path ?? "") ? "bg-red-900/50 text-red-300 ring-1 ring-red-500/50" : "bg-zinc-800 text-zinc-300"}`} title={fileErrors.has(value.agentMd.path ?? "") ? `File not found at: ${value.agentMd.path}` : undefined}>
               {fileErrors.has(value.agentMd.path ?? "") && <AlertTriangle className="h-3 w-3 shrink-0 text-red-400" />}
               {value.agentMd.path ?? "Inline"}
-              {value.agentMd.path && (
+              {value.agentMd.path && scopeIndex[value.agentMd.path] && (
                 <button
-                  onClick={async () => {
-                    try {
-                      const { content } = await readMd(sessionId, value.agentMd.path!);
-                      setEditingMd({ path: value.agentMd.path!, tag: "agent", content });
-                    } catch {}
+                  onClick={() => {
+                    const hit = scopeIndex[value.agentMd.path!];
+                    setEditTarget({ scope: hit.scope, relPath: hit.relPath, ext: "md" });
                   }}
                   className="text-zinc-500 hover:text-zinc-200"
                 >
@@ -523,33 +506,21 @@ export function AgentRuntimeEditor({
         )}
       </div>
 
-      {/* MD Editor Modal */}
-      {editingMd && roots && (
-        <MdEditorModal
+      {/* MDS editor modal (V2, scope-based) */}
+      {editTarget && (
+        <MdsEditModal
+          scope={editTarget.scope}
+          relPath={editTarget.relPath}
+          ext={editTarget.ext}
           sessionId={sessionId}
-          roots={roots}
-          initialMd={editingMd}
-          onClose={() => setEditingMd(null)}
+          workspaceRoot={workspaceRoot || undefined}
+          allTags={[...new Set(scopeItems.flatMap((i) => i.tags))]}
+          onClose={() => setEditTarget(null)}
           onSaved={() => {
-            setEditingMd(null);
-            // Refresh to get updated content
-            listMds(sessionId).then((result) => {
-              let global: string | null = null;
-              let workspace: string | null = null;
-              for (const [section, entries] of Object.entries(result.entries)) {
-                for (const entry of entries) {
-                  const name = entry.path.split("/").pop()?.toLowerCase();
-                  if (name === "agents.md") {
-                    if (section === "workspace") {
-                      workspace = entry.fullPath ?? entry.path;
-                    } else {
-                      global = entry.fullPath ?? entry.path;
-                    }
-                  }
-                }
-              }
-              setGlobalSystemPromptBasePath(global);
-              setWorkspaceAgentsMd(workspace);
+            setEditTarget(null);
+            getMdsAgentsPaths(sessionId).then((paths) => {
+              setGlobalSystemPromptBasePath(paths.globalBase);
+              setWorkspaceAgentsMd(paths.workspaceAgents);
             }).catch(() => {});
           }}
         />
@@ -591,13 +562,11 @@ export function AgentRuntimeEditor({
                 >
                   {hasError && <AlertTriangle className="h-3 w-3 shrink-0 text-red-400" />}
                   {skill.mode === "existing" ? skill.name ?? "Unnamed" : skill.path ?? "Custom"}
-                  {skillPath && (
+                  {skillPath && scopeIndex[skillPath] && (
                     <button
-                      onClick={async () => {
-                        try {
-                          const { content } = await readMd(sessionId, skillPath);
-                          setEditingMd({ path: skillPath, tag: "skill", content });
-                        } catch {}
+                      onClick={() => {
+                        const hit = scopeIndex[skillPath];
+                        setEditTarget({ scope: hit.scope, relPath: hit.relPath, ext: "md" });
                       }}
                       className="text-zinc-500 hover:text-zinc-200"
                     >

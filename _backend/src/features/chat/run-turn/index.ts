@@ -184,6 +184,8 @@ export async function runTurn(
   const firstTurnNumber: number | null =
     input.contextFirstTurnNumber != null ? input.contextFirstTurnNumber : null;
 
+  console.error("[run-turn] ctxFirstTurnNumber received:", firstTurnNumber);
+
   const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns, firstTurnNumber });
 
   await bus?.emit("message.user_persisted", hookCtx, { message: userMessage, sessionId });
@@ -485,6 +487,8 @@ export async function runTurn(
             events.onToolResult?.(e);
           }
         },
+        onToolBatchStart: (e) => events.onToolBatchStart?.(e),
+        onToolBatchEnd: (e) => events.onToolBatchEnd?.(e),
         signal: abortSignal, hookCtx, modelSpeed, workspaceRoot,
         streamRetryErrorName: config.streamRetryErrorName,
         streamRetryMaxAttempts: config.streamRetryMaxAttempts,

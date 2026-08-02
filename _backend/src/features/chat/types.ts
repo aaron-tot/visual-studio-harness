@@ -16,6 +16,7 @@ import type {
   AgentChangeRequest,
   AgentChangeReply,
 } from "../../features/tools/types";
+import type { StepToolBatchBeforePayload, StepToolBatchAfterPayload } from "../../../../_shared/types/step-batch";
 
 export interface TurnCreateMeta {
   kind?: SessionKind;
@@ -45,6 +46,8 @@ export interface TurnEvents {
   onToolCall?: (e: { toolCallId: string; toolName: string; args: unknown; parentToolCallId?: string; seq?: number }) => void;
   onToolResult?: (e: { toolCallId: string; toolName: string; output: unknown; isError?: boolean; seq?: number }) => void;
   onToolUpdate?: (e: { toolCallId: string; status: string; seq?: number }) => void;
+  onToolBatchStart?: (e: StepToolBatchBeforePayload) => void | Promise<void>;
+  onToolBatchEnd?: (e: StepToolBatchAfterPayload) => void | Promise<void>;
   askPermission?: (toolName: string, args: unknown, callId: string) => Promise<boolean>;
   requestSubagentConfig?: (req: SubagentConfigRequest) => Promise<SubagentConfigReply>;
   requestSlotBusyDecision?: NonNullable<ExtendedToolContext["requestSlotBusyDecision"]>;

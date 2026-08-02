@@ -19,6 +19,7 @@ import {
   isStopTurnResult,
   type ResolveContext,
 } from "../../tools";
+import { loadCustomToolDefs } from "../../custom-tools/store";
 import { normalizeWorkspace } from "../../sessions/rest";
 import { getMcpManager } from "../../mcp";
 import {

@@ -13,6 +13,7 @@ import { KnowledgeSettingsPanel } from "../settings/KnowledgeSettingsPanel";
 import { SystemPromptPanel } from "../settings/SystemPromptPanel";
 import { McpServersPanel } from "../settings/McpServersPanel";
 import { McpServerEditor } from "../settings/McpServerEditor";
+import { CustomToolsPanel } from "../settings/CustomToolsPanel";
 import { useConfigStore } from "../../stores/config";
 import { PRECONFIGURED_PROVIDERS } from "../../../../_shared/provider-registry";
 import { ScopePicker } from "../../features/info-panel/components/ScopePicker";

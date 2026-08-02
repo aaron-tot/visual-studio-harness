@@ -5,7 +5,7 @@ Mapping (from spec p5a):
   agent/*.md            -> {name}/prompt.md          (+ prompt.json, tags from mdMeta)
   system/*.md           -> {name}/prompt.md          (+ prompt.json, tags from mdMeta)
   _skills/*.md          -> _skills/{name}/prompt.md  (+ prompt.json, tags from mdMeta)
-  systemPromptBase.md   -> _SystemBase/prompt.md     (copy; keep original for V1 builder)
+  systemPromptBase.md   -> _SystemBase/systemPromptBase/prompt.md  (copy; keep original for V1 builder)
 
 Non-destructive: copies only, never deletes. Originals remain until V1 decommission.
 """

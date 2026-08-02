@@ -114,7 +114,12 @@ function CustomToolModal({
   const [name, setName] = useState(tool?.name ?? "");
   const [description, setDescription] = useState(tool?.description ?? "");
   const [schemaRaw, setSchemaRaw] = useState(JSON.stringify(tool?.inputSchema ?? { type: "object", properties: {} }, null, 2));
-  const [code, setCode] = useState(tool?.code ?? "// args: tool input parameters\n// ctx: { sessionId, workspaceRoot, dataDir, callId }\n// Return: string | { output: string, isError?: boolean }\nreturn `Hello from ${tool?.name ?? "my-tool"}!`;");
+  const defaultCode = [
+    "// args: tool input parameters, ctx: { sessionId, workspaceRoot, dataDir, callId }",
+    '// Return: string | { output: string, isError?: boolean }',
+    "return args.toolName ?? 'Hello from custom-tool!';",
+  ].join("\n");
+  const [code, setCode] = useState(tool?.code ?? defaultCode);
   const [enabled, setEnabled] = useState(tool?.enabled ?? true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

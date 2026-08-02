@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { join, dirname, resolve } from "node:path";
-import { mkdir, writeFile, stat, rename, rm, readFile } from "node:fs/promises";
+import { mkdir, writeFile, stat, rename, rm, readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { getSession } from "../storage/session";
 import { resolveDataDirInfo, getMode } from "../paths";
@@ -159,6 +159,46 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
     } catch (err) {
       // Config update is best-effort — don't fail the rename if config write fails.
       console.warn(`[mds] failed to update config paths after rename:`, err instanceof Error ? err.message : err);
+    }
+
+    // Also update agent files in {dataDir}/agents/{key}.json — this is the primary storage
+    // that the frontend reads via GET /api/agents.
+    try {
+      const agentsDir = join(resolvedDataDir, "agents");
+      if (existsSync(agentsDir)) {
+        const agentEntries = await readdir(agentsDir, { withFileTypes: true });
+        const oldPrefix = join(base, fromRel);
+        const newPrefix = join(base, toRel);
+        for (const e of agentEntries) {
+          if (!e.isFile() || !e.name.endsWith(".json")) continue;
+          const fp = join(agentsDir, e.name);
+          const raw = await readFile(fp, "utf-8");
+          const settings = JSON.parse(raw) as Record<string, unknown>;
+          let changed = false;
+          // agentMd.path
+          const amd = settings.agentMd as Record<string, unknown> | undefined;
+          if (amd?.path && typeof amd.path === "string" && (amd.path as string).startsWith(oldPrefix)) {
+            amd.path = (amd.path as string).replace(oldPrefix, newPrefix);
+            changed = true;
+          }
+          // skillMds[].path
+          const skills = settings.skillMds as Record<string, unknown>[] | undefined;
+          if (Array.isArray(skills)) {
+            for (const sk of skills) {
+              if (sk.path && typeof sk.path === "string" && (sk.path as string).startsWith(oldPrefix)) {
+                sk.path = (sk.path as string).replace(oldPrefix, newPrefix);
+                changed = true;
+              }
+            }
+          }
+          if (changed) {
+            await writeFile(fp, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+          }
+        }
+      }
+    } catch (err) {
+      // Best-effort — don't fail the rename if agent file writes fail.
+      console.warn(`[mds] failed to update agent files after rename:`, err instanceof Error ? err.message : err);
     }
 
     return { ok: true, path: to };

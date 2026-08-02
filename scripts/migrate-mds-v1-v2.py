@@ -131,7 +131,43 @@ def fix_config_paths(data_dir: str) -> None:
             f.write("\n")
         print(f"  config: updated {cfg}")
 
+def fix_agent_file_paths(data_dir: str) -> None:
+    """Update agent file paths in {data_dir}/agents/*.json: V1 -> V2."""
+    agdir = os.path.join(data_dir, "agents")
+    if not os.path.isdir(agdir):
+        return
+    for fn in os.listdir(agdir):
+        if not fn.endswith(".json"):
+            continue
+        fp = os.path.join(agdir, fn)
+        try:
+            d = json.load(open(fp, "r", encoding="utf-8"))
+        except Exception:
+            continue
+        changed = False
+        amd = d.get("agentMd", {})
+        path = amd.get("path", "")
+        if path and "/agent/" in path:
+            amd["path"] = path.replace("/agent/", "/").replace(".md", "/prompt.md")
+            changed = True
+            print(f"  agent/{fn}: agentMd.path -> {amd['path']}")
+        skills = d.get("skillMds", [])
+        for si, s in enumerate(skills):
+            if not isinstance(s, dict):
+                continue
+            path = s.get("path", "")
+            if path and ("/skill/" in path or "/_skills/" in path):
+                s["path"] = path.replace("/skill/", "/_skills/").replace(".md", "/prompt.md")
+                changed = True
+                print(f"  agent/{fn}: skillMds[{si}].path -> {s['path']}")
+        if changed:
+            with open(fp, "w", encoding="utf-8") as f:
+                json.dump(d, f, indent=2)
+                f.write("\n")
+            print(f"  agent file: updated {fp}")
+
 if __name__ == "__main__":
     for d in sys.argv[1:]:
         migrate(d)
         fix_config_paths(d)
+        fix_agent_file_paths(d)

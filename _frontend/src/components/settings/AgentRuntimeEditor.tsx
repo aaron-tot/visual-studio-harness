@@ -100,6 +100,49 @@ export function AgentRuntimeEditor({
       cancelled = true;
     };
   }, [sessionId]);
+
+  // Auto-correct stale paths after DnD: when scopeItems refresh, if a path stored in
+  // value.agentMd/value.skillMds is no longer found in scopeIndex (item moved via DnD),
+  // find the matching item by folder name and update the path.
+  useEffect(() => {
+    if (scopeItems.length === 0 || Object.keys(scopeIndex).length === 0) return;
+    const changes: { type: "agentMd" | "skillMd"; index?: number; newPath: string }[] = [];
+
+    if (value.agentMd?.path && !scopeIndex[value.agentMd.path]) {
+      const segments = value.agentMd.path.split("/").filter(Boolean);
+      const name = segments.length >= 2 ? segments[segments.length - 2] : "";
+      if (name) {
+        const match = scopeItems.find((i) => i.relPath === name || i.relPath.endsWith("/" + name));
+        if (match) changes.push({ type: "agentMd", newPath: match.promptPath });
+      }
+    }
+
+    for (let i = 0; i < (value.skillMds ?? []).length; i++) {
+      const s = value.skillMds![i];
+      if (s.mode === "custom" && s.path && !scopeIndex[s.path]) {
+        const segments = s.path.split("/").filter(Boolean);
+        const name = segments.length >= 2 ? segments[segments.length - 2] : "";
+        if (name) {
+          const match = scopeItems.find((i) => i.relPath === name || i.relPath.endsWith("/" + name));
+          if (match) changes.push({ type: "skillMd", index: i, newPath: match.promptPath });
+        }
+      }
+    }
+
+    if (changes.length > 0) {
+      const next: AgentSettings = { ...value };
+      for (const c of changes) {
+        if (c.type === "agentMd") {
+          next.agentMd = { ...next.agentMd!, path: c.newPath };
+        } else {
+          const skills = [...(next.skillMds ?? [])];
+          skills[c.index!] = { ...skills[c.index!], path: c.newPath };
+          next.skillMds = skills;
+        }
+      }
+      onChange(next);
+    }
+  }, [scopeItems]);
   const providers = config.providers.filter((p) => p.enabled !== false);
   const selectedProvider =
     providers.find((p) => p.displayName === value.providerName) ?? providers[0];

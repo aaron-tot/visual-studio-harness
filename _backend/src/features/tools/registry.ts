@@ -34,7 +34,8 @@ export class ToolRegistry {
     const out: ToolSet = {};
     for (const def of this.tools.values()) {
       const resolved = await resolveToolPermissionDetailed(def.name, resolveCtx);
-      if (resolved.mode === "deny") continue;
+      const mode = resolved.mode === "deny" && resolved.layer === "none" ? def.permissionDefault : resolved.mode;
+      if (mode === "deny") continue;
 
       const preResolved = resolved.mode === "ask" ? undefined : resolved.mode;
       out[def.name] = tool({

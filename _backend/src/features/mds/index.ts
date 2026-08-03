@@ -2,7 +2,6 @@ export { buildDefaultGlobalSystemPrompt } from "./defaults";
 export { AGENTS_MD_NAMES } from "./constants";
 export {
   globalSystemPromptPath,
-  legacyGlobalAgentsPath,
   projectAgentsMdPath,
   seedsDir,
   seedSubdirForMode,

@@ -5,17 +5,16 @@ import { runFd } from "../host/fd";
 
 export const globTool: ToolDef = {
   name: "glob",
-  description:
-    "Find files by name/glob pattern (fd, with rg --files fallback). Respects gitignore. Returns relative paths.",
+  description: "Find files by name/glob pattern (fd, rg fallback). Respects gitignore.",
   permissionDefault: "allow",
   outputFields: [
-    { name: "pattern", type: "string", description: "The glob pattern searched", required: true },
-    { name: "count", type: "integer", description: "Number of files found", required: true },
-    { name: "truncated", type: "boolean", description: "Whether results were truncated by head_limit", required: false },
+    { name: "pattern", type: "string", description: "Glob pattern searched", required: true },
+    { name: "count", type: "integer", description: "Files found", required: true },
+    { name: "truncated", type: "boolean", description: "Results truncated by head_limit", required: false },
   ],
   inputSchema: z.object({
-    pattern: z.string().describe('Glob or filename pattern e.g. "**/*.ts" or "package.json"'),
-    path: z.string().optional().describe("Subdirectory to search under workspace"),
+    pattern: z.string().describe('Glob or filename e.g. "**/*.ts"'),
+    path: z.string().optional().describe("Subdirectory under workspace"),
     head_limit: z.number().int().min(1).max(1000).optional().describe("Max paths (default 200)"),
   }),
   execute: async (args, ctx) => {

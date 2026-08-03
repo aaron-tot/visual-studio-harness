@@ -14,12 +14,11 @@ export function makeTaskTool(agents?: Record<string, AgentSettings>): ToolDef {
 
   return {
     name: "task",
-    description: `Delegate work to a subagent in its own session. You (the main agent) act as the user of that session.
-
-- Provide a detailed prompt; the subagent runs the normal agent pipeline (tools, multi-step).
-- You receive only the subagent's final assistant message text (not its full tool traces).
-- The result includes task_id. Pass the same task_id on a later task call to continue that subagent session with another user message.
-- Wait for the result before continuing dependent work. Do not nest task calls from a subagent.
+    description: `Delegate work to a subagent in its own session; you act as its user.
+- Give a detailed prompt; the subagent runs the normal agent pipeline.
+- You receive only its final assistant message (no tool traces).
+- Result includes task_id; pass it again to continue that session.
+- Wait for the result before dependent work; do not nest task calls.
 
 Available agent configs:
 ${agentList}`,
@@ -29,15 +28,13 @@ ${agentList}`,
       { name: "isError", type: "boolean", description: "Whether the subagent reported an error", required: false },
     ],
     inputSchema: z.object({
-      agent_name: z.string().describe("Name of the agent config to use for this task"),
-      description: z.string().describe("Short 3-5 word label for the UI"),
-      prompt: z.string().describe("Full task for the subagent (becomes the user message in its session)"),
+      agent_name: z.string().describe("Agent config to use"),
+      description: z.string().describe("Short UI label"),
+      prompt: z.string().describe("Full task for the subagent"),
       task_id: z
         .string()
         .optional()
-        .describe(
-          "Resume a previous subagent session instead of creating a new one (pass a prior task_id)"
-        ),
+        .describe("Prior task_id to resume that session"),
     }),
     execute: async (args, ctx) => {
       const { runSubagentTurn } = await import("../../subagents");

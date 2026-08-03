@@ -38,18 +38,16 @@ const ORIGINAL_TOOLS: Record<NotesAction, ToolDef> = {
 };
 
 const notesSchema = z.object({
-  action: z.enum(NOTES_ACTIONS).describe("Notes operation to perform"),
-  name: z.string().optional().describe("Note name (directory slug, unique within scope)"),
-  title: z.string().optional().describe("Human-readable title"),
-  body: z.string().optional().describe("Markdown or plain-text body content"),
-  scope: z.enum(["global", "project", "session"]).optional().describe("Scope (default: global)"),
+  action: z.enum(NOTES_ACTIONS).describe("Operation: read, create, update, archive"),
+  name: z.string().optional().describe("Note name"),
+  title: z.string().optional().describe("Title"),
+  body: z.string().optional().describe("Body"),
+  scope: z.enum(["global", "project", "session"]).optional().describe("Scope"),
 });
 
 export const notesTool: ToolDef = {
   name: "notes",
-  description:
-    "Consolidated user notes tool. Create, read, update, and archive personal notes. " +
-    "Set the required 'action' to choose the operation (read, create, update, archive).",
+  description: "Create, read, update, and archive user notes. Set 'action' to pick the operation.",
   permissionDefault: "allow",
   inputSchema: notesSchema,
   execute: async (args, ctx) => {

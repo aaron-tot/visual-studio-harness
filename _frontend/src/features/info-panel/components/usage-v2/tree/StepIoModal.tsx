@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { getTurnStep } from "../../../../../lib/api";
 import { JsonValue } from "../../../../../components/chat/JsonValue";
 
@@ -65,7 +66,7 @@ export function StepIoModal({ sessionId, turnNumber, stepIndex, onClose }: StepI
   const rawRequest = (data?.step?.rawRequest) ?? null;
   const rawResponse = (data?.step?.rawResponse) ?? null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
         className="bg-zinc-900 rounded-lg border border-zinc-800 flex flex-col max-h-[85vh] w-full max-w-3xl"

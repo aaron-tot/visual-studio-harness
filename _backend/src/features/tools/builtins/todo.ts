@@ -46,7 +46,7 @@ export function setTodoDataDir(dir: string | undefined) {
 export const todoWriteTool: ToolDef = {
   name: "todowrite",
   description:
-    "Replace the session todo list (full list each call). Use for multi-step planning. Statuses: pending | in_progress | completed | cancelled.",
+    "Replace the session todo list (full list each call). Statuses: pending | in_progress | completed | cancelled.",
   permissionDefault: "allow",
   outputFields: [
     { name: "count", type: "integer", description: "Total number of todo items", required: true },

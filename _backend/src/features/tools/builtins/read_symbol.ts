@@ -8,12 +8,11 @@ import { formatNumberedLines } from "../format";
 
 export const readSymbolTool: ToolDef = {
   name: "read_symbol",
-  description:
-    "Read only the source region for a named symbol (definition + optional context lines). Prefer over reading whole files.",
+  description: "Read only the source region for a named symbol (with context lines).",
   permissionDefault: "allow",
   outputFields: [
-    { name: "name", type: "string", description: "Symbol name that was requested", required: true },
-    { name: "path", type: "string", description: "File path where the symbol was found", required: false },
+    { name: "name", type: "string", description: "Symbol name requested", required: true },
+    { name: "path", type: "string", description: "File where symbol was found", required: false },
   ],
   inputSchema: z.object({
     name: z.string().describe("Exact or unique symbol name"),

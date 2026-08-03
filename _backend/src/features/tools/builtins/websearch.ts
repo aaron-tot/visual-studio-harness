@@ -86,27 +86,27 @@ export function webSearchProviderLabel(provider: WebSearchProvider): string {
 export const websearchTool: ToolDef = {
   name: "websearch",
   description:
-    "Search the web by query (discovery). Use when you do not have a URL. After you have a link, use webfetch to read it. Backends: exa | parallel (auto, env, or provider arg).",
+    "Search the web by query when you have no URL. See skill:websearch.",
   permissionDefault: "allow",
   outputFields: [
     { name: "query", type: "string", description: "The search query", required: true },
     { name: "count", type: "integer", description: "Number of results returned", required: true },
-    { name: "provider", type: "enum(exa | parallel)", description: "Which search backend was used", required: false },
+    { name: "provider", type: "enum(exa | parallel)", description: "Search backend used", required: false },
   ],
   inputSchema: z.object({
-    query: z.string().describe("Search query (include year for current events)"),
+    query: z.string().describe("Search query"),
     numResults: z
       .number()
       .int()
       .min(1)
       .max(20)
       .optional()
-      .describe("Number of results (default 8)"),
+      .describe("Number of results"),
     type: SearchTypeSchema.optional().describe(
-      "Search depth: auto (default), fast, or deep (Exa)"
+      "Search depth: auto, fast, or deep"
     ),
     livecrawl: LivecrawlSchema.optional().describe(
-      "Live crawl: fallback (default) or preferred (Exa)"
+      "Live crawl: fallback or preferred"
     ),
     contextMaxCharacters: z
       .number()
@@ -114,9 +114,9 @@ export const websearchTool: ToolDef = {
       .min(500)
       .max(50_000)
       .optional()
-      .describe("Max context chars for LLM (default ~10000, Exa)"),
+      .describe("Max context chars for LLM"),
     provider: ProviderSchema.optional().describe(
-      "Force backend: exa or parallel (overrides env/A-B)"
+      "Force backend: exa or parallel"
     ),
   }),
   execute: async (args, ctx) => {

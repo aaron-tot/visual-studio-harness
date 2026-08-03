@@ -50,29 +50,29 @@ const ORIGINAL_TOOLS: Record<GraphAction, ToolDef> = {
 };
 
 const graphSchema = z.object({
-  action: z.enum(GRAPH_ACTIONS).describe("Graph operation to perform"),
-  name: z.string().optional().describe("Symbol name or substring to search for"),
+  action: z.enum(GRAPH_ACTIONS).describe("Operation: search, files, info, imports, exports, manifest, status"),
+  name: z.string().optional().describe("Symbol name or substring"),
   kind: z
     .enum(["function", "class", "interface", "enum", "variable", "type"])
     .optional()
-    .describe("Filter by symbol kind"),
-  folder_path: z.string().optional().describe("Optional subdirectory to list (relative to workspace root)"),
-  file_path: z.string().optional().describe("File path relative to workspace root"),
+    .describe("Symbol kind"),
+  folder_path: z.string().optional().describe("Subdirectory"),
+  file_path: z.string().optional().describe("File path"),
   max_depth: z
     .number()
     .int()
     .min(1)
     .max(10)
     .optional()
-    .describe("Max tree depth for manifest (default: unlimited)"),
-  include_files: z.boolean().optional().describe("Include files in manifest output (default: true)"),
+    .describe("Max tree depth"),
+  include_files: z.boolean().optional().describe("Include files"),
 });
 
 export const graphTool: ToolDef = {
   name: "graph",
   description:
-    "Consolidated workspace-graph tool. Search symbols, list files, inspect a file's imports/exports/symbols, and get workspace status or manifest. " +
-    "Set the required 'action' to choose the operation (search, files, info, imports, exports, manifest, status).",
+    "Query the workspace symbol graph: search symbols, list files, inspect imports/exports, get status or manifest. " +
+    "Set 'action' to pick the operation.",
   permissionDefault: "allow",
   inputSchema: graphSchema,
   execute: async (args, ctx) => {

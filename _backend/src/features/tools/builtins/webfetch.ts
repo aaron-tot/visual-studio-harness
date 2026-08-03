@@ -11,27 +11,24 @@ const FormatSchema = z.enum(["markdown", "text", "html"]);
  */
 export const webfetchTool: ToolDef = {
   name: "webfetch",
-  description:
-    "Fetch one known URL (markdown/text/html). Use when you already have a link. For discovery without a URL, use websearch first.",
+  description: "Fetch one known URL (markdown/text/html). Use websearch when no URL.",
   permissionDefault: "allow",
   outputFields: [
-    { name: "url", type: "string", description: "The URL that was fetched", required: true },
+    { name: "url", type: "string", description: "URL that was fetched", required: true },
     { name: "format", type: "enum(markdown | text | html)", description: "Return format", required: true },
-    { name: "truncated", type: "boolean", description: "Whether the response was truncated (max 5MB)", required: false },
+    { name: "truncated", type: "boolean", description: "Response truncated (max 5MB)", required: false },
   ],
   inputSchema: z.object({
-    url: z
-      .string()
-      .describe("Fully-formed http(s) URL to fetch"),
+    url: z.string().describe("Fully-formed http(s) URL"),
     format: FormatSchema.optional().describe(
-      "Return format: markdown (default), text, or html"
+      "markdown (default), text, or html"
     ),
     timeout: z
       .number()
       .int()
       .positive()
       .optional()
-      .describe("Timeout in seconds (default and max configurable in settings)"),
+      .describe("Timeout in seconds (default/config in settings)"),
   }),
   execute: async (args, ctx) => {
     let url = (args.url || "").trim();

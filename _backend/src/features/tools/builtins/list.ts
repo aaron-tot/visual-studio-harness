@@ -38,9 +38,7 @@ interface GroupData {
 export const listTool: ToolDef = {
   name: "list",
   description:
-    "Unified listing for designs, notes, audits, and knowledge documents. " +
-    "Omit `feature` to show all 4 types. Omit `scope` to aggregate all 3 scopes. " +
-    "For knowledge docs, pass a `configs` array with extension/status/createdBy filters.",
+    "List designs, notes, audits, and knowledge docs. Omit feature/scope to aggregate. For knowledge docs pass a `configs` array.",
   permissionDefault: "allow",
   outputFields: [
     { name: "totalCount", type: "integer", description: "Total items across all groups", required: true },

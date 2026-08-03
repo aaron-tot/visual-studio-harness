@@ -1,8 +1,8 @@
-import { mkdir, readFile, copyFile, access } from "node:fs/promises";
+import { mkdir, copyFile, access } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { atomicWriteFile } from "../tools/host/atomic-write";
 import { buildDefaultGlobalSystemPrompt } from "./defaults";
-import { globalSystemPromptPath, legacyGlobalAgentsPath, seedsDir, seedSubdirForMode } from "./paths";
+import { globalSystemPromptPath, seedsDir, seedSubdirForMode } from "./paths";
 
 
 async function fileExists(path: string): Promise<boolean> {
@@ -12,20 +12,6 @@ async function fileExists(path: string): Promise<boolean> {
 export async function ensureGlobalSystemPromptFile(dataDir: string, mode = "dev"): Promise<void> {
   const path = globalSystemPromptPath(dataDir);
   if (await fileExists(path)) return;
-
-  // Migration from legacy path (mds/global/agents.md)
-  const legacyPath = legacyGlobalAgentsPath(dataDir);
-  if (await fileExists(legacyPath)) {
-    try {
-      const content = await readFile(legacyPath, "utf-8");
-      const mdsDir = join(resolve(dataDir), "mds");
-      await mkdir(mdsDir, { recursive: true });
-      await atomicWriteFile(path, content);
-      return;
-    } catch (err) {
-      console.warn(`[system-prompt] failed to migrate legacy agents.md:`, err instanceof Error ? err.message : err);
-    }
-  }
 
   // Seed from repoSource/seeds/{modeSubdir}/mds/systemPromptBase.md
   const sDir = seedsDir();

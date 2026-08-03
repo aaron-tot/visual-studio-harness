@@ -4,7 +4,7 @@ import { getSessionMetaPublic } from "../../../storage/session";
 import { listAgents } from "../../../rest/agents";
 export const agentChangeTool: ToolDef = {
   name: "agent_change",
-  description: `Request to switch to a different agent configuration. Use this when you believe a different agent (with different model/provider/settings) would be better suited for the current task. Provide your reasoning for the suggestion.`,
+  description: "Request to switch to a different agent configuration.",
   permissionDefault: "ask",
   outputFields: [
     { name: "changed", type: "boolean", description: "Whether the agent was switched", required: true },
@@ -12,20 +12,9 @@ export const agentChangeTool: ToolDef = {
     { name: "to", type: "string", description: "New agent name (only if changed)", required: false },
   ],
   inputSchema: z.object({
-    suggestedAgent: z
-      .string()
-      .describe(
-        "Name of the agent to switch to (e.g. 'main', 'sub', or a custom agent name)"
-      ),
-    reason: z
-      .string()
-      .describe("Why you think this agent would be better for the current task"),
-    continueAfter: z
-      .boolean()
-      .optional()
-      .describe(
-        "Whether you recommend continuing immediately after the switch (true) or ending the turn (false/omit)"
-      ),
+    suggestedAgent: z.string().describe("Agent to switch to"),
+    reason: z.string().describe("Why this agent is better"),
+    continueAfter: z.boolean().optional().describe("Continue immediately after switch"),
   }),
   execute: async (args, ctx) => {
     // Read agents from data/{mode}/agents/*.json (the canonical agent list)

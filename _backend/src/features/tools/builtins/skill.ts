@@ -32,7 +32,8 @@ async function listSkillNames(): Promise<string[]> {
       for (const e of entries) {
         if (e.isDirectory()) {
           const skillMd = join(root, e.name, "SKILL.md");
-          if (existsSync(skillMd)) names.add(e.name);
+          const promptMd = join(root, e.name, "prompt.md");
+          if (existsSync(skillMd) || existsSync(promptMd)) names.add(e.name);
         } else if (e.isFile() && e.name.endsWith(".md")) {
           names.add(basename(e.name, ".md"));
         }
@@ -52,6 +53,7 @@ async function resolveSkillFile(name: string): Promise<string | null> {
   for (const root of skillRoots) {
     const candidates = [
       join(root, safe, "SKILL.md"),
+      join(root, safe, "prompt.md"),
       join(root, `${safe}.md`),
       join(root, safe),
     ];
@@ -70,10 +72,10 @@ async function resolveSkillFile(name: string): Promise<string | null> {
 export const skillTool: ToolDef = {
   name: "skill",
   description:
-    "Load a skill markdown pack into context by name (on-demand). Use when a specialized procedure is needed. Call without assuming skills are already in the system prompt.",
+    "Load a skill markdown pack into context by name (on-demand).",
   permissionDefault: "allow",
   outputFields: [
-    { name: "name", type: "string", description: "Name of the skill that was loaded", required: true },
+    { name: "name", type: "string", description: "Skill that was loaded", required: true },
     { name: "path", type: "string", description: "Filesystem path to the skill file", required: false },
   ],
   inputSchema: z.object({

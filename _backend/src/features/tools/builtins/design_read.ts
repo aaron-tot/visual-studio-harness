@@ -10,7 +10,7 @@ const PLAN_RE = /^planV(\d+)\.json$/;
 
 export const designReadTool: ToolDef = {
   name: "design_read",
-  description: "Read a spec or plan document from a design directory. Specify the design name and document type. Omit version to get the latest. Returns the full parsed JSON document.",
+  description: "Read a spec or plan document from a design directory. See skill:design.",
   permissionDefault: "allow",
   outputFields: [
     { name: "found", type: "boolean", description: "Whether the document was found", required: true },
@@ -21,9 +21,9 @@ export const designReadTool: ToolDef = {
     { name: "allVersions", type: "integer[]", description: "All available versions for this doc type (only when found)", required: false },
   ],
   inputSchema: z.object({
-    name: z.string().min(1).describe("Design directory name (e.g. 'auth-system')"),
-    type: z.enum(["spec", "plan"]).describe("Document type to read"),
-    version: z.number().int().positive().optional().describe("Version number (omit for latest)"),
+    name: z.string().min(1).describe("Design directory name"),
+    type: z.enum(["spec", "plan"]).describe("Document type"),
+    version: z.number().int().positive().optional().describe("Version (omit for latest)"),
   }),
   execute: async (args, ctx) => {
     const pattern = args.type === "spec" ? SPEC_RE : PLAN_RE;

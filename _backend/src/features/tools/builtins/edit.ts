@@ -8,22 +8,21 @@ import { countOccurrences } from "../format";
 
 export const editTool: ToolDef = {
   name: "edit",
-  description:
-    "Exact string replacement in a file. By default old_string must match exactly once (high success rate). Set replace_all=true to replace every match. Prefer apply_patch for multi-hunk edits.",
+  description: "Exact string replacement in a file; replace_all=true for every match.",
   permissionDefault: "ask",
   outputFields: [
-    { name: "path", type: "string", description: "Path to the edited file", required: true },
+    { name: "path", type: "string", description: "Path to edited file", required: true },
     { name: "replaced", type: "boolean", description: "Whether a replacement was made", required: true },
-    { name: "replaceAll", type: "boolean", description: "Whether replace_all mode was used", required: false },
+    { name: "replaceAll", type: "boolean", description: "Whether replace_all was used", required: false },
   ],
   inputSchema: z.object({
-    path: z.string().describe("File path relative to workspace"),
-    old_string: z.string().describe("Exact text to find"),
-    new_string: z.string().describe("Replacement text"),
+    path: z.string(),
+    old_string: z.string(),
+    new_string: z.string(),
     replace_all: z
       .boolean()
       .optional()
-      .describe("If true, replace all occurrences (default false)"),
+      .describe("Replace all occurrences (default false)"),
   }),
   execute: async (args, ctx) => {
     const abs = await resolveAccessiblePath(ctx, args.path);

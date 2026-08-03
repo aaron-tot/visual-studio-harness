@@ -5,17 +5,16 @@ import { atomicWriteFile } from "../host/atomic-write";
 
 export const writeTool: ToolDef = {
   name: "write",
-  description:
-    "Create or overwrite a file (atomic write). Paths relative to workspace, or absolute/~ with external_directory permission. Returns path and size only — not file contents.",
+  description: "Create or overwrite a file (atomic write). Returns path and size only.",
   permissionDefault: "ask",
   outputFields: [
-    { name: "path", type: "string", description: "Absolute path to the written file", required: true },
-    { name: "bytes", type: "integer", description: "Number of bytes written", required: true },
-    { name: "lines", type: "integer", description: "Number of lines written", required: true },
+    { name: "path", type: "string", description: "Absolute path written", required: true },
+    { name: "bytes", type: "integer", description: "Bytes written", required: true },
+    { name: "lines", type: "integer", description: "Lines written", required: true },
   ],
   inputSchema: z.object({
-    path: z.string().describe("File path (relative to workspace, absolute, or ~/...)"),
-    content: z.string().describe("Full file contents to write"),
+    path: z.string(),
+    content: z.string(),
   }),
   execute: async (args, ctx) => {
     const abs = await resolveAccessiblePath(ctx, args.path);

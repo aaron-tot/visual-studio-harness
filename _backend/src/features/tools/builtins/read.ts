@@ -16,28 +16,27 @@ function looksBinary(buf: Buffer): boolean {
 
 export const readTool: ToolDef = {
   name: "read",
-  description:
-    "Read a file from the workspace. Prefer relative paths. Use offset (0-based start line) and limit (default 2000 lines) for large files. Returns numbered lines. Cannot read binary/image files.",
+  description: "Read a file (numbered lines; offset/limit for large files; cannot read binary).",
   permissionDefault: "allow",
   outputFields: [
-    { name: "path", type: "string", description: "Absolute path to the file that was read", required: true },
-    { name: "truncated", type: "boolean", description: "Whether output was truncated due to line limit", required: false },
+    { name: "path", type: "string", description: "Absolute path read", required: true },
+    { name: "truncated", type: "boolean", description: "Output truncated by line limit", required: false },
   ],
   inputSchema: z.object({
-    path: z.string().describe("File path (relative, absolute, or ~/...; outside workspace needs external_directory)"),
+    path: z.string(),
     offset: z
       .number()
       .int()
       .min(0)
       .optional()
-      .describe("0-based line offset to start reading from"),
+      .describe("0-based start line"),
     limit: z
       .number()
       .int()
       .min(1)
       .max(DEFAULT_READ_MAX_LINES)
       .optional()
-      .describe(`Max lines to return (default ${DEFAULT_READ_MAX_LINES})`),
+      .describe(`Max lines (default ${DEFAULT_READ_MAX_LINES})`),
   }),
   execute: async (args, ctx) => {
     const abs = await resolveAccessiblePath(ctx, args.path);

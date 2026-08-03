@@ -7,19 +7,18 @@ import { DEFAULT_GREP_MAX_MATCHES, clipLine } from "../format";
 
 export const grepTool: ToolDef = {
   name: "grep",
-  description:
-    "Search file contents with regex via ripgrep. Respects .gitignore. Prefer this before reading many files. Use path/glob to narrow scope.",
+  description: "Regex search file contents via ripgrep (respects .gitignore).",
   permissionDefault: "allow",
   outputFields: [
-    { name: "pattern", type: "string", description: "The regex pattern searched", required: true },
-    { name: "count", type: "integer", description: "Number of matching lines found", required: true },
-    { name: "truncated", type: "boolean", description: "Whether results were truncated by head_limit", required: false },
+    { name: "pattern", type: "string", description: "Regex pattern searched", required: true },
+    { name: "count", type: "integer", description: "Matching lines found", required: true },
+    { name: "truncated", type: "boolean", description: "Results truncated by head_limit", required: false },
   ],
   inputSchema: z.object({
-    pattern: z.string().describe("Regular expression pattern"),
-    path: z.string().optional().describe("File or directory under workspace (default: whole workspace)"),
+    pattern: z.string(),
+    path: z.string().optional().describe("File/dir under workspace (default: whole workspace)"),
     glob: z.string().optional().describe('File filter e.g. "*.ts"'),
-    case_insensitive: z.boolean().optional().describe("Case insensitive search"),
+    case_insensitive: z.boolean().optional().describe("Case-insensitive search"),
     head_limit: z
       .number()
       .int()

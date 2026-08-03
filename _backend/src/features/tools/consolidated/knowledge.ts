@@ -46,49 +46,34 @@ const ORIGINAL_TOOLS: Record<KnowledgeAction, ToolDef> = {
 };
 
 const knowledgeSchema = z.object({
-  action: z.enum(KNOWLEDGE_ACTIONS).describe("Knowledge operation to perform"),
-  query: z.string().optional().describe("Search query (natural language or exact term)"),
-  limit: z
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .optional()
-    .describe("Maximum results to return (defaults to the mode's chunk count)"),
-  scope: z
-    .enum(["global", "project", "session"])
-    .optional()
-    .describe("Scope to search in (default: global)"),
+  action: z.enum(KNOWLEDGE_ACTIONS).describe("Operation"),
+  query: z.string().optional().describe("Search query"),
+  limit: z.number().int().min(1).max(50).optional().describe("Max results"),
+  scope: z.enum(["global", "project", "session"]).optional().describe("Scope"),
   mode: z
     .enum(["general", "code", "research", "documentation"])
     .optional()
-    .describe("Retrieval mode — adjusts chunk count, ranking weights, and metadata priority"),
+    .describe("Retrieval mode"),
   filters: z
     .object({
-      extension: z.string().optional().describe("Filter by extension (e.g. .md)"),
-      createdBy: z.string().optional().describe("Filter by creator: user, agent, system"),
+      extension: z.string().optional().describe("Extension (e.g. .md)"),
+      createdBy: z.string().optional().describe("Creator (user/agent/system)"),
     })
     .optional()
     .describe("Metadata filters"),
-  documentId: z.string().optional().describe("Document UUID or filename.ext to open/edit/delete"),
-  maxChars: z
-    .number()
-    .int()
-    .min(100)
-    .max(50000)
-    .optional()
-    .describe("Max chars to return from a document"),
-  filename: z.string().optional().describe("Filename (must end in .md or .txt)"),
-  content: z.string().optional().describe("Document content in markdown or plain text"),
-  tags: z.array(z.string()).optional().describe("Optional tags"),
-  confirmed: z.boolean().optional().describe("Must be true to delete a user-created document"),
+  documentId: z.string().optional().describe("Document UUID or filename"),
+  maxChars: z.number().int().min(100).max(50000).optional().describe("Max chars"),
+  filename: z.string().optional().describe("Filename (.md/.txt)"),
+  content: z.string().optional().describe("Document content"),
+  tags: z.array(z.string()).optional().describe("Tags"),
+  confirmed: z.boolean().optional().describe("Confirm delete"),
 });
 
 export const knowledgeTool: ToolDef = {
   name: "knowledge",
   description:
-    "Consolidated Knowledge Base tool. Search, open, ingest, and manage documents. " +
-    "Set the required 'action' to choose the operation (search, open, ingest, doc_create, doc_edit, doc_delete).",
+    "Search, open, ingest, and manage Knowledge Base documents. " +
+    "Set 'action' to pick the operation.",
   permissionDefault: "allow",
   outputFields: [
     { name: "action", type: "string", description: "Knowledge sub-action performed", required: false },

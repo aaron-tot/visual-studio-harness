@@ -5,7 +5,9 @@ import type { DesignsScope } from "../../../rest/plans";
 
 export const designCreateTool: ToolDef = {
   name: "design_create",
-  description: "Create a new spec or plan document for a design. A spec defines what to build (goal, requirements, constraints). A plan defines how to build it (implementation steps, execution config). Returns the file path and version number so you can read it back and fill in parts.",
+  description:
+    "Create a new spec or plan document for a design. " +
+    "See skill:design for the document structure.",
   permissionDefault: "allow",
   outputFields: [
     { name: "action", type: "string", description: "Result action (always 'created')", required: true },
@@ -15,19 +17,12 @@ export const designCreateTool: ToolDef = {
     { name: "path", type: "string", description: "Full filesystem path to the created file", required: true },
   ],
   inputSchema: z.object({
-    name: z.string().min(1).describe("Directory name for this design (e.g. 'auth-system')"),
-    type: z.enum(["spec", "plan"]).describe("Document type: 'spec' for specifications (what), 'plan' for implementation plans (how)"),
-    goal: z.string().optional().describe("For specs: the goal statement. For plans: the end-goal. Omit to leave empty."),
-    specReference: z.string().optional().describe("For plans only: name of the spec this plan implements"),
-    scope: z.enum(["global", "project", "session"]).optional().describe("Scope (default: global)"),
-    content: z.record(z.unknown()).optional().describe(
-      "Optional full or partial document body. Fields here override the default empty template. " +
-      "Keys for specs: goal, requirements (string[]), constraints (string[]), assumptions (string[]), acceptanceCriteria (string[]), parts (SpecPlanPart[]). " +
-      "Keys for plans: endGoal, tags (string[]), parts (SpecPlanPart[]). " +
-      "The 'meta' key is ignored and auto-generated. " +
-      "Parts support recursive nesting: { id, name, type, description, status, dependencies, parts }. " +
-      "Omit to get a bare skeleton (default behavior)."
-    ),
+    name: z.string().min(1).describe("Design directory name"),
+    type: z.enum(["spec", "plan"]).describe("spec = what to build, plan = how to build"),
+    goal: z.string().optional().describe("Goal or end-goal"),
+    specReference: z.string().optional().describe("Spec name this plan implements"),
+    scope: z.enum(["global", "project", "session"]).optional().describe("Scope"),
+    content: z.record(z.unknown()).optional().describe("Optional document body; see skill:design"),
   }),
   execute: async (args, ctx) => {
     const scope = (args.scope || "global") as DesignsScope;

@@ -62,89 +62,71 @@ const severitySchema = z.enum(["critical", "high", "medium", "low", "info"]).des
 const statusSchema = z.enum(["implemented_as_expected", "implemented_differently", "not_implemented"]).describe("Implementation status");
 
 const auditSchema = z.object({
-  action: z.enum(AUDIT_ACTIONS).describe("Audit operation to perform"),
-  name: z
-    .string()
-    .optional()
-    .describe("Audit or prompt name (slug / directory name, e.g. 'memleak-audit-main')"),
-  id: z.string().optional().describe("Prompt id (slug) — used by prompt_read/prompt_edit/prompt_delete"),
+  action: z.enum(AUDIT_ACTIONS).describe("Operation: create, read, edit, delete, prompt_*"),
+  name: z.string().optional().describe("Audit or prompt name (slug)"),
+  id: z.string().optional().describe("Prompt id (slug)"),
   scope: scopeSchema.optional(),
-  title: z.string().optional().describe("Human-readable title"),
-  auditType: z
-    .string()
-    .optional()
-    .describe("Audit category (e.g. 'implementation_completed', 'general_audit', 'custom')"),
-  endGoal: z.string().optional().describe("Mission statement / question the audit answers"),
-  summary: z.string().optional().describe("Executive summary of audit findings"),
+  title: z.string().optional().describe("Title"),
+  auditType: z.string().optional().describe("Audit category (e.g. implementation_completed, custom)"),
+  endGoal: z.string().optional().describe("Question the audit answers"),
+  summary: z.string().optional().describe("Executive summary"),
   findings: z
     .array(
       z.object({
         severity: severitySchema,
-        file: z.string().optional().describe("Relative file path in the workspace"),
-        line: z.number().int().positive().optional().describe("Line number in the file"),
-        title: z.string().describe("Short one-liner for the finding"),
-        description: z.string().describe("Detailed explanation of the issue"),
-        recommendation: z.string().describe("Suggested fix or mitigation"),
-        category: z.string().describe("Type of issue (e.g. 'memory_leak', 'hardcoded_secret')"),
-        effort: z
-          .enum(["quick", "moderate", "significant"])
-          .optional()
-          .describe("Estimated effort to fix"),
+        file: z.string().optional().describe("File path"),
+        line: z.number().int().positive().optional().describe("Line number"),
+        title: z.string().describe("Short one-liner"),
+        description: z.string().describe("Detail"),
+        recommendation: z.string().describe("Suggested fix"),
+        category: z.string().describe("Issue type"),
+        effort: z.enum(["quick", "moderate", "significant"]).optional().describe("Effort"),
       })
     )
     .optional()
-    .describe("List of individual findings in the audit"),
+    .describe("Audit findings"),
   attachments: z
     .array(
       z.object({
-        designName: z.string().optional().describe("Name of the attached design directory"),
-        specName: z.string().optional().describe("Spec version name (e.g. 'specV2')"),
-        planName: z.string().optional().describe("Plan version name (e.g. 'planV1')"),
-        label: z.string().optional().describe("Human-readable label for this attachment"),
+        designName: z.string().optional().describe("Design name"),
+        specName: z.string().optional().describe("Spec name"),
+        planName: z.string().optional().describe("Plan name"),
+        label: z.string().optional().describe("Label"),
       })
     )
     .optional()
-    .describe("Links to associated designs, specs, and/or plans"),
-  overallStatus: z
-    .enum(["pass", "partial", "fail"])
-    .optional()
-    .describe("Overall implementation status (implementation_completed only)"),
-  overallAssessment: z.string().optional().describe("Human-readable overall assessment (implementation_completed only)"),
+    .describe("Linked designs/specs/plans"),
+  overallStatus: z.enum(["pass", "partial", "fail"]).optional().describe("Overall status"),
+  overallAssessment: z.string().optional().describe("Overall assessment"),
   assessments: z
     .array(
       z.object({
-        aspectName: z.string().describe("Name of the aspect being assessed"),
-        expectedBehavior: z.string().optional().describe("What was expected per the spec/plan"),
+        aspectName: z.string().describe("Aspect name"),
+        expectedBehavior: z.string().optional().describe("Expected behavior"),
         status: statusSchema,
-        actualImplementation: z.string().optional().describe("What was actually implemented, if different"),
-        fileReferences: z.array(z.string()).optional().describe("Relevant file paths"),
+        actualImplementation: z.string().optional().describe("Actual implementation"),
+        fileReferences: z.array(z.string()).optional().describe("File paths"),
       })
     )
     .optional()
-    .describe("Per-aspect assessments (implementation_completed only)"),
-  agentModel: z.string().optional().describe("The model that performed the audit"),
-  rawReport: z.string().optional().describe("Optional full markdown report for back-reference"),
+    .describe("Per-aspect assessments"),
+  agentModel: z.string().optional().describe("Model"),
+  rawReport: z.string().optional().describe("Full markdown report"),
   document: z
     .object({})
     .passthrough()
     .optional()
-    .describe("Full updated audit document (for edit) — see the original audit structure"),
-  description: z.string().optional().describe("Short description of what the prompt checks"),
-  category: z
-    .enum(["general", "implementation"])
-    .optional()
-    .describe("Prompt category (default: general)"),
-  templateInstructions: z
-    .string()
-    .optional()
-    .describe("Instructions the agent follows when running this audit prompt"),
+    .describe("Full audit document (edit) — see skill:audit"),
+  description: z.string().optional().describe("Prompt description"),
+  category: z.enum(["general", "implementation"]).optional().describe("Prompt category"),
+  templateInstructions: z.string().optional().describe("Prompt instructions"),
 });
 
 export const auditTool: ToolDef = {
   name: "audit",
   description:
-    "Consolidated audit tool. Create/read/edit/delete structured audit documents and manage reusable audit prompt presets. " +
-    "Set the required 'action' to choose the operation (create, read, edit, delete, prompt_create, prompt_list, prompt_read, prompt_edit, prompt_delete).",
+    "Create/read/edit/delete audit documents and manage audit prompt presets. " +
+    "Set 'action' to pick the operation. See skill:audit for the document structure.",
   permissionDefault: "allow",
   inputSchema: auditSchema,
   execute: async (args, ctx) => {

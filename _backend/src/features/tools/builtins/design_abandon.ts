@@ -8,18 +8,18 @@ import type { DesignsScope, DesignMeta } from "../../../rest/plans";
 
 export const designAbandonTool: ToolDef = {
   name: "design_abandon",
-  description: "Mark a design as abandoned. Writes a meta.json with the reason and optional successor. Abandoned designs still exist on disk but are visually distinguished in the UI.",
+  description: "Mark a design as abandoned with a reason and optional successor.",
   permissionDefault: "allow",
   outputFields: [
-    { name: "abandoned", type: "boolean", description: "Whether the abandon operation succeeded", required: true },
-    { name: "name", type: "string", description: "Design that was abandoned", required: true },
+    { name: "abandoned", type: "boolean", description: "Whether the abort succeeded", required: true },
+    { name: "name", type: "string", description: "Design abandoned", required: true },
     { name: "reason", type: "string", description: "Why it was abandoned", required: true },
-    { name: "successor", type: "string", description: "Replacement design name, if any", required: false },
+    { name: "successor", type: "string", description: "Replacement design, if any", required: false },
   ],
   inputSchema: z.object({
-    name: z.string().min(1).describe("Design directory name to abandon"),
+    name: z.string().min(1).describe("Design directory name"),
     reason: z.string().min(1).describe("Why this design is being abandoned"),
-    successor: z.string().optional().describe("Name of the replacement design, if any"),
+    successor: z.string().optional().describe("Replacement design name"),
   }),
   execute: async (args, ctx) => {
     const designsDir = resolveDesignsDir(ctx.dataDir, "global" as DesignsScope, ctx.workspaceRoot, ctx.sessionId);

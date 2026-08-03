@@ -5,16 +5,15 @@ import { findSymbols } from "../host/symbols";
 
 export const findSymbolTool: ToolDef = {
   name: "find_symbol",
-  description:
-    "Find code symbol definitions (functions/classes/types) by name substring. Prefer this over grep+read loops. Returns path:line and kind.",
+  description: "Find symbol definitions by name substring. Returns path:line and kind.",
   permissionDefault: "allow",
   outputFields: [
-    { name: "query", type: "string", description: "The symbol name searched", required: true },
-    { name: "count", type: "integer", description: "Number of matching symbols found", required: true },
+    { name: "query", type: "string", description: "Symbol name searched", required: true },
+    { name: "count", type: "integer", description: "Matching symbols found", required: true },
   ],
   inputSchema: z.object({
-    query: z.string().describe("Symbol name or substring"),
-    path: z.string().optional().describe("Limit search to a file or subdirectory"),
+    query: z.string(),
+    path: z.string().optional().describe("Limit to a file or subdirectory"),
     head_limit: z.number().int().min(1).max(100).optional().describe("Max hits (default 20)"),
   }),
   execute: async (args, ctx) => {

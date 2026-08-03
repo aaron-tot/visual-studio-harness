@@ -8,11 +8,6 @@ export function globalSystemPromptPath(dataDir: string): string {
   return join(resolve(dataDir), "mds", "_SystemBase", "systemPromptBase", "prompt.md");
 }
 
-/** Legacy path (mds/global/agents.md) used prior to the switch to systemPromptBase.md — kept for migration. */
-export function legacyGlobalAgentsPath(dataDir: string): string {
-  return join(resolve(dataDir), "mds", "global", "agents.md");
-}
-
 export function seedSubdirForMode(mode: string): string {
   if (mode === "dev") return "dev";
   return "packageAndProd";

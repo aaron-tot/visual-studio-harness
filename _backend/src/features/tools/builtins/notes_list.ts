@@ -4,7 +4,7 @@ import { listNotes } from "../../../rest/notes";
 
 export const notesListTool: ToolDef = {
   name: "notes_list",
-  description: "Notes in a scope (global, project, or session). Each user note has a name, title, body, and metadata.",
+  description: "List user notes in a scope (global, project, or session).",
   permissionDefault: "allow",
   outputFields: [
     { name: "count", type: "integer", description: "Number of notes found", required: true },

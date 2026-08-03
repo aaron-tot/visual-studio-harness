@@ -50,9 +50,8 @@ function deepMerge(
 export const designEditTool: ToolDef = {
   name: "design_edit",
   description:
-    "Edit a spec or plan document. Two modes: (1) provide `document` for a full replacement, or (2) provide `patch` for a surgical merge (RFC 7396 JSON Merge Patch). " +
-    "In patch mode, nested objects are deep-merged; arrays and primitives are fully replaced. " +
-    "The tool automatically updates meta.updatedAt and meta.updatedBy in either mode.",
+    "Edit a spec/plan: provide `document` (full replace) or `patch` (RFC 7396 merge). " +
+    "See skill:design-edit for merge semantics.",
   permissionDefault: "allow",
   outputFields: [
     { name: "updated", type: "boolean", description: "Whether the update succeeded", required: true },
@@ -73,17 +72,11 @@ export const designEditTool: ToolDef = {
       document: z
         .record(z.unknown())
         .optional()
-        .describe(
-          "Full replacement document JSON. Mutually exclusive with `patch`.",
-        ),
+        .describe("Full replacement document JSON"),
       patch: z
         .record(z.unknown())
         .optional()
-        .describe(
-          "Partial document to merge into the existing document (RFC 7396). " +
-            "Nested objects deep-merge; arrays and primitives are fully replaced. " +
-            "Mutually exclusive with `document`.",
-        ),
+        .describe("Partial doc to merge (RFC 7396)"),
     })
     .refine((d) => !(d.document && d.patch), {
       message: "Provide either `document` (full replace) or `patch` (merge), not both",

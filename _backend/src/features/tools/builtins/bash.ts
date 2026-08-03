@@ -14,22 +14,21 @@ const DANGEROUS = [
 
 export const bashTool: ToolDef = {
   name: "bash",
-  description:
-    "Run a shell command in a persistent bash session for this chat (cwd defaults to workspace; env persists across calls). Prefer non-interactive commands. Avoid full interactive TUIs.",
+  description: "Run a shell command in a persistent bash session (env persists across calls).",
   permissionDefault: "ask",
   outputFields: [
-    { name: "exitCode", type: "integer", description: "Command exit code (null if timed out)", required: false },
+    { name: "exitCode", type: "integer", description: "Exit code (null if timed out)", required: false },
     { name: "cwd", type: "string", description: "Working directory the command ran in", required: true },
-    { name: "command", type: "string", description: "The command that was run", required: false },
+    { name: "command", type: "string", description: "Command that was run", required: false },
   ],
   inputSchema: z.object({
-    command: z.string().describe("Shell command to run"),
+    command: z.string(),
     timeout_ms: z
       .number()
       .int()
       .positive()
       .optional()
-      .describe("Timeout in ms (default and max configurable in settings)"),
+      .describe("Timeout in ms (default/config in settings)"),
     description: z
       .string()
       .optional()
@@ -37,7 +36,7 @@ export const bashTool: ToolDef = {
     cwd: z
       .string()
       .optional()
-      .describe("Working directory (relative, absolute, or ~/...; outside needs external_directory)"),
+      .describe("Working directory (defaults to workspace)"),
   }),
   execute: async (args, ctx) => {
     for (const re of DANGEROUS) {

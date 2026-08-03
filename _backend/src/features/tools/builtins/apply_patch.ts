@@ -5,17 +5,8 @@ import { applyPatchText } from "../host/patch";
 
 export const applyPatchTool: ToolDef = {
   name: "apply_patch",
-  description: `Apply a multi-file patch to the workspace. Format:
-*** Add File: relative/path
-file contents
-*** Update File: relative/path
-<<<<<<< SEARCH
-exact old text (must match once)
-=======
-new text
->>>>>>> REPLACE
-*** Delete File: relative/path
-Prefer this over rewriting whole files.`,
+  description:
+    "Apply a multi-file patch to the workspace (*** Add/Update/Delete File format). See skill:apply-patch.",
   permissionDefault: "ask",
   outputFields: [
     { name: "files", type: "string[]", description: "List of file paths that were touched by the patch", required: true },

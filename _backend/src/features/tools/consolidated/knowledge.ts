@@ -10,23 +10,20 @@ import { knowledgeDocumentDeleteTool } from "../builtins/knowledge_document_dele
 /**
  * Consolidated `knowledge` tool.
  *
- * Replaces the 6 individual knowledge_* tools with a single tool that dispatches
- * on a required `action` enum. Every original tool name maps to a sub-command
- * with identical behavior — the execute handler forwards to the original
- * tool implementation, so no logic, error handling, or side effects change.
+ * Replaces the 6 individual knowledge_* tools with a single registered tool
+ * that dispatches on a required `action` enum. Every sub-command forwards to
+ * the original tool implementation, so behavior is identical to before.
  *
- * Sub-commands:
- *   - search       -> knowledge_search
- *   - open         -> knowledge_open
- *   - ingest       -> knowledge_ingest
- *   - doc_create   -> knowledge_document_create
- *   - doc_edit     -> knowledge_document_edit
- *   - doc_delete   -> knowledge_document_delete
+ * Sub-commands (via `action`):
+ *   search     - Search the Knowledge Base for relevant documents (knowledge_search)
+ *   open       - Open a full document by UUID or filename          (knowledge_open)
+ *   ingest     - Trigger re-ingestion of knowledge sources          (knowledge_ingest)
+ *   doc_create - Create a new knowledge document                    (knowledge_document_create)
+ *   doc_edit   - Edit an existing knowledge document                (knowledge_document_edit)
+ *   doc_delete - Delete a knowledge document                        (knowledge_document_delete)
  *
- * Schema is a flat merged object: `action` is the only required field; all
- * params across the 6 original tools are merged as optional (first-wins on
- * collisions widened to unions where the types differ) to minimize JSON
- * schema overhead.
+ * Schema is a flat object: `action` is the only required field; all other
+ * params are optional and shared across the sub-commands, each defined once.
  */
 const KNOWLEDGE_ACTIONS = [
   "search",
@@ -48,56 +45,57 @@ const ORIGINAL_TOOLS: Record<KnowledgeAction, ToolDef> = {
   doc_delete: knowledgeDocumentDeleteTool,
 };
 
-/** Combine a set of zod types into one permissive type (union if multiple distinct). */
-function combineTypes(types: z.ZodTypeAny[]): z.ZodTypeAny {
-  const unique = Array.from(new Set(types));
-  if (unique.length === 1) return unique[0];
-  return z.union(unique as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
-}
-
-/** Build a flat merged schema: every field from every original tool, all optional. */
-function buildMergedSchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
-  const shape: Record<string, z.ZodTypeAny[]> = {};
-  for (const tool of Object.values(ORIGINAL_TOOLS)) {
-    const obj = tool.inputSchema as z.ZodObject<any>;
-    const objShape = obj.shape ?? {};
-    for (const [key, field] of Object.entries(objShape)) {
-      (shape[key] ??= []).push(field as z.ZodTypeAny);
-    }
-  }
-  const merged: Record<string, z.ZodTypeAny> = {};
-  for (const [key, typeDefs] of Object.entries(shape)) {
-    merged[key] = combineTypes(typeDefs).optional();
-  }
-  return z.object({
-    action: z.enum(KNOWLEDGE_ACTIONS),
-    ...merged,
-  });
-}
-
-const knowledgeSchema = buildMergedSchema();
+const knowledgeSchema = z.object({
+  action: z.enum(KNOWLEDGE_ACTIONS).describe("Knowledge operation to perform"),
+  query: z.string().optional().describe("Search query (natural language or exact term)"),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe("Maximum results to return (defaults to the mode's chunk count)"),
+  scope: z
+    .enum(["global", "project", "session"])
+    .optional()
+    .describe("Scope to search in (default: global)"),
+  mode: z
+    .enum(["general", "code", "research", "documentation"])
+    .optional()
+    .describe("Retrieval mode — adjusts chunk count, ranking weights, and metadata priority"),
+  filters: z
+    .object({
+      extension: z.string().optional().describe("Filter by extension (e.g. .md)"),
+      createdBy: z.string().optional().describe("Filter by creator: user, agent, system"),
+    })
+    .optional()
+    .describe("Metadata filters"),
+  documentId: z.string().optional().describe("Document UUID or filename.ext to open/edit/delete"),
+  maxChars: z
+    .number()
+    .int()
+    .min(100)
+    .max(50000)
+    .optional()
+    .describe("Max chars to return from a document"),
+  filename: z.string().optional().describe("Filename (must end in .md or .txt)"),
+  content: z.string().optional().describe("Document content in markdown or plain text"),
+  tags: z.array(z.string()).optional().describe("Optional tags"),
+  confirmed: z.boolean().optional().describe("Must be true to delete a user-created document"),
+});
 
 export const knowledgeTool: ToolDef = {
   name: "knowledge",
   description:
     "Consolidated Knowledge Base tool. Search, open, ingest, and manage documents. " +
-    "Set the required 'action' to select the operation:\n" +
-    "  search       - Search the Knowledge Base for relevant documents (knowledge_search)\n" +
-    "  open         - Open a full document by UUID or filename (knowledge_open)\n" +
-    "  ingest       - Trigger re-ingestion of knowledge sources (knowledge_ingest)\n" +
-    "  doc_create   - Create a new knowledge document (knowledge_document_create)\n" +
-    "  doc_edit     - Edit an existing knowledge document (knowledge_document_edit)\n" +
-    "  doc_delete   - Delete a knowledge document (knowledge_document_delete)",
+    "Set the required 'action' to choose the operation (search, open, ingest, doc_create, doc_edit, doc_delete).",
   permissionDefault: "allow",
   outputFields: [
     { name: "action", type: "string", description: "Knowledge sub-action performed", required: false },
-    { name: "count", type: "integer", description: "Number of results returned (search)", required: false },
-    { name: "total", type: "integer", description: "Total matching results before top-K truncation (search)", required: false },
+    { name: "count", type: "number", description: "Number of results returned (search)", required: false },
+    { name: "total", type: "number", description: "Total matching results before top-K truncation (search)", required: false },
     { name: "hybrid", type: "boolean", description: "Whether both vector and keyword search were used (search)", required: false },
     { name: "filename", type: "string", description: "Source filename (open)", required: false },
-    { name: "added", type: "integer", description: "Documents added (ingest)", required: false },
-    { name: "updated", type: "integer", description: "Documents updated (ingest)", required: false },
-    { name: "deleted", type: "integer", description: "Documents deleted (ingest)", required: false },
     { name: "id", type: "string", description: "Document UUID (doc_create, doc_edit, doc_delete)", required: false },
   ],
   inputSchema: knowledgeSchema,

@@ -55,6 +55,7 @@ export interface ChatState {
     args: unknown;
     parentToolCallId?: string;
     seq?: number;
+    stepIndex?: number;
   }) => void;
   onToolUpdate: (e: { toolCallId: string; status: ToolCallStatus; partial?: string; seq?: number }) => void;
   onToolEnd: (e: {
@@ -147,6 +148,7 @@ export type BufferedDelta =
       args: unknown;
       parentToolCallId?: string;
       seq?: number;
+      stepIndex?: number;
     }
   | {
       kind: "tool_end";

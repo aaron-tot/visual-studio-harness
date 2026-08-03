@@ -344,7 +344,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
-  onToolStart: ({ toolCallId, toolName, args, parentToolCallId, seq }) => {
+  onToolStart: ({ toolCallId, toolName, args, parentToolCallId, seq, stepIndex }) => {
     touchStreamTimeout();
     return set((state) => {
       if (seq != null && seq <= state.lastSeq) return {};
@@ -352,7 +352,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return seq != null ? { lastSeq: Math.max(state.lastSeq, seq), _partSeq: Math.max(state._partSeq, seq) } : {};
       }
       const nextSeq = seq ?? state.lastSeq + 1;
-      const parts = [...state.streamingParts, { type: "tool" as const, toolCallId, toolName, status: "running" as const, args, _seq: nextSeq, ...(parentToolCallId ? { parentToolCallId } : {}) }];
+      const parts = [...state.streamingParts, { type: "tool" as const, toolCallId, toolName, status: "running" as const, args, stepIndex, _seq: nextSeq, ...(parentToolCallId ? { parentToolCallId } : {}) }];
       return { streamingParts: parts, streamingContent: textContentFromParts(parts), lastSeq: nextSeq, _partSeq: nextSeq };
     });
   },

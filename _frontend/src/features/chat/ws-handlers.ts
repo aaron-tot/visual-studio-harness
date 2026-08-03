@@ -146,10 +146,10 @@ wsClient.on("tool_start", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
   if (awaitingSessionState) {
-    bufferDelta({ kind: "tool_start", sessionId: data.sessionId, toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, parentToolCallId: data.parentToolCallId, seq: data.seq });
+    bufferDelta({ kind: "tool_start", sessionId: data.sessionId, toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, parentToolCallId: data.parentToolCallId, seq: data.seq, stepIndex: data.stepIndex });
     return;
   }
-  useChatStore.getState().onToolStart({ toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, parentToolCallId: data.parentToolCallId, seq: data.seq });
+  useChatStore.getState().onToolStart({ toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, parentToolCallId: data.parentToolCallId, seq: data.seq, stepIndex: data.stepIndex });
 });
 
 wsClient.on("tool_update", (data: any) => {
@@ -181,7 +181,7 @@ wsClient.on("permission_request", (data: any) => {
   }
   const parts = useChatStore.getState().streamingParts;
   if (!parts.some((p) => p.type === "tool" && p.toolCallId === data.toolCallId)) {
-    useChatStore.getState().onToolStart({ toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, seq: data.seq });
+    useChatStore.getState().onToolStart({ toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, seq: data.seq, stepIndex: data.stepIndex });
   } else if (data.args != null) {
     useChatStore.setState((state: any) => ({
       streamingParts: state.streamingParts.map((p: any) =>

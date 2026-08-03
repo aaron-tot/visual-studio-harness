@@ -406,7 +406,8 @@ setStoreCtxTn(firstTurnNumber);
               <button
                 className="absolute top-1/2 -translate-y-1/2 left-full ml-1.5 p-0.5 rounded transition-colors hover:bg-zinc-700"
                 onClick={togglePin}
-                onPointerDown={e => e.stopPropagation()}
+                onPointerDown={e => { e.stopPropagation(); e.preventDefault(); }}
+                onPointerUp={e => e.stopPropagation()}
               >
                 {pinned ? (
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400">

@@ -8,21 +8,18 @@ import { notesArchiveTool } from "../builtins/notes_archive";
 /**
  * Consolidated `notes` tool.
  *
- * Replaces the 4 individual notes_* tools with a single tool that dispatches
- * on a required `action` enum. Every original tool name maps to a sub-command
- * with identical behavior — the execute handler forwards to the original
- * tool implementation, so no logic, error handling, or side effects change.
+ * Replaces the 4 individual notes_* tools with a single registered tool that
+ * dispatches on a required `action` enum. Every sub-command forwards to the
+ * original tool implementation, so behavior is identical to before.
  *
- * Sub-commands:
- *   - read   -> notes_read
- *   - create -> notes_create
- *   - update -> notes_update
- *   - archive -> notes_archive
+ * Sub-commands (via `action`):
+ *   read    - Read a note's title, body, and metadata by name   (notes_read)
+ *   create  - Create a user note with name, title, and body     (notes_create)
+ *   update  - Update a user note's title and/or body by name    (notes_update)
+ *   archive - Archive a note by renaming its directory          (notes_archive)
  *
- * Schema is a flat merged object: `action` is the only required field; all
- * params across the 4 original tools are merged as optional (first-wins on
- * collisions widened to unions where the types differ) to minimize JSON
- * schema overhead.
+ * Schema is a flat object: `action` is the only required field; all other
+ * params are optional and shared across the sub-commands, each defined once.
  */
 const NOTES_ACTIONS = [
   "read",
@@ -40,44 +37,19 @@ const ORIGINAL_TOOLS: Record<NotesAction, ToolDef> = {
   archive: notesArchiveTool,
 };
 
-/** Combine a set of zod types into one permissive type (union if multiple distinct). */
-function combineTypes(types: z.ZodTypeAny[]): z.ZodTypeAny {
-  const unique = Array.from(new Set(types));
-  if (unique.length === 1) return unique[0];
-  return z.union(unique as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
-}
-
-/** Build a flat merged schema: every field from every original tool, all optional. */
-function buildMergedSchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
-  const shape: Record<string, z.ZodTypeAny[]> = {};
-  for (const tool of Object.values(ORIGINAL_TOOLS)) {
-    const obj = tool.inputSchema as z.ZodObject<any>;
-    const objShape = obj.shape ?? {};
-    for (const [key, field] of Object.entries(objShape)) {
-      (shape[key] ??= []).push(field as z.ZodTypeAny);
-    }
-  }
-  const merged: Record<string, z.ZodTypeAny> = {};
-  for (const [key, typeDefs] of Object.entries(shape)) {
-    merged[key] = combineTypes(typeDefs).optional();
-  }
-  return z.object({
-    action: z.enum(NOTES_ACTIONS),
-    ...merged,
-  });
-}
-
-const notesSchema = buildMergedSchema();
+const notesSchema = z.object({
+  action: z.enum(NOTES_ACTIONS).describe("Notes operation to perform"),
+  name: z.string().optional().describe("Note name (directory slug, unique within scope)"),
+  title: z.string().optional().describe("Human-readable title"),
+  body: z.string().optional().describe("Markdown or plain-text body content"),
+  scope: z.enum(["global", "project", "session"]).optional().describe("Scope (default: global)"),
+});
 
 export const notesTool: ToolDef = {
   name: "notes",
   description:
     "Consolidated user notes tool. Create, read, update, and archive personal notes. " +
-    "Set the required 'action' to select the operation:\n" +
-    "  read    - Read a note's title, body, and metadata by name within a scope (notes_read)\n" +
-    "  create  - Create a user note with a name, title, and body in a scope (notes_create)\n" +
-    "  update  - Update an existing user note's title and/or body by name within a scope (notes_update)\n" +
-    "  archive - Archive a user note by renaming its directory with a timestamp suffix (notes_archive)",
+    "Set the required 'action' to choose the operation (read, create, update, archive).",
   permissionDefault: "allow",
   inputSchema: notesSchema,
   execute: async (args, ctx) => {

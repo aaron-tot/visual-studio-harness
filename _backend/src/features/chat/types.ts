@@ -43,7 +43,7 @@ export interface TurnEvents {
   onSessionReady?: (info: { sessionId: string; created: boolean; meta: SessionMeta; turnId?: number }) => void;
   onToken?: (token: string, seq: number) => void;
   onReasoning?: (delta: string, seq: number) => void;
-  onToolCall?: (e: { toolCallId: string; toolName: string; args: unknown; parentToolCallId?: string; seq?: number }) => void;
+  onToolCall?: (e: { toolCallId: string; toolName: string; args: unknown; parentToolCallId?: string; seq?: number; stepIndex?: number }) => void;
   onToolResult?: (e: { toolCallId: string; toolName: string; output: unknown; isError?: boolean; seq?: number }) => void;
   onToolUpdate?: (e: { toolCallId: string; status: string; seq?: number }) => void;
   onToolBatchStart?: (e: StepToolBatchBeforePayload) => void | Promise<void>;

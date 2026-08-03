@@ -11,24 +11,21 @@ import { graphStatusTool } from "../builtins/graph_status";
 /**
  * Consolidated `graph` tool.
  *
- * Replaces the 7 individual graph_* tools with a single tool that dispatches
- * on a required `action` enum. Every original tool name maps to a sub-command
- * with identical behavior — the execute handler forwards to the original
- * tool implementation, so no logic, error handling, or side effects change.
+ * Replaces the 7 individual graph_* tools with a single registered tool that
+ * dispatches on a required `action` enum. Every sub-command forwards to the
+ * original tool implementation, so behavior is identical to before.
  *
- * Sub-commands:
- *   - search   -> graph_search
- *   - files    -> graph_files
- *   - info     -> graph_info
- *   - imports  -> graph_imports
- *   - exports  -> graph_exports
- *   - manifest -> graph_manifest
- *   - status   -> graph_status
+ * Sub-commands (via `action`):
+ *   search   - Search workspace symbols by name            (graph_search)
+ *   files    - List indexed source files, by subdirectory  (graph_files)
+ *   info     - Get a file's imports, exports, and symbols  (graph_info)
+ *   imports  - List import statements for a file           (graph_imports)
+ *   exports  - List export statements for a file           (graph_exports)
+ *   manifest - Get the workspace tree as structured text   (graph_manifest)
+ *   status   - Check the workspace graph status            (graph_status)
  *
- * Schema is a flat merged object: `action` is the only required field; all
- * params across the 7 original tools are merged as optional (first-wins on
- * collisions widened to unions where the types differ) to minimize JSON
- * schema overhead.
+ * Schema is a flat object: `action` is the only required field; all other
+ * params are optional and shared across the sub-commands, each defined once.
  */
 const GRAPH_ACTIONS = [
   "search",
@@ -52,47 +49,30 @@ const ORIGINAL_TOOLS: Record<GraphAction, ToolDef> = {
   status: graphStatusTool,
 };
 
-/** Combine a set of zod types into one permissive type (union if multiple distinct). */
-function combineTypes(types: z.ZodTypeAny[]): z.ZodTypeAny {
-  const unique = Array.from(new Set(types));
-  if (unique.length === 1) return unique[0];
-  return z.union(unique as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
-}
-
-/** Build a flat merged schema: every field from every original tool, all optional. */
-function buildMergedSchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
-  const shape: Record<string, z.ZodTypeAny[]> = {};
-  for (const tool of Object.values(ORIGINAL_TOOLS)) {
-    const obj = tool.inputSchema as z.ZodObject<any>;
-    const objShape = obj.shape ?? {};
-    for (const [key, field] of Object.entries(objShape)) {
-      (shape[key] ??= []).push(field as z.ZodTypeAny);
-    }
-  }
-  const merged: Record<string, z.ZodTypeAny> = {};
-  for (const [key, typeDefs] of Object.entries(shape)) {
-    merged[key] = combineTypes(typeDefs).optional();
-  }
-  return z.object({
-    action: z.enum(GRAPH_ACTIONS),
-    ...merged,
-  });
-}
-
-const graphSchema = buildMergedSchema();
+const graphSchema = z.object({
+  action: z.enum(GRAPH_ACTIONS).describe("Graph operation to perform"),
+  name: z.string().optional().describe("Symbol name or substring to search for"),
+  kind: z
+    .enum(["function", "class", "interface", "enum", "variable", "type"])
+    .optional()
+    .describe("Filter by symbol kind"),
+  folder_path: z.string().optional().describe("Optional subdirectory to list (relative to workspace root)"),
+  file_path: z.string().optional().describe("File path relative to workspace root"),
+  max_depth: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .optional()
+    .describe("Max tree depth for manifest (default: unlimited)"),
+  include_files: z.boolean().optional().describe("Include files in manifest output (default: true)"),
+});
 
 export const graphTool: ToolDef = {
   name: "graph",
   description:
     "Consolidated workspace-graph tool. Search symbols, list files, inspect a file's imports/exports/symbols, and get workspace status or manifest. " +
-    "Set the required 'action' to select the operation:\n" +
-    "  search   - Search workspace symbols (functions, classes, interfaces, enums, variables) by name (graph_search)\n" +
-    "  files    - List all indexed source files, optionally filtered by subdirectory (graph_files)\n" +
-    "  info     - Get detailed info for a file: imports, exports, and symbols (graph_info)\n" +
-    "  imports  - List all import statements for a file (graph_imports)\n" +
-    "  exports  - List all export statements for a file (graph_exports)\n" +
-    "  manifest - Get the workspace tree as structured text (graph_manifest)\n" +
-    "  status   - Check the workspace graph status (graph_status)",
+    "Set the required 'action' to choose the operation (search, files, info, imports, exports, manifest, status).",
   permissionDefault: "allow",
   inputSchema: graphSchema,
   execute: async (args, ctx) => {

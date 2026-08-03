@@ -50,14 +50,14 @@ function SegmentedInput({
       <div className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden flex min-w-0">
         {nonCache > 0 && (
           <div
-            className="h-full bg-violet-600/70"
+            className="h-full bg-violet-500/25"
             style={{ width: `${nonCachePct}%` }}
             title={`Non-cache input ${formatTokens(nonCache)}`}
           />
         )}
         {hasCache && (
           <div
-            className="h-full bg-teal-500/80"
+            className="h-full bg-teal-500/30"
             style={{ width: `${cachePct}%` }}
             title={`Cache read ${formatTokens(cache)}`}
           />
@@ -195,11 +195,11 @@ export function UsageCharts({
         {(session.own.cacheReadTokens ?? 0) > 0 && (
           <div className="flex gap-3 text-[9px] text-zinc-500">
             <span className="flex items-center gap-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-600/70" />
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-500/25" />
               non-cache {formatTokens(Math.max(0, (session.own.inputTokens ?? 0) - (session.own.cacheReadTokens ?? 0)))}
             </span>
             <span className="flex items-center gap-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal-500/80" />
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal-500/30" />
               cache {formatTokens(session.own.cacheReadTokens ?? 0)}
             </span>
           </div>
@@ -243,7 +243,7 @@ function TurnCostBars({ session }: { session: UsageTreeSession }) {
               className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden flex min-w-0"
             >
               <div
-                className="h-full bg-violet-600/70"
+                className="h-full bg-violet-500/25"
                 style={{
                   width: `${(Math.min(100, (c.own / max) * 100)) * (nonCachePct / 100)}%`,
                 }}
@@ -251,7 +251,7 @@ function TurnCostBars({ session }: { session: UsageTreeSession }) {
               />
               {c.cache > 0 && (
                 <div
-                  className="h-full bg-teal-500/80"
+                  className="h-full bg-teal-500/30"
                   style={{
                     width: `${(Math.min(100, (c.own / max) * 100)) * (cachePct / 100)}%`,
                   }}

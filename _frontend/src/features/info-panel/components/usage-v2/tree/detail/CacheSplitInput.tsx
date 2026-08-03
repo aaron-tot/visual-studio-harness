@@ -30,14 +30,14 @@ export function CacheSplitInput({
       <span className="inline-flex h-1.5 min-w-16 rounded-full bg-zinc-800 overflow-hidden align-middle">
         {nonCache > 0 && (
           <span
-            className="h-full bg-violet-600/70"
+            className="h-full bg-violet-500/25"
             style={{ width: `${nonCachePct}%` }}
             title={`Non-cache input ${formatTokens(nonCache)}`}
           />
         )}
         {hasCache && (
           <span
-            className="h-full bg-teal-500/80"
+            className="h-full bg-teal-500/30"
             style={{ width: `${cachePct}%` }}
             title={`Cache read ${formatTokens(cache)}`}
           />

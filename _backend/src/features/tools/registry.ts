@@ -3,19 +3,6 @@ import type { BaseToolContext, ToolDef, ToolResult } from "./types";
 import { ToolExecutor } from "./executor";
 import { resolveToolPermissionDetailed, type ResolveContext } from "./perms/resolve";
 
-/** Recursively strip $schema and additionalProperties: false from JSON schema objects. */
-function stripSchemaBoilerplate(obj: unknown): unknown {
-  if (obj === null || typeof obj !== "object") return obj;
-  if (Array.isArray(obj)) return obj.map(stripSchemaBoilerplate);
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-    if (k === "$schema") continue;
-    if (k === "additionalProperties" && v === false) continue;
-    out[k] = stripSchemaBoilerplate(v);
-  }
-  return out;
-}
-
 export class ToolRegistry {
   private tools = new Map<string, ToolDef>();
 
@@ -51,10 +38,9 @@ export class ToolRegistry {
       if (mode === "deny") continue;
 
       const preResolved = resolved.mode === "ask" ? undefined : resolved.mode;
-      const strippedSchema = stripSchemaBoilerplate(def.inputSchema);
       out[def.name] = tool({
         description: def.description,
-        inputSchema: strippedSchema,
+        inputSchema: def.inputSchema,
         execute: async (args, options) => {
           const ctx = ctxFactory(options.toolCallId);
           return executor.run(def, args, ctx, preResolved);

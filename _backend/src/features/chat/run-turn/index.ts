@@ -63,19 +63,6 @@ import { asSchema } from "ai";
 export { isAbortError } from "./util";
 import { registerSession, unregisterSession } from "../../../session/runtime";
 
-/** Recursively strip $schema and additionalProperties: false from JSON schema objects. */
-function stripJsonSchemaBoilerplate(obj: unknown): unknown {
-  if (obj === null || typeof obj !== "object") return obj;
-  if (Array.isArray(obj)) return obj.map(stripJsonSchemaBoilerplate);
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-    if (k === "$schema") continue;
-    if (k === "additionalProperties" && v === false) continue;
-    out[k] = stripJsonSchemaBoilerplate(v);
-  }
-  return out;
-}
-
 export async function runTurn(
   dataDir: string,
   config: ConfigFile,
@@ -348,9 +335,7 @@ export async function runTurn(
       if (tool.inputSchema != null) {
         try {
           const schema = asSchema(tool.inputSchema as never);
-          const jsonSchema = typeof schema.jsonSchema === "function" ? await schema.jsonSchema() : schema.jsonSchema;
-          // Strip boilerplate from generated JSON schema (added by Zod-to-JSON conversion)
-          parameters = stripJsonSchemaBoilerplate(jsonSchema);
+          parameters = typeof schema.jsonSchema === "function" ? await schema.jsonSchema() : schema.jsonSchema;
         } catch {
           parameters = { type: "object", properties: {} };
         }

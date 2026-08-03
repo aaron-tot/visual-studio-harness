@@ -133,7 +133,20 @@ export function getSessionOwnTokens(
     totalTokens: s.cachedTotalTokens ?? 0,
   };
   if (cached.totalTokens > 0 || cached.inputTokens > 0 || cached.outputTokens > 0) {
-    return cached;
+    // Cached aggregate lacks cache-read columns; fetch them from turns sum.
+    const cr = db
+      .select({
+        cacheReadTokens: sum(turns.cacheReadTokens),
+        cacheWriteTokens: sum(turns.cacheWriteTokens),
+      })
+      .from(turns)
+      .where(eq(turns.sessionId, sessionId))
+      .get();
+    return {
+      ...cached,
+      cacheReadTokens: Number(cr?.cacheReadTokens ?? 0) || undefined,
+      cacheWriteTokens: Number(cr?.cacheWriteTokens ?? 0) || undefined,
+    };
   }
 
   const row = db
@@ -142,6 +155,8 @@ export function getSessionOwnTokens(
       outputTokens: sum(turns.outputTokens),
       totalTokens: sum(turns.totalTokens),
       reasoningTokens: sum(turns.reasoningTokens),
+      cacheReadTokens: sum(turns.cacheReadTokens),
+      cacheWriteTokens: sum(turns.cacheWriteTokens),
     })
     .from(turns)
     .where(eq(turns.sessionId, sessionId))
@@ -152,6 +167,8 @@ export function getSessionOwnTokens(
     outputTokens: Number(row?.outputTokens ?? 0),
     totalTokens: Number(row?.totalTokens ?? 0),
     reasoningTokens: Number(row?.reasoningTokens ?? 0) || undefined,
+    cacheReadTokens: Number(row?.cacheReadTokens ?? 0) || undefined,
+    cacheWriteTokens: Number(row?.cacheWriteTokens ?? 0) || undefined,
   };
 }
 

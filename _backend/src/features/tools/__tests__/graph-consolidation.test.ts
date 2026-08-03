@@ -11,18 +11,22 @@ const GRAPH_ACTIONS = [
   "exports",
   "manifest",
   "status",
+  "symbol_find",
+  "symbol_read",
 ];
 
 describe("graph tool consolidation", () => {
-  it("registers a single consolidated 'graph' tool instead of 7 individual graph tools", () => {
+  it("registers a single consolidated 'graph' tool; old graph_*/find_symbol/read_symbol gone", () => {
     const registry = createDefaultRegistry();
     const names = registry.list().map((t) => t.name);
 
     expect(names).toContain("graph");
     expect(names.filter((n) => n.startsWith("graph_"))).toEqual([]);
+    expect(names).not.toContain("find_symbol");
+    expect(names).not.toContain("read_symbol");
   });
 
-  it("exposes all 7 action enum values", () => {
+  it("exposes all 9 action enum values (incl. symbol_find/symbol_read)", () => {
     const schema = graphTool.inputSchema as any;
     const values = schema.shape.action._def.values as string[];
     expect([...values].sort()).toEqual(GRAPH_ACTIONS.sort());
@@ -33,6 +37,8 @@ describe("graph tool consolidation", () => {
     expect(schema.safeParse({}).success).toBe(false);
     expect(schema.safeParse({ action: "bogus" }).success).toBe(false);
     expect(schema.safeParse({ action: "search", name: "foo" }).success).toBe(true);
+    expect(schema.safeParse({ action: "symbol_find", query: "foo" }).success).toBe(true);
+    expect(schema.safeParse({ action: "symbol_read", name: "bar" }).success).toBe(true);
   });
 
   it("has all params optional plus required action (flat schema)", () => {

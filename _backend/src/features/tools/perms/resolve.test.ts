@@ -101,7 +101,7 @@ describe("perms store + resolve", () => {
 
   test("sparse inherit when session/workspace missing", async () => {
     await ensureGlobal(dataDir);
-    const mode = await resolveToolPermission("grep", {
+    const mode = await resolveToolPermission("searchLocal", {
       dataDir,
       sessionId: "missing-session",
       workspaceRoot: join(dataDir, "no-ws"),

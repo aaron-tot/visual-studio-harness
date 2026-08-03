@@ -3,16 +3,9 @@ import { readTool } from "./builtins/read";
 import { writeTool } from "./builtins/write";
 import { editTool } from "./builtins/edit";
 import { applyPatchTool } from "./builtins/apply_patch";
-import { grepTool } from "./builtins/grep";
-import { globTool } from "./builtins/glob";
 import { bashTool } from "./builtins/bash";
-import { todoWriteTool, todoReadTool } from "./builtins/todo";
 import { skillTool } from "./builtins/skill";
-import { findSymbolTool } from "./builtins/find_symbol";
-import { readSymbolTool } from "./builtins/read_symbol";
 import { makeTaskTool, taskTool } from "./builtins/task";
-import { webfetchTool } from "./builtins/webfetch";
-import { websearchTool } from "./builtins/websearch";
 import { agentChangeTool } from "./builtins/agent_change";
 import { designTool } from "./consolidated/design";
 import { listTool } from "./builtins/list";
@@ -20,6 +13,9 @@ import { notesTool } from "./consolidated/notes";
 import { auditTool } from "./consolidated/audit";
 import { graphTool } from "./consolidated/graph";
 import { knowledgeTool } from "./consolidated/knowledge";
+import { todoTool } from "./consolidated/todo";
+import { searchLocalTool } from "./consolidated/searchLocal";
+import { searchOnlineTool } from "./consolidated/searchOnline";
 import { setDefaultTools } from "./perms/defaults";
 import type { ToolDef } from "./types";
 import type { AgentSettings } from "../../../../_shared/types";
@@ -29,17 +25,9 @@ const ALL_TOOLS: ToolDef[] = [
   writeTool,
   editTool,
   applyPatchTool,
-  grepTool,
-  globTool,
   bashTool,
-  todoWriteTool,
-  todoReadTool,
   skillTool,
-  findSymbolTool,
-  readSymbolTool,
   taskTool,
-  webfetchTool,
-  websearchTool,
   agentChangeTool,
   designTool,
   listTool,
@@ -47,6 +35,9 @@ const ALL_TOOLS: ToolDef[] = [
   auditTool,
   graphTool,
   knowledgeTool,
+  todoTool,
+  searchLocalTool,
+  searchOnlineTool,
 ];
 
 export interface CreateRegistryOptions {

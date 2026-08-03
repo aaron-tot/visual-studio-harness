@@ -5,7 +5,7 @@ import {
   setSessionTodosJson,
 } from "../../../features/sessions/db";
 
-const TodoItemSchema = z.object({
+export const TodoItemSchema = z.object({
   id: z.string(),
   content: z.string(),
   status: z.enum(["pending", "in_progress", "completed", "cancelled"]),

@@ -190,6 +190,9 @@ setStoreCtxTn(firstTurnNumber);
         setContextMode(c.mode ?? "manual");
         setContextMaxTurns(c.maxTurns ?? 10);
         setContextOwner(c.owner ?? "none");
+        // Restore manual persistence: pinned (turn number vs turns-back) + N
+        setPinned((c.mode ?? "manual") === "manual" ? c.manualMode === "pinned" : false);
+        setManualTurnsBack(c.manualTurnsBack ?? 10);
         // Sync to store so sendMessage always has the effective config
         setStoreCtxMode(c.mode ?? "manual");
         setStoreCtxMaxTurns(c.maxTurns ?? 10);
@@ -252,14 +255,25 @@ setStoreCtxTn(firstTurnNumber);
       setContextMode("manual");
       setFirstTurnNumber(value);
       setPinned(true); // pin to this specific turn
-      putSessionContextConfig(sessionId, { firstTurnNumber: value, mode: "manual" }).catch(() => {});
+      putSessionContextConfig(sessionId, { firstTurnNumber: value, mode: "manual", manualMode: "pinned" }).catch(() => {});
     },
     [getSnapTurn, sessionId, turnPositions],
   );
 
   const togglePin = useCallback(() => {
-    setPinned(prev => !prev);
-  }, []);
+    setPinned(prev => {
+      const next = !prev;
+      if (sessionId) {
+        putSessionContextConfig(sessionId, {
+          mode: "manual",
+          manualMode: next ? "pinned" : "turnsBack",
+          firstTurnNumber: next ? firstTurnNumber : firstTurnNumber,
+          manualTurnsBack,
+        }).catch(() => {});
+      }
+      return next;
+    });
+  }, [sessionId, firstTurnNumber, manualTurnsBack]);
 
   // Handle Y in scroll-container-relative coords
   let handleY: number | null = null;

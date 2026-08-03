@@ -166,6 +166,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       firstTurnNumber?: number | null;
       mode?: "auto" | "manual";
       maxTurns?: number;
+      manualMode?: "turnsBack" | "pinned" | null;
+      manualTurnsBack?: number | null;
     };
 
     // Merge with existing config
@@ -182,6 +184,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       firstTurnNumber: body.firstTurnNumber !== undefined ? body.firstTurnNumber : existingCtx.firstTurnNumber ?? null,
       mode: body.mode !== undefined ? body.mode : existingCtx.mode ?? "manual",
       maxTurns: body.maxTurns !== undefined ? body.maxTurns : existingCtx.maxTurns ?? 10,
+      manualMode: body.manualMode !== undefined ? body.manualMode : existingCtx.manualMode ?? "turnsBack",
+      manualTurnsBack: body.manualTurnsBack !== undefined ? body.manualTurnsBack : existingCtx.manualTurnsBack ?? 10,
     };
     setSessionModelConfigJson(id, JSON.stringify(existing), dataDir);
     return { ok: true };
@@ -277,6 +281,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       mode: (pick("mode") as string) ?? "manual",
       maxTurns: (pick("maxTurns") as number) ?? 10,
       firstTurnNumber: (pick("firstTurnNumber") as number | null) ?? null,
+      manualMode: (pick("manualMode") as "turnsBack" | "pinned" | undefined) ?? "turnsBack",
+      manualTurnsBack: (pick("manualTurnsBack") as number | undefined) ?? 10,
       owner,
     };
   });

@@ -16,14 +16,14 @@ import { ToolStatusBorder } from "./ToolStatusBorder";
 const CONTEXT_TOOLS = new Set(["read", "glob", "grep", "list", "search", "find_symbol", "read_symbol"]);
 const CHANGES_TOOLS = new Set(["write", "edit", "apply_patch"]);
 
-type GroupCategory = "context" | "changes";
+export type GroupCategory = "context" | "changes";
 
 const CATEGORY_LABELS: Record<GroupCategory, { active: string; done: string }> = {
   context: { active: "Gathering context", done: "Gathered context" },
   changes: { active: "Applying changes", done: "Applied changes" },
 };
 
-function getCategory(toolName: string): GroupCategory | null {
+export function getCategory(toolName: string): GroupCategory | null {
   if (CONTEXT_TOOLS.has(toolName)) return "context";
   if (CHANGES_TOOLS.has(toolName)) return "changes";
   return null;

@@ -5,6 +5,7 @@ import { useChatStore } from "../../../stores/chat";
 import { ToolCallCard } from "../../tools/ToolCallCard";
 import { ToolStatusBorder } from "./ToolStatusBorder";
 import { groupByStep } from "./group-by-step";
+import { ContextToolGroup, getCategory, type GroupCategory } from "./ContextToolGroup";
 
 function summarize(parts: MessagePartType[]): string {
   const counts: Record<string, number> = {};
@@ -12,36 +13,86 @@ function summarize(parts: MessagePartType[]): string {
   return Object.entries(counts).map(([n, c]) => `${c} ${n}${c !== 1 ? "s" : ""}`).join(", ");
 }
 
+interface CategoryBucket {
+  category: GroupCategory | null;
+  parts: MessagePartType[];
+}
+
+/**
+ * Partition a parallel step's tool parts into category sub-buckets.
+ * Because the calls ran in parallel (same step), there is no meaningful order,
+ * so we group ALL same-category tools together rather than only consecutive
+ * runs. Categories with more than one call become sub-groups; single "other"
+ * calls are kept flat.
+ */
+function groupParallelByCategory(parts: MessagePartType[]): CategoryBucket[] {
+  const context: MessagePartType[] = [];
+  const changes: MessagePartType[] = [];
+  const other: MessagePartType[] = [];
+  for (const p of parts) {
+    if (p.type !== "tool") continue;
+    const cat = getCategory(p.toolName);
+    if (cat === "context") context.push(p);
+    else if (cat === "changes") changes.push(p);
+    else other.push(p);
+  }
+  const out: CategoryBucket[] = [];
+  if (context.length > 1) out.push({ category: "context", parts: context });
+  else other.push(...context);
+  if (changes.length > 1) out.push({ category: "changes", parts: changes });
+  else other.push(...changes);
+  if (other.length) out.push({ category: null, parts: other });
+  return out;
+}
+
 export function StepToolGroup({ parts }: { parts: MessagePartType[] }) {
   const [collapsed, setCollapsed] = useState(true);
   const summary = useMemo(() => summarize(parts), [parts]);
+  const buckets = useMemo(() => groupParallelByCategory(parts), [parts]);
+  const toolCount = parts.filter((p) => p.type === "tool").length;
   const allDone = parts.every((p) => p.type === "tool" && (p.status === "completed" || p.status === "error"));
   const someRunning = parts.some((p) => p.type === "tool" && p.status === "running");
 
+  const flatTools = (bucket: CategoryBucket) => {
+    return bucket.parts.map((p, i) => {
+      if (p.type !== "tool") return null;
+      const sessionId = useChatStore.getState().sessionId;
+      return (
+        <ToolStatusBorder key={p.toolCallId || i} status={p.status}>
+          <ToolCallCard toolCallId={p.toolCallId} toolName={p.toolName} status={p.status} args={p.args} result={p.result} error={p.error} sessionId={sessionId} />
+        </ToolStatusBorder>
+      );
+    });
+  };
+
   return (
-    <div className="border border-zinc-700/50 rounded-lg overflow-hidden my-1.5">
+    <div className="border border-zinc-500/50 rounded-lg overflow-hidden my-1.5">
       <button
         data-collapsible="true"
         data-collapsible-state={collapsed ? "closed" : "open"}
         onClick={() => setCollapsed((c) => !c)}
         className={cn(
-          "w-full flex items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-zinc-800/50",
-          allDone ? "text-zinc-400" : "text-zinc-300"
+          "w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-zinc-800/50",
+          allDone ? "text-zinc-300" : "text-zinc-200"
         )}
       >
-        <span className={cn("transition-transform text-zinc-600 shrink-0", collapsed ? "rotate-0" : "rotate-90")}>&#9654;</span>
-        <span className={cn(someRunning && "animate-pulse")}>{allDone ? "Ran tools" : "Running tools"}</span>
-        <span className="text-zinc-600 ml-auto truncate">{summary}</span>
+        <span className={cn("transition-transform text-zinc-500 shrink-0", collapsed ? "rotate-0" : "rotate-90")}>&#9654;</span>
+        <span className={cn(someRunning && "animate-pulse")}>
+          {someRunning ? "Running parallel tool calls" : "Parallel tool calls"}
+        </span>
+        <span className="text-zinc-500 ml-auto truncate">{toolCount} calls{summary ? ` · ${summary}` : ""}</span>
       </button>
       {!collapsed && (
-        <div className="border-t border-zinc-800/50 px-2 py-1.5 space-y-1.5 bg-zinc-900/30">
-          {parts.map((p, i) => {
-            if (p.type !== "tool") return null;
-            const sessionId = useChatStore.getState().sessionId;
+        <div className="border-t border-zinc-500/50 px-2 py-1.5 space-y-1.5 bg-zinc-900/30">
+          {buckets.map((bucket, bIdx) => {
+            if (bucket.category === null) {
+              return <div key={`flat-${bIdx}`} className="space-y-1.5">{flatTools(bucket)}</div>;
+            }
             return (
-              <ToolStatusBorder key={p.toolCallId || i} status={p.status}>
-                <ToolCallCard toolCallId={p.toolCallId} toolName={p.toolName} status={p.status} args={p.args} result={p.result} error={p.error} sessionId={sessionId} />
-              </ToolStatusBorder>
+              <ContextToolGroup
+                key={`sub-${bucket.category}`}
+                parts={bucket.parts}
+              />
             );
           })}
         </div>

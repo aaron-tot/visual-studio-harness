@@ -37,7 +37,7 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     loadConfig();
   }, [scope, sessionId]);
 
-  const save = async (partial: { mode?: "auto" | "manual"; autoMaxTurns?: number; manualTurnsBack?: number }) => {
+  const save = async (partial: { mode?: "auto" | "manual"; autoMaxTurns?: number; manualTurnsBack?: number; manualMode?: "turnsBack" | "pinned" }) => {
     const body = { 
       mode: partial.mode ?? mode, 
       maxTurns: partial.autoMaxTurns ?? autoMaxTurns 
@@ -45,7 +45,14 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     try {
       if (scope === "session" && sessionId) {
         const current = await getSessionContextConfig(sessionId);
-        await putSessionContextConfig(sessionId, { ...body, firstTurnNumber: current.firstTurnNumber ?? null });
+        const manualMode = partial.manualMode ?? (current.manualMode ?? "turnsBack");
+        const manualTurnsBack = partial.manualTurnsBack ?? current.manualTurnsBack ?? 10;
+        await putSessionContextConfig(sessionId, {
+          ...body,
+          firstTurnNumber: current.firstTurnNumber ?? null,
+          manualMode,
+          manualTurnsBack,
+        });
       } else {
         await putScopedContextConfig(scope, body, { workspaceRoot });
       }

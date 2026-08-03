@@ -1240,6 +1240,8 @@ export interface SessionContextConfig {
   mode: "auto" | "manual";
   maxTurns: number;
   owner?: "session" | "project" | "global" | "none";
+  manualMode?: "turnsBack" | "pinned";
+  manualTurnsBack?: number;
 }
 
 export function getSessionContextConfig(sessionId: string) {

@@ -58,8 +58,6 @@ const ORIGINAL_TOOLS: Record<AuditAction, ToolDef> = {
 };
 
 const scopeSchema = z.enum(["global", "project", "session"]).describe("Scope (default: global)");
-const severitySchema = z.enum(["critical", "high", "medium", "low", "info"]).describe("Severity level of the finding");
-const statusSchema = z.enum(["implemented_as_expected", "implemented_differently", "not_implemented"]).describe("Implementation status");
 
 const auditSchema = z.object({
   action: z.enum(AUDIT_ACTIONS).describe("Operation: create, read, edit, delete, prompt_*"),
@@ -70,46 +68,11 @@ const auditSchema = z.object({
   auditType: z.string().optional().describe("Audit category (e.g. implementation_completed, custom)"),
   endGoal: z.string().optional().describe("Question the audit answers"),
   summary: z.string().optional().describe("Executive summary"),
-  findings: z
-    .array(
-      z.object({
-        severity: severitySchema,
-        file: z.string().optional().describe("File path"),
-        line: z.number().int().positive().optional().describe("Line number"),
-        title: z.string().describe("Short one-liner"),
-        description: z.string().describe("Detail"),
-        recommendation: z.string().describe("Suggested fix"),
-        category: z.string().describe("Issue type"),
-        effort: z.enum(["quick", "moderate", "significant"]).optional().describe("Effort"),
-      })
-    )
-    .optional()
-    .describe("Audit findings"),
-  attachments: z
-    .array(
-      z.object({
-        designName: z.string().optional().describe("Design name"),
-        specName: z.string().optional().describe("Spec name"),
-        planName: z.string().optional().describe("Plan name"),
-        label: z.string().optional().describe("Label"),
-      })
-    )
-    .optional()
-    .describe("Linked designs/specs/plans"),
+  findings: z.array(z.record(z.unknown())).optional().describe("Audit findings; see skill:audit"),
+  attachments: z.array(z.record(z.unknown())).optional().describe("Linked designs/specs/plans; see skill:audit"),
   overallStatus: z.enum(["pass", "partial", "fail"]).optional().describe("Overall status"),
   overallAssessment: z.string().optional().describe("Overall assessment"),
-  assessments: z
-    .array(
-      z.object({
-        aspectName: z.string().describe("Aspect name"),
-        expectedBehavior: z.string().optional().describe("Expected behavior"),
-        status: statusSchema,
-        actualImplementation: z.string().optional().describe("Actual implementation"),
-        fileReferences: z.array(z.string()).optional().describe("File paths"),
-      })
-    )
-    .optional()
-    .describe("Per-aspect assessments"),
+  assessments: z.array(z.record(z.unknown())).optional().describe("Per-aspect assessments; see skill:audit"),
   agentModel: z.string().optional().describe("Model"),
   rawReport: z.string().optional().describe("Full markdown report"),
   document: z
@@ -126,7 +89,8 @@ export const auditTool: ToolDef = {
   name: "audit",
   description:
     "Create/read/edit/delete audit documents and manage audit prompt presets. " +
-    "Set 'action' to pick the operation. See skill:audit for the document structure.",
+    "Read skill:audit before performing an audit — it defines the findings/assessments/attachments structure. " +
+    "Set 'action' to pick the operation.",
   permissionDefault: "allow",
   inputSchema: auditSchema,
   execute: async (args, ctx) => {

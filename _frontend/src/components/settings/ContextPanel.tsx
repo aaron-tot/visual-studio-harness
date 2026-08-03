@@ -38,9 +38,9 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   }, [scope, sessionId]);
 
   const save = async (partial: { mode?: "auto" | "manual"; autoMaxTurns?: number; manualTurnsBack?: number; manualMode?: "turnsBack" | "pinned" }) => {
-    const body = { 
-      mode: partial.mode ?? mode, 
-      maxTurns: partial.autoMaxTurns ?? autoMaxTurns 
+    const body = {
+      mode: partial.mode ?? mode,
+      maxTurns: partial.autoMaxTurns ?? autoMaxTurns
     };
     try {
       if (scope === "session" && sessionId) {

@@ -42,3 +42,6 @@ _frontend/tailwind.config.js
 _frontend/tailwind.config.js.map
 _frontend/tailwind.config.d.ts
 _frontend/tailwind.config.d.ts.map
+
+# Local test fixture with fake keys — never commit
+/test-secret-leak.txt

@@ -73,7 +73,7 @@ export const knowledgeTool: ToolDef = {
   name: "knowledge",
   description:
     "Search, open, ingest, and manage Knowledge Base documents. " +
-    "Set 'action' to pick the operation.",
+    "Set 'action' to pick the operation. See skill:knowledge for scopes and doc structure.",
   permissionDefault: "allow",
   outputFields: [
     { name: "action", type: "string", description: "Knowledge sub-action performed", required: false },

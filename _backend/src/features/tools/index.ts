@@ -14,13 +14,9 @@ import { makeTaskTool, taskTool } from "./builtins/task";
 import { webfetchTool } from "./builtins/webfetch";
 import { websearchTool } from "./builtins/websearch";
 import { agentChangeTool } from "./builtins/agent_change";
-import { designCreateTool } from "./builtins/design_create";
-import { designReadTool } from "./builtins/design_read";
-import { designEditTool } from "./builtins/design_edit";
-import { designAbandonTool } from "./builtins/design_abandon";
+import { designTool } from "./consolidated/design";
 import { listTool } from "./builtins/list";
 import { notesTool } from "./consolidated/notes";
-import { notesListTool } from "./builtins/notes_list";
 import { auditTool } from "./consolidated/audit";
 import { graphTool } from "./consolidated/graph";
 import { knowledgeTool } from "./consolidated/knowledge";
@@ -45,13 +41,9 @@ const ALL_TOOLS: ToolDef[] = [
   webfetchTool,
   websearchTool,
   agentChangeTool,
-  designCreateTool,
-  designReadTool,
-  designEditTool,
-  designAbandonTool,
+  designTool,
   listTool,
   notesTool,
-  notesListTool,
   auditTool,
   graphTool,
   knowledgeTool,

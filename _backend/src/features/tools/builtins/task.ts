@@ -19,6 +19,7 @@ export function makeTaskTool(agents?: Record<string, AgentSettings>): ToolDef {
 - You receive only its final assistant message (no tool traces).
 - Result includes task_id; pass it again to continue that session.
 - Wait for the result before dependent work; do not nest task calls.
+- See skill:task for subagent semantics.
 
 Available agent configs:
 ${agentList}`,

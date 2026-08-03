@@ -1242,6 +1242,9 @@ export interface SessionContextConfig {
   owner?: "session" | "project" | "global" | "none";
   manualMode?: "turnsBack" | "pinned";
   manualTurnsBack?: number;
+  summarizationModel?: string;
+  summarizationFallbackModel?: string;
+  summarizationPromptMd?: string;
 }
 
 export function getSessionContextConfig(sessionId: string) {

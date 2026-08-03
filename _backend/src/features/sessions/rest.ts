@@ -270,7 +270,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     // Owning scope = the highest-priority scope that defines any setting.
     const hasOwn =
       (o: Record<string, unknown>) =>
-        o["mode"] !== undefined || o["maxTurns"] !== undefined || o["firstTurnNumber"] !== undefined;
+        o["mode"] !== undefined || o["maxTurns"] !== undefined || o["firstTurnNumber"] !== undefined ||
+        o["summarizationModel"] !== undefined || o["summarizationFallbackModel"] !== undefined || o["summarizationPromptMd"] !== undefined;
     const owner =
       hasOwn(session) ? "session"
       : hasOwn(project) ? "project"
@@ -283,6 +284,9 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       firstTurnNumber: (pick("firstTurnNumber") as number | null) ?? null,
       manualMode: (pick("manualMode") as "turnsBack" | "pinned" | undefined) ?? "turnsBack",
       manualTurnsBack: (pick("manualTurnsBack") as number | undefined) ?? 10,
+      summarizationModel: pick("summarizationModel") as string | undefined,
+      summarizationFallbackModel: pick("summarizationFallbackModel") as string | undefined,
+      summarizationPromptMd: pick("summarizationPromptMd") as string | undefined,
       owner,
     };
   });

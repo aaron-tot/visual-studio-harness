@@ -45,13 +45,19 @@ function groupParallelByCategory(parts: MessagePartType[]): CategoryBucket[] {
   return out;
 }
 
-export function StepToolGroup({ parts }: { parts: MessagePartType[] }) {
+export function StepToolGroup({ parts, toolCacheByCallId }: { parts: MessagePartType[]; toolCacheByCallId?: Record<string, string> }) {
   const [collapsed, setCollapsed] = useState(true);
   const summary = useMemo(() => summarize(parts), [parts]);
   const buckets = useMemo(() => groupParallelByCategory(parts), [parts]);
   const toolCount = parts.filter((p) => p.type === "tool").length;
   const allDone = parts.every((p) => p.type === "tool" && (p.status === "completed" || p.status === "error"));
   const someRunning = parts.some((p) => p.type === "tool" && p.status === "running");
+
+  // All parallel tools in one step share the same prompt-cache hit (their
+  // results are batched into a single subsequent SDK call). Read it from the
+  // first tool's entry and show it on the group header.
+  const firstCallId = parts.find((p) => p.type === "tool")?.toolCallId;
+  const cacheText = firstCallId ? toolCacheByCallId?.[firstCallId] : undefined;
 
   const flatTools = (bucket: CategoryBucket) => {
     return bucket.parts.map((p, i) => {
@@ -80,6 +86,11 @@ export function StepToolGroup({ parts }: { parts: MessagePartType[] }) {
         <span className={cn(someRunning && "animate-pulse")}>
           {someRunning ? "Running parallel tool calls" : "Parallel tool calls"}
         </span>
+        {cacheText && (
+          <span className="text-[10px] text-zinc-400 font-mono shrink-0" title="Prompt cache hit on next step">
+            {cacheText} cache
+          </span>
+        )}
         <span className="text-zinc-500 ml-auto truncate">{toolCount} calls{summary ? ` · ${summary}` : ""}</span>
       </button>
       {!collapsed && (

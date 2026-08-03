@@ -83,7 +83,7 @@ function renderPart(
   if (Array.isArray(part)) {
     const hasStep = part.some((p) => p.type === "tool" && p.stepIndex != null);
     return hasStep ? (
-      <StepToolGroup key={`batch-${i}`} parts={part} />
+      <StepToolGroup key={`batch-${i}`} parts={part} toolCacheByCallId={toolCacheByCallId} />
     ) : (
       <ContextToolGroup key={`group-${i}`} parts={part} toolCacheByCallId={toolCacheByCallId} />
     );

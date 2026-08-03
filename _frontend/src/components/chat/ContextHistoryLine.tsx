@@ -26,6 +26,7 @@ export function ContextHistoryLine({
   const [manualTurnsBack, setManualTurnsBack] = useState(10); // unpinned: N turns back from end
   const [dragging, setDragging] = useState(false);
   const [dragClientY, setDragClientY] = useState(0);
+  const dragClientYRef = useRef(0);
 
   // Turn Y positions (scroll-dependent — recalculated on every scroll)
   const [turnPositions, setTurnPositions] = useState<{ number: number; y: number }[]>([]);
@@ -232,31 +233,44 @@ setStoreCtxTn(firstTurnNumber);
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragClientYRef.current = e.clientY;
     setDragging(true);
+    setDragClientY(e.clientY);
   }, []);
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!dragging) return;
-      // Track raw cursor for free-floating handle (no snap until release)
+      // Track raw cursor (no snap until release)
       setDragClientY(e.clientY);
-      // Auto-scroll when the cursor is within EDGE px of the container's
-      // top/bottom while dragging.
-      const sc = scrollRef.current;
-      if (!sc) return;
-      const EDGE = 40;
-      const rect = sc.getBoundingClientRect();
-      const clientY = e.clientY;
-      if (clientY < rect.top + EDGE) {
-        sc.scrollTop -= Math.round((rect.top + EDGE - clientY) * 0.5);
-        requestAnimationFrame(measure);
-      } else if (clientY > rect.bottom - EDGE) {
-        sc.scrollTop += Math.round((clientY - (rect.bottom - EDGE)) * 0.5);
-        requestAnimationFrame(measure);
-      }
+      dragClientYRef.current = e.clientY;
     },
-    [dragging, scrollRef, measure],
+    [dragging],
   );
+
+  // Continuous auto-scroll while dragging: when the cursor is held within
+  // EDGE px of the container top/bottom, keep scrolling on every frame.
+  useEffect(() => {
+    if (!dragging) return;
+    let raf = 0;
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const EDGE = 40;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const rect = sc.getBoundingClientRect();
+      const clientY = dragClientYRef.current;
+      if (clientY < rect.top + EDGE) {
+        sc.scrollTop -= Math.max(1, Math.round((rect.top + EDGE - clientY) * 0.4));
+        measure();
+      } else if (clientY > rect.bottom - EDGE) {
+        sc.scrollTop += Math.max(1, Math.round((clientY - (rect.bottom - EDGE)) * 0.4));
+        measure();
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [dragging, scrollRef, measure]);
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
@@ -275,28 +289,28 @@ setStoreCtxTn(firstTurnNumber);
   );
 
   const togglePin = useCallback(() => {
-    setPinned(prev => {
-      const next = !prev;
-      // When unpinning, convert the current pinned position into "N turns back"
-      // so the circle stays exactly where it is, only the meaning changes.
-      let turnsBack = manualTurnsBack ?? 10;
-      if (prev && firstTurnNumber != null && turnPositions.length > 0) {
-        const numbers = turnPositions.map((t) => t.number).sort((a, b) => a - b);
-        const lastTurn = numbers[numbers.length - 1];
-        turnsBack = lastTurn - firstTurnNumber;
-      }
-      if (sessionId) {
-        putSessionContextConfig(sessionId, {
-          mode: "manual",
-          manualMode: next ? "pinned" : "turnsBack",
-          firstTurnNumber,
-          manualTurnsBack: turnsBack,
-        }).catch(() => {});
-      }
-      setManualTurnsBack(turnsBack);
-      return next;
-    });
-  }, [sessionId, firstTurnNumber, manualTurnsBack, turnPositions]);
+    const next = !pinned;
+    // When unpinning, convert the current pinned position into "N turns back"
+    // so the circle stays exactly where it is, only the meaning changes.
+    // Inverse of the manual effect formula:
+    //   idx = numbers.length - manualTurnsBack - 1  =>  manualTurnsBack = length - 1 - idx
+    let turnsBack = manualTurnsBack ?? 10;
+    if (pinned && firstTurnNumber != null && turnPositions.length > 0) {
+      const numbers = turnPositions.map((t) => t.number).sort((a, b) => a - b);
+      const idx = numbers.indexOf(firstTurnNumber);
+      if (idx >= 0) turnsBack = numbers.length - 1 - idx;
+    }
+    setManualTurnsBack(turnsBack);
+    setPinned(next);
+    if (sessionId) {
+      putSessionContextConfig(sessionId, {
+        mode: "manual",
+        manualMode: next ? "pinned" : "turnsBack",
+        firstTurnNumber,
+        manualTurnsBack: turnsBack,
+      }).catch(() => {});
+    }
+  }, [sessionId, firstTurnNumber, manualTurnsBack, turnPositions, pinned]);
 
   // Handle Y in scroll-container-relative coords
   let handleY: number | null = null;

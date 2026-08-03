@@ -112,6 +112,7 @@ export function StepIoModal({ sessionId, turnNumber, stepIndex, onClose }: StepI
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

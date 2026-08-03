@@ -154,7 +154,7 @@ export function SessionNode({
       detail={detail}
     >
       {session.turns.map((turn) => (
-        <TurnNode key={String(turn.turnId)} turn={turn} depth={depth + 1} />
+        <TurnNode key={String(turn.turnId)} turn={turn} depth={depth + 1} sessionId={session.sessionId} />
       ))}
     </CollapsibleNode>
   );

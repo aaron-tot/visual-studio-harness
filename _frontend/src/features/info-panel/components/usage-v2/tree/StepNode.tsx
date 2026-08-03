@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo } from "react";
+import { ArrowLeftRight } from "lucide-react";
 import { CollapsibleNode } from "../collapsible";
 import { SubagentNode } from "./SubagentNode";
+import { StepIoModal } from "./StepIoModal";
 import {
   DetailFields,
   TokenBlock,
@@ -13,11 +15,16 @@ import type { UsageTreeStep } from "../types";
 export function StepNode({
   step,
   depth,
+  sessionId,
+  turnNumber,
 }: {
   step: UsageTreeStep;
   depth: number;
+  sessionId: string;
+  turnNumber: number;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [showIo, setShowIo] = useState(false);
   const toggle = useCallback(() => setExpanded((e) => !e), []);
 
   const models = useMemo(() => {
@@ -104,10 +111,23 @@ export function StepNode({
       />
       <Divider />
       <TokenBlock own={step.own} inclusive={step.inclusive} />
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowIo(true);
+        }}
+        className="inline-flex items-center gap-1.5 mt-1 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 px-2 py-1 rounded border border-zinc-800"
+        title="View this step's input and output"
+      >
+        <ArrowLeftRight size={12} />
+        Input/Output
+      </button>
     </div>
   );
 
   return (
+    <>
     <CollapsibleNode
       depth={depth}
       expanded={expanded}
@@ -125,5 +145,14 @@ export function StepNode({
           />
         ))}
     </CollapsibleNode>
+    {showIo && (
+      <StepIoModal
+        sessionId={sessionId}
+        turnNumber={turnNumber}
+        stepIndex={step.stepIndex}
+        onClose={() => setShowIo(false)}
+      />
+    )}
+    </>
   );
 }

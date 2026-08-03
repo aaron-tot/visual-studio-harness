@@ -455,9 +455,20 @@ export function getStepWithParts(
     .orderBy(stepParts.seq)
     .all();
 
+  const parseJson = (raw: string | null): unknown | undefined => {
+    if (!raw) return undefined;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  };
+
   return {
     id: s.id,
     stepIndex: s.stepIndex,
+    rawRequest: parseJson(s.rawRequestJson),
+    rawResponse: parseJson(s.rawResponseJson),
     status: s.status,
     finishReason: s.finishReason ?? undefined,
     rawFinishReason: s.rawFinishReason ?? undefined,

@@ -49,9 +49,11 @@ function collectTurnProviders(turn: UsageTreeTurn): string[] {
 export function TurnNode({
   turn,
   depth,
+  sessionId,
 }: {
   turn: UsageTreeTurn;
   depth: number;
+  sessionId: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const toggle = useCallback(() => setExpanded((e) => !e), []);
@@ -171,7 +173,7 @@ export function TurnNode({
       detail={detail}
     >
       {turn.steps.map((step) => (
-        <StepNode key={step.stepIndex} step={step} depth={depth + 1} />
+        <StepNode key={step.stepIndex} step={step} depth={depth + 1} sessionId={sessionId} turnNumber={Number(turn.turnNumber)} />
       ))}
     </CollapsibleNode>
   );

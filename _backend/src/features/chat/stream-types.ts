@@ -37,7 +37,7 @@ export interface StreamChatOptions {
   messages: Message[];
   onToken: (token: string) => void;
   onReasoning?: (delta: string) => void;
-  onToolCall?: (e: { toolCallId: string; toolName: string; args: unknown }) => void;
+  onToolCall?: (e: { toolCallId: string; toolName: string; args: unknown; stepIndex: number }) => void;
   onToolResult?: (e: { toolCallId: string; toolName: string; output: unknown; isError?: boolean }) => void;
   onRetryAttempt?: (attempt: number) => void;
   onStepStart?: (info: { stepIndex: number; request?: unknown; warnings?: unknown[] }) => void;

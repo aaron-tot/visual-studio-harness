@@ -22,6 +22,7 @@ export function ContextHistoryLine({
   const [contextMode, setContextMode] = useState<"auto" | "manual">("manual");
   const [contextMaxTurns, setContextMaxTurns] = useState(10);
   const [contextOwner, setContextOwner] = useState<"session" | "project" | "global" | "none">("none");
+  const [pinned, setPinned] = useState(false); // manual mode: pinned to specific turn
   const [dragging, setDragging] = useState(false);
   const [dragClientY, setDragClientY] = useState(0);
 
@@ -122,12 +123,32 @@ export function ContextHistoryLine({
   const setStoreCtxMode = useChatStore((s) => s.setContextConfigMode);
   const setStoreCtxMaxTurns = useChatStore((s) => s.setContextConfigMaxTurns);
 
-  // Sync store value immediately when local firstTurnNumber changes
+// Sync store value immediately when local firstTurnNumber changes
   const setStoreCtxTn = useChatStore((s) => s.setContextFirstTurnNumber);
   useEffect(() => {
     if (!sessionId) return;
     setStoreCtxTn(firstTurnNumber);
   }, [firstTurnNumber, sessionId, setStoreCtxTn]);
+
+  // ── Manual mode (unpinned): recompute as "N turns back from end" ──────
+  useEffect(() => {
+    if (contextMode !== "manual" || pinned || turnPositions.length === 0) return;
+    const numbers = turnPositions.map((t) => t.number).sort((a, b) => a - b);
+    const lastTurn = numbers[numbers.length - 1];
+    let firstTn: number | null;
+    if (contextMaxTurns === -1) {
+      firstTn = null;
+    } else if (contextMaxTurns === 0) {
+      firstTn = lastTurn + 1;
+    } else {
+      // "N turns back" = N previous completed turns from the end
+      const idx = numbers.length - contextMaxTurns - 1;
+      const tn = idx >= 0 ? numbers[Math.min(idx, numbers.length - 1)] : numbers[0];
+      firstTn = tn > numbers[0] ? tn : null;
+    }
+    setFirstTurnNumber(firstTn);
+    setStoreCtxTn(firstTn);
+  }, [contextMaxTurns, turnPositions, pinned]);
 
   // ── Auto-mode: recompute firstTurnNumber from maxTurns ────────────
   useEffect(() => {
@@ -141,9 +162,9 @@ export function ContextHistoryLine({
       firstTn = lastTurn + 1; // no turns (beyond last turn)
     } else {
       // "N turns" = N previous completed turns + current (N+1 total)
-      // firstTurnNumber = the (N)-th turn from the end
-      // e.g., N=1 (1 previous + current): idx = length - 1 → last completed turn
-      const idx = numbers.length - contextMaxTurns;
+      // firstTurnNumber = the (N)-th previous completed turn from the end
+      // i.e., index = length - N - 1 (skip the current streaming turn)
+      const idx = numbers.length - contextMaxTurns - 1;
       const tn = idx >= 0 ? numbers[Math.min(idx, numbers.length - 1)] : numbers[0];
       firstTn = tn > numbers[0] ? tn : null;
     }
@@ -227,10 +248,15 @@ export function ContextHistoryLine({
       // Switch to manual mode (user explicitly adjusted)
       setContextMode("manual");
       setFirstTurnNumber(value);
+      setPinned(true); // pin to this specific turn
       putSessionContextConfig(sessionId, { firstTurnNumber: value, mode: "manual" }).catch(() => {});
     },
     [getSnapTurn, sessionId, turnPositions],
   );
+
+  const togglePin = useCallback(() => {
+    setPinned(p => !p);
+  }, []);
 
   // Handle Y in scroll-container-relative coords
   let handleY: number | null = null;
@@ -370,6 +396,26 @@ export function ContextHistoryLine({
                     }`
               }`}
             />
+            {/* Pin toggle (manual mode only) */}
+            {contextMode === "manual" && (
+              <button
+                className="absolute top-1/2 -translate-y-1/2 left-full ml-1.5 p-0.5 rounded transition-colors hover:bg-zinc-700"
+                onClick={togglePin}
+                onPointerDown={e => e.stopPropagation()}
+              >
+                {pinned ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400">
+                    <path d="M2 10V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6" />
+                    <circle cx="6" cy="10" r="1" fill="currentColor" />
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-zinc-500 hover:text-amber-400">
+                    <path d="M2 10V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6" />
+                    <circle cx="6" cy="10" r="1" fill="currentColor" />
+                  </svg>
+                )}
+              </button>
+            )}
             {/* Hover tooltip: scope · mode · turn count */}
             <div className="absolute top-1/2 -translate-y-1/2 left-full ml-3 px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg opacity-0 group-hover/handle:opacity-100 transition-opacity pointer-events-none z-30">
               {tooltipText}

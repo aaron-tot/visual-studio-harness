@@ -111,9 +111,29 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
 
           <div className="border-t border-zinc-800 pt-4">
             <h3 className="text-sm font-medium text-zinc-100 mb-1">Manual</h3>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-500 mb-3">
               When auto-limit is off, drag the handle on the context history line to
               choose exactly which turns are included in the LLM context.
+            </p>
+
+            <label className="flex items-center gap-3 cursor-pointer">
+              <span className="text-sm text-zinc-300">Limit context to last</span>
+              <input
+                type="number"
+                value={maxTurns}
+                disabled={mode === "auto"}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (!isNaN(v)) save({ maxTurns: v });
+                }}
+                className="w-16 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200 disabled:opacity-40"
+              />
+              <span className="text-sm text-zinc-300">turns back</span>
+            </label>
+
+            <p className="text-xs text-zinc-500 mt-2">
+              Drag the handle on the context history line to pin to a specific turn,
+              or use the numeric input above to set "N turns back" precisely.
             </p>
           </div>
         </>

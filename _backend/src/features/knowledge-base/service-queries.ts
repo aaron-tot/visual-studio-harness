@@ -166,7 +166,7 @@ export async function openDocumentByIdOrFilename(
   const kb = await openKnowledgeDb(dataDir, scope, workspaceRoot, sessionId);
   if (!kb) return null;
 
-  const isUuid = UUID_RE.test(idOrFilename);
+const isUuid = UUID_RE.test(idOrFilename.trim());
 
   // Single query with join to get document + latest version content
   const row = await kb.db
@@ -185,13 +185,12 @@ export async function openDocumentByIdOrFilename(
           SELECT MAX(version_number)
           FROM knowledge_document_versions
           WHERE document_id = knowledge_documents.id
-        )`)
-      )
+        )`))
     )
     .where(
       isUuid
-        ? eq(knowledgeDocuments.id, idOrFilename)
-        : and(eq(knowledgeDocuments.filename, idOrFilename), eq(knowledgeDocuments.scope, scope))
+        ? eq(knowledgeDocuments.id, idOrFilename.trim())
+        : and(eq(knowledgeDocuments.filename, idOrFilename.trim()), eq(knowledgeDocuments.scope, scope))
     )
     .get();
 

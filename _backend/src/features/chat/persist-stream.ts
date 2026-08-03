@@ -60,13 +60,14 @@ export function createStepStreamWriter(sessionId: string, turnId: number, stepId
     toolName: string,
     args: unknown,
     seq: number,
+    stepIndex?: number,
     parentToolCallId?: string,
   ) => {
     if (!hasBoundStep) return; // no-op until a real step binds
     flushImmediate();             // flush streaming open before creating tool row
     const partId = insertStepPart(
       sessionId, turnId, currentStepId, "tool",
-      { toolCallId, toolName, args },
+      { toolCallId, toolName, args, stepIndex },
       seq, "running",
       { toolCallId, toolName, parentToolCallId },
       dataDir,

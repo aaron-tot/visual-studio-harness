@@ -23,6 +23,28 @@ export function resolveNotesDir(
   }
 }
 
+/** All possible notes directories for a given dataDir (used for fallback search). */
+export function allPossibleNotesDirs(dataDir: string): string[] {
+  return [
+    join(dataDir, "notes"),
+    join(dataDir, "session", "notes"),
+  ];
+}
+
+/** Find a note directory by name, searching all possible notes directories. */
+export async function findNoteDirByName(
+  dataDir: string,
+  name: string
+): Promise<string | null> {
+  for (const dir of allPossibleNotesDirs(dataDir)) {
+    const nd = join(dir, name);
+    if (existsSync(nd)) {
+      return nd;
+    }
+  }
+  return null;
+}
+
 export interface NoteMeta {
   createdAt: string;
   updatedAt: string;
@@ -63,25 +85,28 @@ export async function listNotes(
   workspaceRoot?: string,
   sessionId?: string
 ): Promise<NoteEntry[]> {
-  const dir = resolveNotesDir(dataDir, scope, workspaceRoot, sessionId);
-  if (!dir || !existsSync(dir)) return [];
-
-  const entries = await readdir(dir, { withFileTypes: true });
+  // Search all possible notes directories
+  const allDirs = allPossibleNotesDirs(dataDir);
   const results: NoteEntry[] = [];
 
-  for (const e of entries) {
-    if (!e.isDirectory()) continue;
-    const pd = join(dir, e.name);
-    const meta = await readNoteMeta(pd);
-    const content = await readNoteContent(pd);
-    if (!meta || !content) continue;
-    results.push({
-      name: e.name,
-      path: pd,
-      title: content.title,
-      body: content.body,
-      meta,
-    });
+  for (const dir of allDirs) {
+    if (!existsSync(dir)) continue;
+    const entries = await readdir(dir, { withFileTypes: true });
+
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const pd = join(dir, e.name);
+      const meta = await readNoteMeta(pd);
+      const content = await readNoteContent(pd);
+      if (!meta || !content) continue;
+      results.push({
+        name: e.name,
+        path: pd,
+        title: content.title,
+        body: content.body,
+        meta,
+      });
+    }
   }
 
   return results.sort((a, b) => b.meta.createdAt.localeCompare(a.meta.createdAt));
@@ -149,10 +174,16 @@ export async function updateNote(params: UpdateNoteParams): Promise<{ path: stri
     );
   }
 
-  const nd = join(notesDir, params.name);
-  const fp = join(nd, "note.json");
+  let nd = join(notesDir, params.name);
+  let fp = join(nd, "note.json");
   if (!existsSync(fp)) {
-    throw new Error("note not found");
+    // Fallback: search all possible notes directories
+    const foundDir = await findNoteDirByName(params.dataDir, params.name);
+    if (!foundDir) {
+      throw new Error("note not found");
+    }
+    nd = foundDir;
+    fp = join(nd, "note.json");
   }
 
   const raw = await readFile(fp, "utf-8");
@@ -186,9 +217,13 @@ export async function archiveNote(params: ArchiveNoteParams): Promise<{ archived
           : "invalid notes scope"
     );
   }
-  const nd = join(notesDir, params.name);
+  let nd = join(notesDir, params.name);
   if (!existsSync(nd)) {
-    throw new Error("note not found");
+    const foundDir = await findNoteDirByName(params.dataDir, params.name);
+    if (!foundDir) {
+      throw new Error("note not found");
+    }
+    nd = foundDir;
   }
   const ts = new Date().toISOString().replace(/[:.]/g, "-").replace(/T/, "_").slice(0, 19);
   const archivedPath = join(notesDir, `${params.name}.archived.${ts}`);

@@ -19,10 +19,8 @@ import { designReadTool } from "./builtins/design_read";
 import { designEditTool } from "./builtins/design_edit";
 import { designAbandonTool } from "./builtins/design_abandon";
 import { listTool } from "./builtins/list";
-import { notesReadTool } from "./builtins/notes_read";
-import { notesCreateTool } from "./builtins/notes_create";
-import { notesUpdateTool } from "./builtins/notes_update";
-import { notesArchiveTool } from "./builtins/notes_archive";
+import { notesTool } from "./consolidated/notes";
+import { notesListTool } from "./builtins/notes_list";
 import { auditTool } from "./consolidated/audit";
 import { graphTool } from "./consolidated/graph";
 import { knowledgeTool } from "./consolidated/knowledge";
@@ -52,10 +50,8 @@ const ALL_TOOLS: ToolDef[] = [
   designEditTool,
   designAbandonTool,
   listTool,
-  notesReadTool,
-  notesCreateTool,
-  notesUpdateTool,
-  notesArchiveTool,
+  notesTool,
+  notesListTool,
   auditTool,
   graphTool,
   knowledgeTool,

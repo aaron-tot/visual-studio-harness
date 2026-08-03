@@ -4,42 +4,7 @@ import { cn } from "../../../lib/utils";
 import { useChatStore } from "../../../stores/chat";
 import { ToolCallCard } from "../../tools/ToolCallCard";
 import { ToolStatusBorder } from "./ToolStatusBorder";
-
-export type GroupedParts = MessagePartType[] | MessagePartType;
-
-/**
- * Groups consecutive tool parts that share a stepIndex (the same parallel
- * step) into a single batch array when there is more than one. Items that
- * don't qualify (non-tools, single tools, or tools with no stepIndex) pass
- * through unchanged.
- */
-export function groupByStep(parts: MessagePartType[]): GroupedParts[] {
-  const out: GroupedParts[] = [];
-  let buffer: MessagePartType[] = [];
-  let currentStep: number | undefined;
-
-  const flush = () => {
-    if (buffer.length > 1) out.push(buffer);
-    else if (buffer.length === 1) out.push(buffer[0]);
-    buffer = [];
-    currentStep = undefined;
-  };
-
-  for (const p of parts) {
-    if (p.type === "tool" && p.stepIndex != null) {
-      if (currentStep === undefined) { currentStep = p.stepIndex; buffer.push(p); continue; }
-      if (currentStep === p.stepIndex) { buffer.push(p); continue; }
-      flush();
-      currentStep = p.stepIndex;
-      buffer.push(p);
-      continue;
-    }
-    flush();
-    out.push(p);
-  }
-  flush();
-  return out;
-}
+import { groupByStep } from "./group-by-step";
 
 function summarize(parts: MessagePartType[]): string {
   const counts: Record<string, number> = {};

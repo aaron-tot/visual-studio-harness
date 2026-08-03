@@ -225,7 +225,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
             const toolName = event.toolName;
             const args = "input" in event ? event.input : (event as { args?: unknown }).args;
             const part: MessagePartType & { type: "tool" } = { type: "tool", toolCallId, toolName, status: "running", args, stepIndex: currentStepIndex };
-            toolParts.set(toolCallId, part); parts.push(part); onToolCall?.({ toolCallId, toolName, args }); pendingTools++;
+            toolParts.set(toolCallId, part); parts.push(part); onToolCall?.({ toolCallId, toolName, args, stepIndex: currentStepIndex }); pendingTools++;
             stepBatch.addCall({ toolCallId, toolName, args });
           } else if (event.type === "tool-result") {
             await stepBatch.fireBefore();

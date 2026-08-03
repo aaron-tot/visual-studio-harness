@@ -164,6 +164,16 @@ export async function editDocument(
     })
     .where(eq(knowledgeDocuments.id, id));
 
+  // Verify document still exists before inserting chunks/versions (FK safety)
+  const verify = await kb.db
+    .select({ id: knowledgeDocuments.id })
+    .from(knowledgeDocuments)
+    .where(eq(knowledgeDocuments.id, id))
+    .get();
+  if (!verify) {
+    throw new Error("Document vanished during edit (concurrent delete?)");
+  }
+
   // Update file on disk
   if (existing.filepath && existsSync(existing.filepath)) {
     await writeFile(existing.filepath, content, "utf-8");

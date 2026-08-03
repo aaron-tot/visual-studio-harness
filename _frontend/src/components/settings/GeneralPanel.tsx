@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useConfigStore } from "../../stores/config";
 import type { ConfigFile } from "../../../../_shared/types";
 import { AgentSelector, type AgentOption } from "../chat/input/AgentSelector";
@@ -109,6 +109,65 @@ function RateLimitRow({
   );
 }
 
+function GenerateToolSeedsButton() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ seeded: string[]; overwritten: string[]; errors: string[] } | null>(null);
+
+  const handleGenerate = async () => {
+    if (busy) return;
+    const confirmed = confirm(
+      "This will regenerate tool skill files from repo seeds, overwriting any existing tool skill files in the selected scopes (global, project, session). Continue?"
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/mds/seed-skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scopes: ["global", "project", "session"] }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setResult(data);
+    } catch (e) {
+      setResult({ seeded: [], overwritten: [], errors: [e instanceof Error ? e.message : String(e)] });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={handleGenerate}
+        disabled={busy}
+        className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+      >
+        {busy ? "Generating…" : "Generate tool seeds"}
+      </button>
+      {result && (
+        <div className="text-[11px] space-y-1">
+          {result.seeded.length > 0 && (
+            <div className="text-green-400">Seeded: {result.seeded.join(", ")}</div>
+          )}
+          {result.overwritten.length > 0 && (
+            <div className="text-amber-400">Overwritten: {result.overwritten.join(", ")}</div>
+          )}
+          {result.errors.length > 0 && (
+            <div className="text-red-400">Errors: {result.errors.join(", ")}</div>
+          )}
+          {result.seeded.length === 0 && result.overwritten.length === 0 && result.errors.length === 0 && (
+            <div className="text-zinc-500">No changes (skills already up to date)</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GeneralPanel() {
   const { config, update } = useConfigStore();
 
@@ -170,6 +229,7 @@ export function GeneralPanel() {
             </div>
           </div>
         </div>
+
         <RateLimitRow
           config={config}
           onPatch={patch}
@@ -406,6 +466,14 @@ export function GeneralPanel() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
+        <div className="text-sm text-zinc-200">MDS Tool Skills</div>
+        <div className="text-xs text-zinc-500">
+          Regenerate tool skill files from repo seeds. This will overwrite any existing tool skill files in the selected scopes.
+        </div>
+        <GenerateToolSeedsButton />
       </div>
     </div>
   );

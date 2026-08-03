@@ -383,8 +383,8 @@ export function readMdsScopeFile(opts: {
   path: string;
   sessionId?: string;
   workspaceRoot?: string;
-}) {
-  return fetchJson<{ content: string }>(`${BASE}/mds/scope-read-file${mdsScopeFileQuery(opts)}`);
+}): Promise<string> {
+  return fetchJson<{ content: string }>(`${BASE}/mds/scope-read-file${mdsScopeFileQuery(opts)}`).then(r => r.content);
 }
 
 export function writeMdsScopeFile(opts: {
@@ -1242,6 +1242,7 @@ export interface SessionContextConfig {
   owner?: "session" | "project" | "global" | "none";
   manualMode?: "turnsBack" | "pinned";
   manualTurnsBack?: number;
+  enabled?: boolean;
   summarizationModel?: string;
   summarizationFallbackModel?: string;
   summarizationPromptMd?: string;
@@ -1281,8 +1282,59 @@ export function getEffectiveContextConfig(
 export function putScopedContextConfig(scope: string, body: Partial<SessionContextConfig>, opts?: { workspaceRoot?: string }) {
   const params = new URLSearchParams({ scope });
   if (opts?.workspaceRoot) params.set("workspaceRoot", opts.workspaceRoot);
-  return fetchJson<{ ok: boolean }>(`${BASE}/context-config/scoped?${params}`, {
+return fetchJson<{ ok: boolean }>(`${BASE}/context-config/scoped?${params}`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
+}
+
+export interface SummarizationTestRequest {
+  sessionId?: string;
+  workspaceRoot?: string;
+  userMessage?: string;
+  agentMessage?: string;
+  model?: string;
+  fallbackModel?: string;
+  promptMd?: string;
+}
+
+/** Stream a test summarization via SSE. Calls onDelta as text chunks arrive. Returns when done. */
+export async function streamSummarizationTest(
+  req: SummarizationTestRequest,
+  onDelta: (chunk: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${BASE}/context-config/summarization-test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `API error: ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Parse SSE events: "data: ...\n\n"
+    let idx;
+    while ((idx = buffer.indexOf("\n\n")) >= 0) {
+      const raw = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      if (!raw.startsWith("data:")) continue;
+      const payload = raw.slice(5).trim();
+      if (!payload) continue;
+      try {
+        const parsed = JSON.parse(payload);
+        if (typeof parsed?.d === "string") onDelta(parsed.d);
+      } catch {
+        // non-JSON data events — ignore
+      }
+    }
+  }
 }

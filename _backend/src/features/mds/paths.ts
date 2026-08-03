@@ -15,8 +15,8 @@ export function seedSubdirForMode(mode: string): string {
 
 export function seedsDir(): string | null {
   if (typeof import.meta !== "undefined" && import.meta.dir && !import.meta.dir.includes("$bunfs")) {
-    // features/mds/paths.ts → ../../../seeds
-    return resolve(import.meta.dir, "../../../seeds");
+    // _backend/src/features/mds/paths.ts → ../../../../seeds = <repoSource>/seeds
+    return resolve(import.meta.dir, "../../../../seeds");
   }
   return null;
 }

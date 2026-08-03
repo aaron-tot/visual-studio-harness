@@ -17,7 +17,10 @@ import {
   resolveMdsContext,
   copyRecursive,
   updateMdsPathPrefix,
+  seedToolSkills,
+  TOOL_SKILL_NAMES,
 } from "../features/mds/scope";
+import { seedsDir, seedSubdirForMode } from "../features/mds/paths";
 
 export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
 
@@ -373,9 +376,64 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
     return { content };
   });
 
+  /**
+   * POST /api/mds/seed-skills
+   * Re-seed tool skills from repo seeds, overwriting same-named items.
+   * Body: { scopes?: ("global" | "project" | "session")[] } — defaults to all available.
+   * Returns: { seeded: string[], overwritten: string[], errors: string[] }
+   */
+  app.post("/api/mds/seed-skills", async (request, reply) => {
+    const q = request.query as { sessionId?: string; workspaceRoot?: string };
+    const body = (request.body || {}) as { scopes?: ("global" | "project" | "session")[] };
+    const requestedScopes = body.scopes ?? ["global", "project", "session"];
 
+    const { resolvedDataDir, wsRoot } = await resolveMdsContext(q);
+    const mode = getMode();
+    const sDir = seedsDir();
+    if (!sDir) {
+      return reply.code(500).send({ error: "seeds directory not available" });
+    }
 
+    const seedSkillsDir = join(sDir, seedSubdirForMode(mode), "mds", "_skills");
 
+    const seeded: string[] = [];
+    const overwritten: string[] = [];
+    const errors: string[] = [];
 
+    for (const scope of requestedScopes) {
+      const base = resolveMdsScopeDir(scope, resolvedDataDir, wsRoot || undefined, q.sessionId);
+      if (!base) continue;
 
+      const skillsDir = join(base, "_skills");
+      await mkdir(skillsDir, { recursive: true });
+
+      for (const skillName of TOOL_SKILL_NAMES) {
+        const seedSkillDir = join(seedSkillsDir, skillName);
+        const seedMd = join(seedSkillDir, "prompt.md");
+        const seedJson = join(seedSkillDir, "prompt.json");
+        if (!existsSync(seedMd)) continue;
+
+        const targetSkillDir = join(skillsDir, skillName);
+        const targetMd = join(targetSkillDir, "prompt.md");
+        const targetJson = join(targetSkillDir, "prompt.json");
+        const existed = existsSync(targetMd);
+
+        try {
+          await mkdir(targetSkillDir, { recursive: true });
+          const mdContent = await readFile(seedMd, "utf-8");
+          await writeFile(targetMd, mdContent, "utf-8");
+          if (existsSync(seedJson)) {
+            const jsonContent = await readFile(seedJson, "utf-8");
+            await writeFile(targetJson, jsonContent, "utf-8");
+          }
+          if (existed) overwritten.push(`${scope}/${skillName}`);
+          else seeded.push(`${scope}/${skillName}`);
+        } catch (err) {
+          errors.push(`${scope}/${skillName}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+
+    return { seeded, overwritten, errors };
+  });
 }

@@ -5,6 +5,22 @@ import { getSession } from "../../storage/session";
 import { resolveDataDirInfo } from "../../paths";
 import { seedsDir, seedSubdirForMode } from "./paths";
 
+const TOOL_SKILL_NAMES = [
+  "apply-patch",
+  "audit",
+  "design",
+  "design-edit",
+  "graph",
+  "knowledge",
+  "search-local",
+  "search-online",
+  "task",
+  "todo",
+  "websearch",
+] as const;
+
+export { TOOL_SKILL_NAMES };
+
 interface ScopeDirNode {
   name: string;
   type: "file" | "dir";
@@ -153,6 +169,9 @@ export async function ensureDefaultMdsDirs(dir: string, mode: string): Promise<v
   for (const name of RESERVED_MDS_DIRS) {
     await mkdir(join(dir, name), { recursive: true });
   }
+  // Seed _skills from repo seeds on first load (fresh installs only)
+  const skillsDir = join(dir, "_skills");
+  await seedToolSkills(skillsDir, mode);
   // Seed _SystemBase/{name}/prompt.md + prompt.json from the repo seeds when available (fresh installs only).
   // _SystemBase is a container: the prompt lives in a sub-folder, like _skills.
   const itemDir = join(dir, "_SystemBase", "systemPromptBase");
@@ -279,6 +298,39 @@ export function safeRelPath(rel: string | undefined): string | null {
   const segments = normalized.split("/");
   if (segments.some((s) => !s || s === "." || s === "..")) return null;
   return normalized;
+}
+
+/**
+ * Seed _skills directory from repo seeds on first load (fresh installs only).
+ * Copies prompt.md + prompt.json for each tool skill if the skill folder doesn't exist.
+ */
+export async function seedToolSkills(skillsDir: string, mode: string): Promise<void> {
+  const sDir = seedsDir();
+  if (!sDir) return;
+
+  const seedSkillsDir = join(sDir, seedSubdirForMode(mode), "mds", "_skills");
+  for (const skillName of TOOL_SKILL_NAMES) {
+    const targetSkillDir = join(skillsDir, skillName);
+    const targetMd = join(targetSkillDir, "prompt.md");
+    if (existsSync(targetMd)) continue; // already seeded
+
+    const seedSkillDir = join(seedSkillsDir, skillName);
+    const seedMd = join(seedSkillDir, "prompt.md");
+    const seedJson = join(seedSkillDir, "prompt.json");
+    if (!existsSync(seedMd)) continue; // no seed for this skill
+
+    try {
+      await mkdir(targetSkillDir, { recursive: true });
+      const mdContent = await readFile(seedMd, "utf-8");
+      await writeFile(targetMd, mdContent, "utf-8");
+      if (existsSync(seedJson)) {
+        const jsonContent = await readFile(seedJson, "utf-8");
+        await writeFile(join(targetSkillDir, "prompt.json"), jsonContent, "utf-8");
+      }
+    } catch {
+      // leave empty if seed read fails
+    }
+  }
 }
 
 /** Resolve the data dir + workspace root for scope routes (workspace falls back to the session's). */

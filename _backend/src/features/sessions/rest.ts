@@ -38,6 +38,9 @@ import {
   setSessionModelConfigJson,
 } from "./db";
 import { getWorkspaceGraphManager } from "../../core/workspaceGraph/service-singleton";
+import { streamText } from "ai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { loadConfig } from "../../storage/config";
 
 export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
   app.get("/api/sessions", async (request) => {
@@ -168,6 +171,10 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       maxTurns?: number;
       manualMode?: "turnsBack" | "pinned" | null;
       manualTurnsBack?: number | null;
+      enabled?: boolean | null;
+      summarizationModel?: string | null;
+      summarizationFallbackModel?: string | null;
+      summarizationPromptMd?: string | null;
     };
 
     // Merge with existing config
@@ -186,6 +193,10 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       maxTurns: body.maxTurns !== undefined ? body.maxTurns : existingCtx.maxTurns ?? 10,
       manualMode: body.manualMode !== undefined ? body.manualMode : existingCtx.manualMode ?? "turnsBack",
       manualTurnsBack: body.manualTurnsBack !== undefined ? body.manualTurnsBack : existingCtx.manualTurnsBack ?? 10,
+      enabled: body.enabled !== undefined ? body.enabled : existingCtx.enabled ?? false,
+      summarizationModel: body.summarizationModel !== undefined ? body.summarizationModel : existingCtx.summarizationModel ?? undefined,
+      summarizationFallbackModel: body.summarizationFallbackModel !== undefined ? body.summarizationFallbackModel : existingCtx.summarizationFallbackModel ?? undefined,
+      summarizationPromptMd: body.summarizationPromptMd !== undefined ? body.summarizationPromptMd : existingCtx.summarizationPromptMd ?? undefined,
     };
     setSessionModelConfigJson(id, JSON.stringify(existing), dataDir);
     return { ok: true };
@@ -236,20 +247,22 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
   });
 
   // ── Effective context config resolution (session > project > global) ──
-  app.get("/api/context-config/effective", async (request) => {
-    const q = request.query as { sessionId?: string; workspaceRoot?: string };
+  // Each scope may set `enabled`. When a scope is disabled (enabled === false)
+  // it is entirely ignored and resolution falls through to the next scope down
+  // (session → workspace/project → global). Global is always the base.
+  async function resolveEffectiveContext(opts: { sessionId?: string; workspaceRoot?: string }) {
     const scopedCfg = await readScopedCtx();
     const global = (scopedCfg.global as Record<string, unknown>) ?? {};
-    const project = (q.workspaceRoot
-      ? ((scopedCfg.workspaces as Record<string, unknown>)?.[q.workspaceRoot] as Record<string, unknown>)
+    const project = (opts.workspaceRoot
+      ? ((scopedCfg.workspaces as Record<string, unknown>)?.[opts.workspaceRoot] as Record<string, unknown>)
       : undefined) ?? {};
 
     // Session scope lives in the session's modelConfigJson .context
     let session: Record<string, unknown> = {};
-    if (q.sessionId) {
-      const s = await getSession(dataDir, q.sessionId);
+    if (opts.sessionId) {
+      const s = await getSession(dataDir, opts.sessionId);
       if (s) {
-        const raw = getSessionModelConfigJson(q.sessionId, dataDir);
+        const raw = getSessionModelConfigJson(opts.sessionId, dataDir);
         if (raw) {
           try {
             const p = JSON.parse(raw);
@@ -259,22 +272,30 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       }
     }
 
-    // Per-field resolution: session overrides project overrides global
+    // A scope only contributes when it is enabled. Default is OFF for
+    // workspace/session so new scopes use global until the user opts in.
+    // Global is always the base and is never gated.
+    const sessionEnabled = session["enabled"] === true;
+    const projectEnabled = project["enabled"] === true;
+
+    // Per-field resolution: session overrides project overrides global,
+    // but only across scopes that are enabled.
     const pick = (key: string) => {
-      if (session[key] !== undefined) return session[key];
-      if (project[key] !== undefined) return project[key];
+      if (sessionEnabled && session[key] !== undefined) return session[key];
+      if (projectEnabled && project[key] !== undefined) return project[key];
       if (global[key] !== undefined) return global[key];
       return undefined;
     };
 
-    // Owning scope = the highest-priority scope that defines any setting.
+    // Owning scope = the highest-priority *enabled* scope that defines any setting.
     const hasOwn =
       (o: Record<string, unknown>) =>
         o["mode"] !== undefined || o["maxTurns"] !== undefined || o["firstTurnNumber"] !== undefined ||
+        o["manualMode"] !== undefined || o["manualTurnsBack"] !== undefined ||
         o["summarizationModel"] !== undefined || o["summarizationFallbackModel"] !== undefined || o["summarizationPromptMd"] !== undefined;
     const owner =
-      hasOwn(session) ? "session"
-      : hasOwn(project) ? "project"
+      (sessionEnabled && hasOwn(session)) ? "session"
+      : (projectEnabled && hasOwn(project)) ? "project"
       : hasOwn(global) ? "global"
       : "none";
 
@@ -287,8 +308,191 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       summarizationModel: pick("summarizationModel") as string | undefined,
       summarizationFallbackModel: pick("summarizationFallbackModel") as string | undefined,
       summarizationPromptMd: pick("summarizationPromptMd") as string | undefined,
+      enabled: (sessionEnabled && session["enabled"] === true) ? true
+        : (projectEnabled && project["enabled"] === true) ? true
+        : false,
       owner,
     };
+  }
+
+  app.get("/api/context-config/effective", async (request) => {
+    const q = request.query as { sessionId?: string; workspaceRoot?: string };
+    return resolveEffectiveContext(q);
+  });
+
+  // ── Summarization test (preview how a summary would turn out) ───────────
+  const DEFAULT_SUMMARIZATION_PROMPT = [
+    "You are a meticulous summarizer. Read the user and agent turns below and produce a concise, faithful",
+    "summary that preserves key decisions, findings, and open questions. Keep it tight and skimmable.",
+  ].join(" ");
+
+  // Split a stored "Provider/Model" string into { providerName, modelName }.
+  const splitModelRef = (ref?: string | null): { providerName: string; modelName: string } | null => {
+    if (!ref) return null;
+    const idx = ref.indexOf("/");
+    if (idx <= 0 || idx === ref.length - 1) return null;
+    return { providerName: ref.slice(0, idx), modelName: ref.slice(idx + 1) };
+  };
+
+  // Try to read a summarization prompt. The value is either a file path (the
+  // stored promptPath) or inline content (when the user edits it in the test
+  // modal). If a file exists at the path, read its contents; otherwise treat
+  // the value as inline prompt content.
+  async function readSummarizationPrompt(promptRef?: string | null): Promise<string | null> {
+    if (!promptRef) return null;
+    try {
+      const info = await stat(promptRef);
+      const target = info.isDirectory() ? join(promptRef, "prompt.md") : promptRef;
+      const raw = await readFile(target, "utf-8");
+      return raw.trim() || null;
+    } catch {
+      // Not a readable file path → treat as inline prompt content.
+      const inline = promptRef.trim();
+      return inline || null;
+    }
+  }
+
+  app.post("/api/context-config/summarization-test", async (request, reply) => {
+    const body = (request.body || {}) as {
+      sessionId?: string;
+      workspaceRoot?: string;
+      userMessage?: string;
+      agentMessage?: string;
+      model?: string;
+      fallbackModel?: string;
+      promptMd?: string;
+    };
+    const userMessage = (body.userMessage ?? "").trim();
+    const agentMessage = (body.agentMessage ?? "").trim();
+    if (!userMessage && !agentMessage) {
+      return reply.code(400).send({ error: "userMessage or agentMessage is required" });
+    }
+
+    // Resolve effective settings (falls back to whatever is stored per scope).
+    const eff = await resolveEffectiveContext({ sessionId: body.sessionId, workspaceRoot: body.workspaceRoot });
+    const modelRef = splitModelRef(body.model ?? eff.summarizationModel);
+    const fallbackRef = splitModelRef(body.fallbackModel ?? eff.summarizationFallbackModel);
+    const promptPath = body.promptMd ?? eff.summarizationPromptMd;
+
+    // Determine what the summarization prompt should be.
+    const promptContent = (await readSummarizationPrompt(promptPath)) ?? DEFAULT_SUMMARIZATION_PROMPT;
+
+    let config;
+    try {
+      config = await loadConfig(dataDir);
+    } catch {
+      return reply.code(500).send({ error: "failed to load config" });
+    }
+    const providers = config.providers ?? [];
+
+    const resolveRef = (ref: { providerName: string; modelName: string } | null) => {
+      if (!ref) return null;
+      const provider = providers.find((p) => p.displayName === ref!.providerName && p.enabled !== false) ??
+        providers.find((p) => p.enabled !== false);
+      if (!provider) return null;
+      const model = provider.models.find(
+        (m) => m.displayName === ref!.modelName && m.enabled !== false,
+      ) ?? provider.models.find((m) => m.enabled !== false);
+      if (!model) return null;
+      return { provider, model };
+    };
+
+    const primary = resolveRef(modelRef);
+    const fallback = resolveRef(fallbackRef);
+    if (!primary) {
+      return reply.code(400).send({ error: "No summarization model configured" });
+    }
+
+    const instructions = promptContent + "\n\n" +
+      "You are summarizing a past conversation. You have no tools. Output only a plain-text summary.";
+    const messages: { role: "user" | "assistant"; content: string }[] = [];
+    if (userMessage) messages.push({ role: "user", content: userMessage });
+    if (agentMessage) messages.push({ role: "assistant", content: agentMessage });
+
+    const makeSdkProvider = (p: typeof primary!.provider) => {
+      if (p.displayName === "Test") return null;
+      return createOpenAICompatible({
+        baseURL: p.baseUrl,
+        apiKey: p.apiKey || "no-key",
+        headers: p.headers,
+        name: p.displayName,
+      });
+    };
+
+    // Pick primary; fall back to fallbackRef if the primary fails.
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    const send = (delta: string) => {
+      reply.raw.write(`data: ${JSON.stringify({ d: delta })}\n\n`);
+    };
+
+    const signal = new AbortController().signal;
+
+    // Stream from a model, yielding text deltas. Surface errors (auth, timeout,
+    // model-not-found) rather than silently returning an empty response.
+    // Some agent/tool models emit tool calls (e.g. <tool_call>{...} or cmd(`...`)).
+    // We drop those segments so the preview is a pure text summary.
+    const streamFrom = async (p: typeof primary!.provider, m: typeof primary!.model) => {
+      const prov = makeSdkProvider(p);
+      if (!prov) {
+        send("[Test model — no streaming preview applicable]");
+        return;
+      }
+      const result = streamText({
+        model: prov(m.modelName),
+        instructions,
+        messages,
+        abortSignal: signal,
+        maxRetries: 0,
+      });
+
+      for await (const event of result.fullStream) {
+        if (event.type === "text-delta") {
+          const text = "text" in event ? (event as { text?: string }).text : "";
+          if (text) send(text);
+        } else if (event.type === "error") {
+          const err = "error" in event ? (event as { error?: unknown }).error : undefined;
+          throw err instanceof Error ? err : new Error(String(err));
+        } else if (event.type === "finish") {
+          // done
+        }
+      }
+    };
+
+    try {
+      try {
+        await streamFrom(primary.provider, primary.model);
+      } catch (primaryErr) {
+        // Fall back to the second preference if the first model fails.
+        if (fallback) {
+          const fbSdk = makeSdkProvider(fallback.provider);
+          if (fbSdk) {
+            send(`\n[Primary model failed: ${primaryErr instanceof Error ? primaryErr.message : String(primaryErr)}]`);
+            send("\n[Switching to fallback model...]\n");
+            await streamFrom(fallback.provider, fallback.model);
+          } else {
+            throw primaryErr;
+          }
+        } else {
+          throw primaryErr;
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        // aborted — end silently
+      } else {
+        send(`\n[Error: ${err instanceof Error ? err.message : String(err)}]`);
+      }
+    } finally {
+      reply.raw.end();
+    }
   });
 
   app.delete("/api/sessions/:id", async (request) => {

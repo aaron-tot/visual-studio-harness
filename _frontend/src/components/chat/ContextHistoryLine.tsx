@@ -240,8 +240,22 @@ setStoreCtxTn(firstTurnNumber);
       if (!dragging) return;
       // Track raw cursor for free-floating handle (no snap until release)
       setDragClientY(e.clientY);
+      // Auto-scroll when the cursor is within EDGE px of the container's
+      // top/bottom while dragging.
+      const sc = scrollRef.current;
+      if (!sc) return;
+      const EDGE = 40;
+      const rect = sc.getBoundingClientRect();
+      const clientY = e.clientY;
+      if (clientY < rect.top + EDGE) {
+        sc.scrollTop -= Math.round((rect.top + EDGE - clientY) * 0.5);
+        requestAnimationFrame(measure);
+      } else if (clientY > rect.bottom - EDGE) {
+        sc.scrollTop += Math.round((clientY - (rect.bottom - EDGE)) * 0.5);
+        requestAnimationFrame(measure);
+      }
     },
-    [dragging],
+    [dragging, scrollRef, measure],
   );
 
   const handlePointerUp = useCallback(
@@ -263,17 +277,26 @@ setStoreCtxTn(firstTurnNumber);
   const togglePin = useCallback(() => {
     setPinned(prev => {
       const next = !prev;
+      // When unpinning, convert the current pinned position into "N turns back"
+      // so the circle stays exactly where it is, only the meaning changes.
+      let turnsBack = manualTurnsBack ?? 10;
+      if (prev && firstTurnNumber != null && turnPositions.length > 0) {
+        const numbers = turnPositions.map((t) => t.number).sort((a, b) => a - b);
+        const lastTurn = numbers[numbers.length - 1];
+        turnsBack = lastTurn - firstTurnNumber;
+      }
       if (sessionId) {
         putSessionContextConfig(sessionId, {
           mode: "manual",
           manualMode: next ? "pinned" : "turnsBack",
-          firstTurnNumber: next ? firstTurnNumber : firstTurnNumber,
-          manualTurnsBack,
+          firstTurnNumber,
+          manualTurnsBack: turnsBack,
         }).catch(() => {});
       }
+      setManualTurnsBack(turnsBack);
       return next;
     });
-  }, [sessionId, firstTurnNumber, manualTurnsBack]);
+  }, [sessionId, firstTurnNumber, manualTurnsBack, turnPositions]);
 
   // Handle Y in scroll-container-relative coords
   let handleY: number | null = null;

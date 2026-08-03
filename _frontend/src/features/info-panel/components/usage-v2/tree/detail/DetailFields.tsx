@@ -5,6 +5,7 @@ import {
   formatOwnIncl,
 } from "../../format/format";
 import type { UsageTokenBlock } from "../../types";
+import { CacheSplitInput } from "./CacheSplitInput";
 
 export interface DetailRow {
   label: string;
@@ -44,7 +45,19 @@ export function TokenBlock({
         },
         {
           label: "  Input",
-          value: formatOwnIncl(own.inputTokens, incl.inputTokens),
+          value: (
+            <span className="flex items-center gap-2">
+              <CacheSplitInput
+                inputTokens={own.inputTokens}
+                cacheReadTokens={own.cacheReadTokens}
+              />
+              {incl.inputTokens !== own.inputTokens && (
+                <span className="text-zinc-500">
+                  ({formatTokens(incl.inputTokens)})
+                </span>
+              )}
+            </span>
+          ),
         },
         {
           label: "  Output",

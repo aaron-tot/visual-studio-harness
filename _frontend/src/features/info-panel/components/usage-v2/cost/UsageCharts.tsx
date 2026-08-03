@@ -30,6 +30,46 @@ function BarRow({
   );
 }
 
+function SegmentedInput({
+  inputTokens,
+  cacheReadTokens,
+  max,
+}: {
+  inputTokens: number;
+  cacheReadTokens?: number;
+  max: number;
+}) {
+  const cache = Math.min(cacheReadTokens ?? 0, inputTokens);
+  const nonCache = Math.max(0, inputTokens - cache);
+  const cachePct = max > 0 ? Math.min(100, (cache / max) * 100) : 0;
+  const nonCachePct = max > 0 ? Math.min(100 - cachePct, (nonCache / max) * 100) : 0;
+  const hasCache = cache > 0;
+  return (
+    <div className="flex items-center gap-1.5 text-[10px]">
+      <span className="text-zinc-500 w-14 shrink-0">Input</span>
+      <div className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden flex min-w-0">
+        {nonCache > 0 && (
+          <div
+            className="h-full bg-violet-600/70"
+            style={{ width: `${nonCachePct}%` }}
+            title={`Non-cache input ${formatTokens(nonCache)}`}
+          />
+        )}
+        {hasCache && (
+          <div
+            className="h-full bg-teal-500/80"
+            style={{ width: `${cachePct}%` }}
+            title={`Cache read ${formatTokens(cache)}`}
+          />
+        )}
+      </div>
+      <span className="text-zinc-400 w-12 text-right shrink-0 tabular-nums">
+        {formatTokens(inputTokens)}
+      </span>
+    </div>
+  );
+}
+
 function StackBar({
   own,
   inclusive,
@@ -133,11 +173,10 @@ export function UsageCharts({
         <div className="text-[8px] text-zinc-600 uppercase tracking-widest mb-1">
           Token mix (own)
         </div>
-        <BarRow
-          label="Input"
-          value={session.own.inputTokens}
+        <SegmentedInput
+          inputTokens={session.own.inputTokens}
+          cacheReadTokens={session.own.cacheReadTokens}
           max={tokMax}
-          color="bg-violet-600/70"
         />
         <BarRow
           label="Output"
@@ -152,6 +191,18 @@ export function UsageCharts({
             max={tokMax}
             color="bg-rose-600/60"
           />
+        )}
+        {(session.own.cacheReadTokens ?? 0) > 0 && (
+          <div className="flex gap-3 text-[9px] text-zinc-500">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-600/70" />
+              non-cache {formatTokens(Math.max(0, (session.own.inputTokens ?? 0) - (session.own.cacheReadTokens ?? 0)))}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal-500/80" />
+              cache {formatTokens(session.own.cacheReadTokens ?? 0)}
+            </span>
+          </div>
         )}
       </div>
 

@@ -11,7 +11,8 @@ interface ContextPanelProps {
 export function ContextPanel({ sessionId }: ContextPanelProps) {
   const [scope, setScope] = useState<PlanScope>("session");
   const [mode, setMode] = useState<"auto" | "manual">("manual");
-  const [maxTurns, setMaxTurns] = useState(10);
+  const [autoMaxTurns, setAutoMaxTurns] = useState(10);
+  const [manualTurnsBack, setManualTurnsBack] = useState(10);
   const [loading, setLoading] = useState(true);
   const bumpVer = useChatStore((s) => s.bumpContextConfigVersion);
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
@@ -27,7 +28,7 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
         config = await getScopedContextConfig(scope, { workspaceRoot });
       }
       setMode(config.mode ?? "manual");
-      setMaxTurns(config.maxTurns ?? 10);
+      setAutoMaxTurns(config.maxTurns ?? 10);
     } catch { /* ignore */ }
     setLoading(false);
   };
@@ -36,8 +37,11 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     loadConfig();
   }, [scope, sessionId]);
 
-  const save = async (partial: { mode?: "auto" | "manual"; maxTurns?: number }) => {
-    const body = { mode: partial.mode ?? mode, maxTurns: partial.maxTurns ?? maxTurns };
+  const save = async (partial: { mode?: "auto" | "manual"; autoMaxTurns?: number; manualTurnsBack?: number }) => {
+    const body = { 
+      mode: partial.mode ?? mode, 
+      maxTurns: partial.autoMaxTurns ?? autoMaxTurns 
+    };
     try {
       if (scope === "session" && sessionId) {
         const current = await getSessionContextConfig(sessionId);
@@ -47,7 +51,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       }
       bumpVer();
       if (partial.mode !== undefined) setMode(partial.mode);
-      if (partial.maxTurns !== undefined) setMaxTurns(partial.maxTurns);
+      if (partial.autoMaxTurns !== undefined) setAutoMaxTurns(partial.autoMaxTurns);
+      if (partial.manualTurnsBack !== undefined) setManualTurnsBack(partial.manualTurnsBack);
     } catch { /* ignore */ }
   };
 
@@ -97,11 +102,11 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
               <span className="text-sm text-zinc-300">Limit context to last</span>
               <input
                 type="number"
-                value={maxTurns}
+                value={autoMaxTurns}
                 disabled={mode !== "auto"}
                 onChange={(e) => {
                   const v = parseInt(e.target.value, 10);
-                  if (!isNaN(v)) save({ maxTurns: v });
+                  if (!isNaN(v)) save({ autoMaxTurns: v });
                 }}
                 className="w-16 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200 disabled:opacity-40"
               />
@@ -120,11 +125,11 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
               <span className="text-sm text-zinc-300">Limit context to last</span>
               <input
                 type="number"
-                value={maxTurns}
+                value={manualTurnsBack}
                 disabled={mode === "auto"}
                 onChange={(e) => {
                   const v = parseInt(e.target.value, 10);
-                  if (!isNaN(v)) save({ maxTurns: v });
+                  if (!isNaN(v)) save({ manualTurnsBack: v });
                 }}
                 className="w-16 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200 disabled:opacity-40"
               />

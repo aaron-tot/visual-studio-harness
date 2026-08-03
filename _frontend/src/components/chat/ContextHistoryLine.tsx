@@ -23,6 +23,7 @@ export function ContextHistoryLine({
   const [contextMaxTurns, setContextMaxTurns] = useState(10);
   const [contextOwner, setContextOwner] = useState<"session" | "project" | "global" | "none">("none");
   const [pinned, setPinned] = useState(false); // manual mode: pinned to specific turn
+  const [manualTurnsBack, setManualTurnsBack] = useState(10); // unpinned: N turns back from end
   const [dragging, setDragging] = useState(false);
   const [dragClientY, setDragClientY] = useState(0);
 
@@ -127,28 +128,30 @@ export function ContextHistoryLine({
   const setStoreCtxTn = useChatStore((s) => s.setContextFirstTurnNumber);
   useEffect(() => {
     if (!sessionId) return;
-    setStoreCtxTn(firstTurnNumber);
+setStoreCtxTn(firstTurnNumber);
   }, [firstTurnNumber, sessionId, setStoreCtxTn]);
 
-  // ── Manual mode (unpinned): recompute as "N turns back from end" ──────
+  // ── Manual mode: pinned = fixed to specific turn, unpinned = N turns back ──────
   useEffect(() => {
-    if (contextMode !== "manual" || pinned || turnPositions.length === 0) return;
+    // pinned isn't a dep on purpose: pinning/unpinning must NOT move the
+    // handle. Only a change in manualTurnsBack or turnPositions recomputes.
+    if (contextMode !== "manual" || turnPositions.length === 0) return;
+    if (pinned) return; // pinned: keep handle where it is
     const numbers = turnPositions.map((t) => t.number).sort((a, b) => a - b);
     const lastTurn = numbers[numbers.length - 1];
     let firstTn: number | null;
-    if (contextMaxTurns === -1) {
+    if (manualTurnsBack === -1) {
       firstTn = null;
-    } else if (contextMaxTurns === 0) {
+    } else if (manualTurnsBack === 0) {
       firstTn = lastTurn + 1;
     } else {
-      // "N turns back" = N previous completed turns from the end
-      const idx = numbers.length - contextMaxTurns - 1;
+      const idx = numbers.length - manualTurnsBack - 1;
       const tn = idx >= 0 ? numbers[Math.min(idx, numbers.length - 1)] : numbers[0];
       firstTn = tn > numbers[0] ? tn : null;
     }
     setFirstTurnNumber(firstTn);
     setStoreCtxTn(firstTn);
-  }, [contextMaxTurns, turnPositions, pinned]);
+  }, [manualTurnsBack, turnPositions]);
 
   // ── Auto-mode: recompute firstTurnNumber from maxTurns ────────────
   useEffect(() => {
@@ -255,7 +258,7 @@ export function ContextHistoryLine({
   );
 
   const togglePin = useCallback(() => {
-    setPinned(p => !p);
+    setPinned(prev => !prev);
   }, []);
 
   // Handle Y in scroll-container-relative coords
@@ -318,7 +321,9 @@ export function ContextHistoryLine({
   }
   const tooltipText = contextMode === "auto"
     ? `${ownerLabel} · Auto · ${turnsLabel}`
-    : `${ownerLabel} · Manual · ${turnsLabel}`;
+    : pinned
+      ? `${ownerLabel} · Manual · Pinned to turn ${firstTurnNumber} (${turnsLabel} included)`
+      : `${ownerLabel} · Manual · ${turnsLabel} back`;
 
   return (
     <div

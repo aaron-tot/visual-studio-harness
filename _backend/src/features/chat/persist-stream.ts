@@ -72,7 +72,7 @@ export function createStepStreamWriter(sessionId: string, turnId: number, stepId
       { toolCallId, toolName, parentToolCallId },
       dataDir,
     );
-    toolPartIds.set(toolCallId, { partId, args, seq, toolName });
+    toolPartIds.set(toolCallId, { partId, args, seq, toolName, stepIndex });
   };
 
   const updateToolResult = (toolCallId: string, result: unknown, isError?: boolean) => {
@@ -80,7 +80,7 @@ export function createStepStreamWriter(sessionId: string, turnId: number, stepId
     if (!entry) return;
     flushImmediate();             // ensure any pending open text is written first
     // Keep toolName on the data blob — projections and UI headers read it from data
-    const data = { toolCallId, toolName: entry.toolName, args: entry.args, result, isError };
+    const data = { toolCallId, toolName: entry.toolName, args: entry.args, result, isError, stepIndex: entry.stepIndex };
     updateStepPartData(entry.partId, data, { status: isError ? "error" : "completed" }, dataDir);
     toolPartIds.delete(toolCallId);
   };

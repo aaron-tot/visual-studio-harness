@@ -220,6 +220,8 @@ function TurnCostBars({ session }: { session: UsageTreeSession }) {
       n: t.turnNumber,
       own: costForBlock(t.own, model).usd,
       incl: costForBlock(t.inclusive, model).usd,
+      input: t.own.inputTokens ?? 0,
+      cache: Math.min(t.own.cacheReadTokens ?? 0, t.own.inputTokens ?? 0),
     };
   });
   const max = Math.max(...costs.map((c) => Math.max(c.own, c.incl)), 1e-12);
@@ -229,29 +231,41 @@ function TurnCostBars({ session }: { session: UsageTreeSession }) {
       <div className="text-[8px] text-zinc-600 uppercase tracking-widest mb-1">
         Est. cost by turn
       </div>
-      {costs.map((c) => (
-        <div key={c.n} className="flex items-center gap-2 text-[10px]">
-          <span className="text-zinc-500 w-8 shrink-0">T{c.n}</span>
-          <div className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden flex min-w-0">
+      {costs.map((c) => {
+        const nonCache = Math.max(0, c.input - c.cache);
+        // Bar is sized by cost; inner split reflects cache vs non-cache input.
+        const nonCachePct = c.input > 0 ? (nonCache / c.input) * 100 : 100;
+        const cachePct = c.input > 0 ? (c.cache / c.input) * 100 : 0;
+        return (
+          <div key={c.n} className="flex items-center gap-2 text-[10px]">
+            <span className="text-zinc-500 w-8 shrink-0">T{c.n}</span>
             <div
-              className="h-full bg-emerald-600/80"
-              style={{ width: `${(c.own / max) * 100}%` }}
-              title={`own ${formatUsd(c.own)}`}
-            />
-            {c.incl > c.own && (
+              className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden flex min-w-0"
+            >
               <div
-                className="h-full bg-sky-600/60"
-                style={{ width: `${((c.incl - c.own) / max) * 100}%` }}
-                title={`incl ${formatUsd(c.incl)}`}
+                className="h-full bg-violet-600/70"
+                style={{
+                  width: `${(Math.min(100, (c.own / max) * 100)) * (nonCachePct / 100)}%`,
+                }}
+                title={`non-cache input ${formatTokens(nonCache)}`}
               />
-            )}
+              {c.cache > 0 && (
+                <div
+                  className="h-full bg-teal-500/80"
+                  style={{
+                    width: `${(Math.min(100, (c.own / max) * 100)) * (cachePct / 100)}%`,
+                  }}
+                  title={`cache read ${formatTokens(c.cache)}`}
+                />
+              )}
+            </div>
+            <span className="text-zinc-400 w-14 text-right shrink-0 tabular-nums">
+              {formatUsd(c.own)}
+              {c.incl > c.own ? ` (${formatUsd(c.incl)})` : ""}
+            </span>
           </div>
-          <span className="text-zinc-400 w-14 text-right shrink-0 tabular-nums">
-            {formatUsd(c.own)}
-            {c.incl > c.own ? ` (${formatUsd(c.incl)})` : ""}
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

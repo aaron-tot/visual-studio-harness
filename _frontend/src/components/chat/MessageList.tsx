@@ -4,6 +4,7 @@ import { useChatStore } from "../../stores/chat";
 import { MessageRow } from "./MessageRow";
 import { ContextHistoryLine } from "./ContextHistoryLine";
 import { ThinkingIndicator } from "./parts/ThinkingIndicator";
+import { SummaryCard } from "./SummaryCard";
 import type { MessagePartType } from "../../../_shared/types";
 
 const PIN_EPSILON = 4;
@@ -135,7 +136,7 @@ export function MessageList() {
   return (
     <div className="flex flex-1 overflow-hidden">
       {sessionId && (
-        <div className="w-6 flex-shrink-0 relative z-10">
+        <div className="w-16 flex-shrink-0 relative z-20 overflow-visible">
           <ContextHistoryLine sessionId={sessionId} scrollRef={scrollRef} messageCount={visibleMessages.filter(m => m.turnId != null).length} />
         </div>
       )}
@@ -147,8 +148,16 @@ export function MessageList() {
         data-scroll
       >
       {visibleMessages.map((msg, i) => (
-        <div key={i} data-turn-number={msg.turnId != null ? msg.turnId : undefined} className="animate-in fade-in slide-in-from-bottom-1 duration-200">
-          <MessageRow message={msg} />
+        <div
+          key={i}
+          data-turn-number={msg.isSummary ? undefined : (msg.turnId != null ? msg.turnId : undefined)}
+          className="animate-in fade-in slide-in-from-bottom-1 duration-200"
+        >
+          {msg.isSummary ? (
+            <SummaryCard message={msg} />
+          ) : (
+            <MessageRow message={msg} />
+          )}
         </div>
       ))}
       {streaming && streamingMessageParts && (

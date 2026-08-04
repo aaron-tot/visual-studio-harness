@@ -9,6 +9,7 @@ export type { PendingAction } from "./input/PendingActions";
 export { MessagePart } from "./MessagePart";
 export { MessageRow } from "./MessageRow";
 export { MessageList } from "./MessageList";
+export { SummaryCard } from "./SummaryCard";
 
 export { TextPart } from "./parts/TextPart";
 export { ThinkingPart } from "./parts/ThinkingPart";

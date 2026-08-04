@@ -4,7 +4,6 @@ import { useChatStore } from "../../stores/chat";
 import { MessageRow } from "./MessageRow";
 import { ContextHistoryLine } from "./ContextHistoryLine";
 import { ThinkingIndicator } from "./parts/ThinkingIndicator";
-import { SummaryCard } from "./SummaryCard";
 import type { MessagePartType } from "../../../_shared/types";
 
 const PIN_EPSILON = 4;
@@ -19,6 +18,44 @@ function sortParts(parts: MessagePartType[]): MessagePartType[] {
   });
 }
 
+interface SummaryTurnGroup {
+  userMsg: Message;
+  assistantMsg: Message;
+  turnId: number;
+  summaryEndTurn: number | undefined;
+  summaryStartTurn: number | undefined;
+}
+
+function groupSummaryTurns(messages: Message[]): (Message | SummaryTurnGroup)[] {
+  const result: (Message | SummaryTurnGroup)[] = [];
+  let i = 0;
+  while (i < messages.length) {
+    const msg = messages[i];
+    // Check if this is a summary user message followed by summary assistant message
+    if (
+      msg.isSummary &&
+      msg.role === "user" &&
+      i + 1 < messages.length &&
+      messages[i + 1].isSummary &&
+      messages[i + 1].role === "assistant" &&
+      messages[i + 1].turnId === msg.turnId
+    ) {
+      result.push({
+        userMsg: msg,
+        assistantMsg: messages[i + 1],
+        turnId: msg.turnId!,
+        summaryEndTurn: msg.summaryEndTurn,
+        summaryStartTurn: msg.summaryStartTurn,
+      });
+      i += 2;
+    } else {
+      result.push(msg);
+      i++;
+    }
+  }
+  return result;
+}
+
 export function MessageList() {
   const { messages, streaming, streamingContent, streamingParts, sessionId, streamingTurnId, sessionMeta, _pendingAgentName, _pendingModelName, _pendingProviderName } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -29,7 +66,20 @@ export function MessageList() {
   const pendingScrollRef = useRef(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
 
+  // Collapsed state for summary turns (keyed by turnId)
+  const [collapsedSummaries, setCollapsedSummaries] = useState<Set<number>>(new Set());
 
+  const toggleSummary = useCallback((turnId: number) => {
+    setCollapsedSummaries((prev) => {
+      const next = new Set(prev);
+      if (next.has(turnId)) {
+        next.delete(turnId);
+      } else {
+        next.add(turnId);
+      }
+      return next;
+    });
+  }, []);
 
   // When a session switches, freeze the container invisible and jump-scroll
   // to the bottom once messages arrive — no visible top-to-bottom animation.
@@ -132,6 +182,7 @@ export function MessageList() {
   const isThinking = streaming && streamingParts.length === 0;
 
   const visibleMessages = messages.filter((m) => m.role !== "system");
+  const groupedMessages = groupSummaryTurns(visibleMessages);
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -147,19 +198,39 @@ export function MessageList() {
         style={frozen ? { visibility: "hidden" } : undefined}
         data-scroll
       >
-      {visibleMessages.map((msg, i) => (
-        <div
-          key={i}
-          data-turn-number={msg.isSummary ? undefined : (msg.turnId != null ? msg.turnId : undefined)}
-          className="animate-in fade-in slide-in-from-bottom-1 duration-200"
-        >
-          {msg.isSummary ? (
-            <SummaryCard message={msg} />
-          ) : (
-            <MessageRow message={msg} />
-          )}
-        </div>
-      ))}
+      {groupedMessages.map((item, i) => {
+        if (typeof item === "object" && "userMsg" in item) {
+          // Summary turn group
+          const { userMsg, assistantMsg, turnId, summaryEndTurn, summaryStartTurn } = item;
+          const isCollapsed = collapsedSummaries.has(turnId);
+          return (
+            <div
+              key={`summary-${turnId}`}
+              className="animate-in fade-in slide-in-from-bottom-1 duration-200"
+            >
+              <SummaryTurnWrapper
+                userMsg={userMsg}
+                assistantMsg={assistantMsg}
+                summaryEndTurn={summaryEndTurn}
+                summaryStartTurn={summaryStartTurn}
+                isCollapsed={isCollapsed}
+                onToggle={() => toggleSummary(turnId)}
+              />
+            </div>
+          );
+        } else {
+          // Regular message
+          return (
+            <div
+              key={i}
+              data-turn-number={item.isSummary ? undefined : (item.turnId != null ? item.turnId : undefined)}
+              className="animate-in fade-in slide-in-from-bottom-1 duration-200"
+            >
+              <MessageRow message={item} />
+            </div>
+          );
+        }
+      })}
       {streaming && streamingMessageParts && (
         <MessageRow
           message={{
@@ -168,9 +239,9 @@ export function MessageList() {
             parts: streamingMessageParts,
             timestamp: new Date().toISOString(),
             turnId: streamingTurnId ?? undefined,
-agentName: _pendingAgentName || sessionMeta?.agentName || undefined,
-modelName: _pendingModelName || sessionMeta?.modelName || undefined,
-providerName: _pendingProviderName || sessionMeta?.providerName || undefined,
+            agentName: _pendingAgentName || sessionMeta?.agentName || undefined,
+            modelName: _pendingModelName || sessionMeta?.modelName || undefined,
+            providerName: _pendingProviderName || sessionMeta?.providerName || undefined,
           }}
           isStreaming
         />
@@ -193,6 +264,53 @@ providerName: _pendingProviderName || sessionMeta?.providerName || undefined,
         </div>
       )}
     </div>
+    </div>
+  );
+}
+
+interface SummaryTurnWrapperProps {
+  userMsg: Message;
+  assistantMsg: Message;
+  summaryEndTurn: number | undefined;
+  summaryStartTurn: number | undefined;
+  isCollapsed: boolean;
+  onToggle: () => void;
+}
+
+import { ChevronRight, ChevronDown } from "lucide-react";
+import { MessageRow } from "./MessageRow";
+import type { Message } from "../../../_shared/types/message";
+
+function SummaryTurnWrapper({
+  userMsg,
+  assistantMsg,
+  summaryEndTurn,
+  summaryStartTurn,
+  isCollapsed,
+  onToggle,
+}: SummaryTurnWrapperProps) {
+  const label = summaryEndTurn != null
+    ? `Summary · turns ${summaryStartTurn}–${summaryEndTurn}`
+    : "Summary";
+
+  return (
+    <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 overflow-hidden">
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
+        onClick={onToggle}
+      >
+        {isCollapsed ? <ChevronRight size={14} className="text-blue-400 flex-shrink-0" /> : <ChevronDown size={14} className="text-blue-400 flex-shrink-0" />}
+        <span className="text-[10px] font-medium uppercase tracking-wider text-blue-400">{label}</span>
+      </button>
+      {!isCollapsed && (
+        <div className="px-3 pb-3 animate-in fade-in slide-in-from-top-1 duration-150 border-t border-blue-500/20">
+          <div className="space-y-1">
+            <MessageRow message={userMsg} />
+            <MessageRow message={assistantMsg} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

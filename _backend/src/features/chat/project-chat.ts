@@ -1,6 +1,6 @@
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
-import { turns, turnContext, steps, stepParts, promptSnapshots, toolsSnapshots, sessions } from "../../db/schema";
+import { turns, turnContext, steps, stepParts, promptSnapshots, toolsSnapshots, sessions, summaryBlocks } from "../../db/schema";
 import type { CoreMessage } from "ai";
 import type { Message, MessagePartType } from "../../../../_shared/types";
 import type { TurnSummary, StepSummary, TurnDetail, SessionUsage, TurnStatus, StepPart, TurnRawCapture, TurnStepRawDetail } from "../../../../_shared/types/trace";
@@ -43,16 +43,51 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
     }
   }
 
-  const out: Message[] = [];
+  // Summary turns sit in the timeline at the circle position: immediately AFTER
+  // the last covered real turn (block.endTurn) and BEFORE the next live turn.
+  // Sort key is endTurn + 0.5 so they never sort as "last turn" via turnNumber.
+  const blockBySummaryTurn = new Map<number, { endTurn: number; startTurn: number }>();
+  const blocks = db
+    .select({ summaryTurnId: summaryBlocks.summaryTurnId, endTurn: summaryBlocks.endTurn, startTurn: summaryBlocks.startTurn })
+    .from(summaryBlocks)
+    .where(eq(summaryBlocks.sessionId, sessionId))
+    .all();
+  for (const b of blocks) blockBySummaryTurn.set(b.summaryTurnId, b);
+
+  type OrderEntry = {
+    pos: number;
+    isSummary: number;
+    id: number;
+    /** Display/context turn marker — for summaries this is endTurn (circle), not DB turnNumber */
+    turnId: number;
+    endTurn?: number;
+    startTurn?: number;
+  };
+  const order: OrderEntry[] = [];
   for (const t of turnRows) {
-    out.push({
-      id: t.id * 2,
-      role: "user",
-      content: t.userContent,
-      timestamp: t.userTimestamp,
-      turnId: t.turnNumber,
-      agentName: t.agentName ?? undefined,
-    });
+    if ((t.kind ?? "turn") === "summary") {
+      const blk = blockBySummaryTurn.get(t.id);
+      const endTurn = blk?.endTurn ?? t.turnNumber;
+      const startTurn = blk?.startTurn ?? endTurn;
+      // Half-step after last covered turn ⇒ between covered range and live turns.
+      order.push({
+        pos: endTurn + 0.5,
+        isSummary: 1,
+        id: t.id,
+        turnId: endTurn,
+        endTurn,
+        startTurn,
+      });
+    } else {
+      order.push({ pos: t.turnNumber, isSummary: 0, id: t.id, turnId: t.turnNumber });
+    }
+  }
+  order.sort((a, b) => a.pos - b.pos || a.isSummary - b.isSummary || a.id - b.id);
+
+  const out: Message[] = [];
+  for (const o of order) {
+    const t = turnRows.find((x) => x.id === o.id);
+    if (!t) continue;
 
     const parts = partsByTurnId.get(t.id) ?? [];
 
@@ -94,13 +129,59 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
       }
     });
 
+    // Summary turns: emit as a full turn pair (user + assistant) just like normal turns.
+    // The user message contains the summarization prompt; the assistant contains the summary.
+    if (o.isSummary) {
+      // User message (the summarization prompt)
+      out.push({
+        id: t.id * 2,
+        role: "user",
+        content: t.userContent,
+        timestamp: t.userTimestamp,
+        turnId: o.turnId,
+        agentName: t.agentName ?? undefined,
+        isSummary: true,
+        summaryEndTurn: o.endTurn,
+        summaryStartTurn: o.startTurn,
+      });
+
+      // Assistant message (the summary result) with full metadata
+      out.push({
+        id: t.id * 2 + 1,
+        role: "assistant",
+        content: text || "(empty summary)",
+        parts: msgParts.length > 0 ? msgParts : undefined,
+        timestamp: t.completedAt ?? t.startedAt,
+        turnId: o.turnId,
+        success: t.success ?? undefined,
+        status: t.status,
+        modelName: t.modelName ?? undefined,
+        providerName: t.providerName ?? undefined,
+        durationMs: t.durationMs ?? undefined,
+        agentName: t.agentName ?? undefined,
+        isSummary: true,
+        summaryEndTurn: o.endTurn,
+        summaryStartTurn: o.startTurn,
+      });
+      continue;
+    }
+
+    out.push({
+      id: t.id * 2,
+      role: "user",
+      content: t.userContent,
+      timestamp: t.userTimestamp,
+      turnId: o.turnId,
+      agentName: t.agentName ?? undefined,
+    });
+
     out.push({
       id: t.id * 2 + 1,
       role: "assistant",
       content: text || (parts.some((p) => p.type === "tool") ? "(tool-only turn)" : ""),
       parts: msgParts,
       timestamp: t.completedAt ?? t.startedAt,
-      turnId: t.turnNumber,
+      turnId: o.turnId,
       success: t.success ?? undefined,
       status: t.status,
       modelName: t.modelName ?? undefined,

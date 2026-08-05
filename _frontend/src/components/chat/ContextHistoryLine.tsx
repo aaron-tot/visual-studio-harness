@@ -283,7 +283,7 @@ setStoreCtxTn(firstTurnNumber);
       setContextMode("manual");
       setFirstTurnNumber(value);
       setPinned(true); // pin to this specific turn
-      putSessionContextConfig(sessionId, { firstTurnNumber: value, mode: "manual", manualMode: "pinned" }).catch(() => {});
+      putSessionContextConfig(sessionId, { firstTurnNumber: value, mode: "manual", manualMode: "pinned", enabled: true }).catch(() => {});
     },
     [getSnapTurn, sessionId, turnPositions],
   );
@@ -308,6 +308,7 @@ setStoreCtxTn(firstTurnNumber);
         manualMode: next ? "pinned" : "turnsBack",
         firstTurnNumber,
         manualTurnsBack: turnsBack,
+        enabled: true,
       }).catch(() => {});
     }
   }, [sessionId, firstTurnNumber, manualTurnsBack, turnPositions, pinned]);

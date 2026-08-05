@@ -59,7 +59,9 @@ import { buildModelMessages } from "../message-builder";
 import { getSessionModelConfigJson } from "../../sessions/db";
 import type { TurnCreateMeta, TurnInput, TurnEvents, TurnResult } from "../types";
 import { generateId, autoTitle, isAbortError } from "./util";
-import { asSchema } from "ai";
+import { inArray, and, eq, lte } from "drizzle-orm";
+import { getDb, getDbForDataDir } from "../../../db/client";
+import { turns, summaryBlocks } from "../../../db/schema";
 export { isAbortError } from "./util";
 import { registerSession, unregisterSession } from "../../../session/runtime";
 
@@ -181,10 +183,34 @@ export async function runTurn(
   const includeFailedTurns = config.includeFailedTurnsInHistory ?? true;
 
   // Read firstTurnNumber from the WS message (avoids race with REST save)
-  const firstTurnNumber: number | null =
+  let firstTurnNumber: number | null =
     input.contextFirstTurnNumber != null ? input.contextFirstTurnNumber : null;
 
-  console.error("[run-turn] ctxFirstTurnNumber received:", firstTurnNumber);
+  // Fix B: Server-side fallback when WS field is null
+  // Load session model_config_json.context and use pinned/auto config if available
+  if (firstTurnNumber === null) {
+    try {
+      const modelCfgRaw = getSessionModelConfigJson(sessionId, dataDir);
+      if (modelCfgRaw) {
+        const modelCfg = JSON.parse(modelCfgRaw);
+        const sessionCtx = modelCfg?.context;
+        if (sessionCtx) {
+          if (sessionCtx.mode === "manual" && sessionCtx.firstTurnNumber != null) {
+            firstTurnNumber = sessionCtx.firstTurnNumber;
+            console.error("[run-turn] ctxFirstTurnNumber fallback: session manual pin", firstTurnNumber);
+          } else if (sessionCtx.mode === "auto" && sessionCtx.maxTurns) {
+            // Could compute from completed turns, but keep null for now (all turns)
+            // TODO: implement auto maxTurns fallback computation
+            console.error("[run-turn] ctxFirstTurnNumber fallback: session auto maxTurns", sessionCtx.maxTurns);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[run-turn] ctxFirstTurnNumber fallback error:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  console.error("[run-turn] ctxFirstTurnNumber final:", firstTurnNumber);
 
   const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns, firstTurnNumber });
 
@@ -299,8 +325,10 @@ export async function runTurn(
         includeReasoningParts: config.includeReasoningInHistory ?? false,
         includePatchParts: config.includePatchesInHistory ?? false,
         includeOtherParts: config.includeOtherPartsInHistory ?? false,
-        maxTurns: config.contextMaxTurns,
+        // maxTurns removed: slider auto mode computes firstTurnNumber as primary filter
+        // Second maxTurns slice was redundant and could conflict with slider position
         currentTurnNumber: turnNumber,
+        firstTurnNumber,
         currentUserMessage: input.content,
       },
       dataDir,
@@ -308,6 +336,59 @@ export async function runTurn(
 
     // Store which turns were actually used (audit trail)
     insertTurnContext(traceTurnId, usedTurnIds, dataDir);
+
+    // Fix E: Structured context logging per turn
+    let contextSource: "ws" | "session" | "auto" | "none" = "none";
+    if (input.contextFirstTurnNumber != null) {
+      contextSource = "ws";
+    } else if (firstTurnNumber != null) {
+      // Check if it came from session fallback
+      const modelCfgRaw = getSessionModelConfigJson(sessionId, dataDir);
+      if (modelCfgRaw) {
+        try {
+          const modelCfg = JSON.parse(modelCfgRaw);
+          if (modelCfg?.context?.mode === "manual" && modelCfg?.context?.firstTurnNumber != null) {
+            contextSource = "session";
+          } else if (modelCfg?.context?.mode === "auto" && modelCfg?.context?.maxTurns) {
+            contextSource = "auto";
+          }
+        } catch {}
+      }
+    }
+    
+    // Get turn numbers for logging
+    let contextTurnNumbers: number[] = [];
+    if (usedTurnIds.length > 0) {
+      const db = dataDir ? getDbForDataDir(dataDir) : getDb();
+      const turnRows = db
+        .select({ turnNumber: turns.turnNumber })
+        .from(turns)
+        .where(inArray(turns.id, usedTurnIds))
+        .all();
+      contextTurnNumbers = turnRows.map(r => r.turnNumber).sort((a, b) => a - b);
+    }
+    
+    // Get summary block ID if any
+    let summaryBlockId: number | null = null;
+    if (firstTurnNumber != null) {
+      const db = dataDir ? getDbForDataDir(dataDir) : getDb();
+      const sliderTurn = firstTurnNumber - 1;
+      const block = db
+        .select({ id: summaryBlocks.id })
+        .from(summaryBlocks)
+        .where(and(eq(summaryBlocks.sessionId, sessionId), lte(summaryBlocks.endTurn, sliderTurn)))
+        .orderBy(summaryBlocks.endTurn)
+        .limit(1)
+        .get();
+      summaryBlockId = block?.id ?? null;
+    }
+
+    console.error("[context] session=" + sessionId + " turn=" + turnNumber + 
+      " firstTurnNumber=" + (firstTurnNumber ?? "null") + 
+      " source=" + contextSource +
+      " contextTurnNumbers=" + JSON.stringify(contextTurnNumbers) +
+      " summaryBlock=" + (summaryBlockId ?? "none") +
+      " inputTokens=" + "pending"); // Tokens not known yet at this stage
 
     await writeSessionSystemPrompt(dataDir, sessionId, systemBlock);
 
@@ -361,6 +442,7 @@ export async function runTurn(
       includePatchesInHistory: config.includePatchesInHistory ?? false,
       includeOtherPartsInHistory: config.includeOtherPartsInHistory ?? false,
       contextMaxTurns: config.contextMaxTurns,
+      firstTurnNumber,
       promptSnapshotId,
       toolsSnapshotId,
     }, dataDir);

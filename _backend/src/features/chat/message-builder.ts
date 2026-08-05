@@ -77,6 +77,7 @@ export interface BuildModelMessagesOptions {
   includeOtherParts: boolean;
   maxTurns?: number;
   currentTurnNumber: number;
+  firstTurnNumber?: number | null; // slider position (firstTurnNumber from context config)
   currentUserMessage: string;
 }
 
@@ -103,8 +104,12 @@ export async function buildModelMessages(
   const db = dbFor(dataDir);
 
   // NEW: Check for live summary block (earliest block with endTurn <= slider position)
-  // The slider position is options.currentTurnNumber
-  const liveBlock = await getEarliestLiveSummaryBlock(sessionId, options.currentTurnNumber, dataDir);
+  // Slider position is firstTurnNumber - 1 (summaries covering turns before the circle),
+  // or currentTurnNumber if no manual firstTurnNumber is set
+  const sliderTurn = options.firstTurnNumber != null
+    ? options.firstTurnNumber - 1
+    : options.currentTurnNumber;
+  const liveBlock = await getEarliestLiveSummaryBlock(sessionId, sliderTurn, dataDir);
 
   // If there's a live summary, we need to skip all turns covered by it (and any prior blocks)
   let skipThroughTurn = 0;
@@ -159,9 +164,11 @@ export async function buildModelMessages(
   }
 
   // Apply maxTurns (slice from end to keep most recent)
-  if (options.maxTurns && filteredTurnIds.length > options.maxTurns) {
-    filteredTurnIds = filteredTurnIds.slice(-options.maxTurns);
-  }
+  // REMOVED: Second maxTurns slice. Slider auto mode computes firstTurnNumber as primary filter.
+  // This second slice was a redundant safety cap that could conflict with slider position.
+  // if (options.maxTurns && filteredTurnIds.length > options.maxTurns) {
+  //   filteredTurnIds = filteredTurnIds.slice(-options.maxTurns);
+  // }
 
   // 2. Fetch all turns and their stepParts in batch
   const messages: CoreMessage[] = [];

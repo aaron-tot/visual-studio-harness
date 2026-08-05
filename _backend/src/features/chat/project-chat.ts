@@ -234,8 +234,8 @@ export function resolveContextTurnIds(
 
   // Query completed turns directly from turns table (no turnContext dependency)
   const whereClause = includeFailed
-    ? eq(turns.sessionId, sessionId)
-    : and(eq(turns.sessionId, sessionId), eq(turns.success, true));
+    ? and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn"))
+    : and(eq(turns.sessionId, sessionId), eq(turns.success, true), eq(turns.kind, "turn"));
 
   const rows = db
     .select({ id: turns.id, turnNumber: turns.turnNumber })
@@ -769,6 +769,7 @@ export async function getTurnStepRawCapture(
     includePatchesInHistory: boolean;
     includeOtherPartsInHistory: boolean;
     contextMaxTurns?: number;
+    firstTurnNumber?: number | null;
   }
   let configSnap: ConfigSnap | undefined;
   if (t.configSnapshotJson) { try { configSnap = JSON.parse(t.configSnapshotJson); } catch {} }
@@ -786,8 +787,9 @@ export async function getTurnStepRawCapture(
       includeReasoningParts: configSnap.includeReasoningInHistory ?? false,
       includePatchParts: configSnap.includePatchesInHistory ?? false,
       includeOtherParts: configSnap.includeOtherPartsInHistory ?? false,
-      maxTurns: configSnap.contextMaxTurns,
+      // maxTurns removed: slider auto mode computes firstTurnNumber as primary filter
       currentTurnNumber: turnNumber,
+      firstTurnNumber: configSnap.firstTurnNumber,
       currentUserMessage: t.userContent,
     }, dataDir);
     baseMessages = built.messages;

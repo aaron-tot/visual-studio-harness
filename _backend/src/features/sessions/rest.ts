@@ -278,8 +278,9 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     // A scope only contributes when it is enabled. Default is OFF for
     // workspace/session so new scopes use global until the user opts in.
     // Global is always the base and is never gated.
-    const sessionEnabled = session["enabled"] === true;
-    const projectEnabled = project["enabled"] === true;
+const sessionEnabled = session["enabled"] === true ||
+    (session["mode"] === "manual" && session["firstTurnNumber"] !== undefined && session["firstTurnNumber"] !== null);
+  const projectEnabled = project["enabled"] === true;
 
     // Per-field resolution: session overrides project overrides global,
     // but only across scopes that are enabled.
@@ -311,9 +312,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       summarizationModel: pick("summarizationModel") as string | undefined,
       summarizationFallbackModel: pick("summarizationFallbackModel") as string | undefined,
       summarizationPromptMd: pick("summarizationPromptMd") as string | undefined,
-      enabled: (sessionEnabled && session["enabled"] === true) ? true
-        : (projectEnabled && project["enabled"] === true) ? true
-        : false,
+      enabled: sessionEnabled ? true : projectEnabled ? true : false,
       owner,
     };
   }
@@ -765,6 +764,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       includePatchesInHistory: boolean;
       includeOtherPartsInHistory: boolean;
       contextMaxTurns?: number;
+      firstTurnNumber?: number | null;
       promptSnapshotId?: number;
       toolsSnapshotId?: number;
     }
@@ -795,8 +795,9 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
         includeReasoningParts: configSnap.includeReasoningInHistory ?? false,
         includePatchParts: configSnap.includePatchesInHistory ?? false,
         includeOtherParts: configSnap.includeOtherPartsInHistory ?? false,
-        maxTurns: configSnap.contextMaxTurns,
+        // maxTurns removed: slider auto mode computes firstTurnNumber as primary filter
         currentTurnNumber: turnRow.turnNumber,
+        firstTurnNumber: configSnap.firstTurnNumber,
         currentUserMessage: turnRow.userContent,
       },
       dataDir,

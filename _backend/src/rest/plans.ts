@@ -60,7 +60,7 @@ async function nextVersion(dir: string, pattern: RegExp): Promise<number> {
   return max + 1;
 }
 
-async function readVersions<T>(dir: string, pattern: RegExp): Promise<T[]> {
+async function readVersions<T extends { meta?: { version?: number } }>(dir: string, pattern: RegExp): Promise<T[]> {
   if (!existsSync(dir)) return [];
   const entries = await readdir(dir);
   const results: { version: number; doc: T }[] = [];
@@ -71,6 +71,13 @@ async function readVersions<T>(dir: string, pattern: RegExp): Promise<T[]> {
       try {
         const raw = await readFile(join(dir, f), "utf-8");
         const doc = JSON.parse(raw) as T;
+        // Guarantee meta.version from filename so list tools never crash on
+        // older/malformed docs that omitted meta or meta.version.
+        if (!doc.meta || typeof doc.meta !== "object") {
+          (doc as { meta: { version: number } }).meta = { version };
+        } else if (doc.meta.version == null) {
+          doc.meta.version = version;
+        }
         results.push({ version, doc });
       } catch {}
     }

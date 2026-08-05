@@ -105,11 +105,83 @@ export async function createAudit(
   return { path: nd };
 }
 
+/**
+ * Locate which scope holds an audit directory by name.
+ * Search order: session → project → global (most specific first).
+ * Returns null when the audit does not exist in any resolvable scope.
+ */
+export async function findAuditScope(
+  name: string,
+  dataDir: string,
+  workspaceRoot?: string,
+  sessionId?: string
+): Promise<AuditScope | null> {
+  const candidates: AuditScope[] = [];
+  if (sessionId) candidates.push("session");
+  if (workspaceRoot) candidates.push("project");
+  candidates.push("global");
+  for (const scope of candidates) {
+    const dir = resolveAuditsDir(dataDir, scope, workspaceRoot, sessionId);
+    if (!dir) continue;
+    if (existsSync(join(dir, name, "audit.json"))) return scope;
+  }
+  return null;
+}
+
 export async function editAudit(
   params: CreateAuditParams
-): Promise<{ path: string }> {
-  // Re-use createAudit — same dir resolution, write overwrites file
-  return createAudit(params);
+): Promise<{ path: string; scope: AuditScope }> {
+  // When scope is omitted, resolve from the existing document rather than
+  // silently defaulting to global (which created duplicate global audits).
+  let scope: AuditScope = params.scope || "global";
+  if (!params.scope) {
+    const found = await findAuditScope(
+      params.name,
+      params.dataDir,
+      params.workspaceRoot,
+      params.sessionId
+    );
+    if (!found) {
+      throw new Error(
+        `Audit "${params.name}" not found in session/project/global scopes. ` +
+          `Pass scope explicitly to create, or use the correct name.`
+      );
+    }
+    scope = found;
+  }
+
+  const auditsDir = resolveAuditsDir(
+    params.dataDir,
+    scope,
+    params.workspaceRoot,
+    params.sessionId
+  );
+  if (!auditsDir) {
+    throw new Error(
+      scope === "project"
+        ? "workspaceRoot is required for project audits"
+        : scope === "session"
+          ? "sessionId is required for session audits"
+          : "invalid audit scope"
+    );
+  }
+
+  const nd = join(auditsDir, params.name);
+  const fp = join(nd, "audit.json");
+  if (!existsSync(fp)) {
+    throw new Error(
+      `Audit "${params.name}" not found in "${scope}" scope. ` +
+        `Use audit create to make a new one, or pass the correct scope.`
+    );
+  }
+
+  // Keep document.meta.scope in sync with the resolved write target.
+  if (params.document?.meta && typeof params.document.meta === "object") {
+    (params.document.meta as { scope?: string }).scope = scope;
+  }
+
+  await writeFileDurable(fp, JSON.stringify(params.document, null, 2) + "\n");
+  return { path: nd, scope };
 }
 
 export async function deleteAudit(

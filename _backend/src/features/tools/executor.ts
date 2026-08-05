@@ -2,6 +2,7 @@ import type { BaseToolContext, ToolDef, ToolResult, PermissionMode } from "./typ
 import { toolResultForSdk } from "./registry";
 import { SandboxError } from "./sandbox";
 import { getBus } from "../hooks/get-bus";
+import type { ToolErrorPayload } from "../hooks/events";
 import { resolveToolPermission } from "./perms/resolve";
 
 /**

@@ -63,13 +63,13 @@ describe("toolResultForSdk", () => {
     expect(toolResultForSdk(result)).toBe("hello");
   });
 
-  test("error-only results return string", () => {
+  test("error-only results return full object (isError preserved)", () => {
     const result: ToolResult = {
       title: "error",
       output: "ERROR something failed",
       isError: true,
     };
-    expect(toolResultForSdk(result)).toBe("ERROR something failed");
+    expect(toolResultForSdk(result)).toEqual(result);
   });
 });
 

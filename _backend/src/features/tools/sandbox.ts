@@ -2,9 +2,12 @@ import { realpathSync, existsSync } from "node:fs";
 import { isAbsolute, join, normalize, resolve, sep, basename } from "node:path";
 
 export class SandboxError extends Error {
-  constructor(message: string) {
+  readonly metadata?: Record<string, unknown>;
+
+  constructor(message: string, metadata?: Record<string, unknown>) {
     super(message);
     this.name = "SandboxError";
+    this.metadata = metadata;
   }
 }
 

@@ -84,7 +84,7 @@ export class ToolRegistry {
  * add a check here first.
  */
 export function toolResultForSdk(result: ToolResult): string | ToolResult {
-  if (result._stopTurn) return result;
+  if (result._stopTurn || result.isError) return result;
   return result.output;
 }
 

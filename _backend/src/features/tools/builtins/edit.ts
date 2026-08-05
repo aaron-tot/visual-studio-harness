@@ -5,6 +5,7 @@ import { SandboxError } from "../sandbox";
 import { resolveAccessiblePath } from "../path-access";
 import { atomicWriteFile } from "../host/atomic-write";
 import { countOccurrences } from "../format";
+import { findClosestMatch, formatSuggestion } from "../host/fuzzy-match";
 
 export const editTool: ToolDef = {
   name: "edit",
@@ -35,6 +36,13 @@ export const editTool: ToolDef = {
 
     const count = countOccurrences(text, args.old_string);
     if (count === 0) {
+      const closest = findClosestMatch(text, args.old_string);
+      if (closest && !closest.ambiguous) {
+        throw new SandboxError(
+          `ERROR edit: old_string not found in ${args.path}.\n` + formatSuggestion(closest, args.old_string),
+          { suggestion: true, suggestionScore: closest.score, suggestionLines: closest.actualLines.length }
+        );
+      }
       throw new SandboxError(
         `ERROR edit: old_string not found in ${args.path}. Include exact surrounding context.`
       );

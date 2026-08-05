@@ -4,6 +4,8 @@ import { mkdir } from "node:fs/promises";
 import { atomicWriteFile } from "./atomic-write";
 import { SandboxError } from "../sandbox";
 import { countOccurrences } from "../format";
+import { findClosestMatch, formatSuggestion } from "../host/fuzzy-match";
+import { findClosestMatch, formatSuggestion } from "./fuzzy-match";
 
 /**
  * Minimal OpenCode-style patch format:
@@ -101,9 +103,20 @@ export async function applyPatchText(
           }
           const count = countOccurrences(fileText, search);
           if (count !== 1) {
-            throw new SandboxError(
-              `ERROR apply_patch: SEARCH matched ${count} times in ${rel} (need exactly 1). Expand unique context.`
-            );
+            let message = `ERROR apply_patch: SEARCH matched ${count} times in ${rel} (need exactly 1). Expand unique context.`;
+            let metadata: Record<string, unknown> | undefined;
+            if (count === 0) {
+              const closest = findClosestMatch(fileText, search);
+              if (closest && !closest.ambiguous) {
+                message += "\n" + formatSuggestion(closest, search);
+                metadata = {
+                  suggestion: true,
+                  suggestionScore: closest.score,
+                  suggestionLines: closest.actualLines.length,
+                };
+              }
+            }
+            throw new SandboxError(message, metadata);
           }
           fileText = fileText.replace(search, replace);
         } else {

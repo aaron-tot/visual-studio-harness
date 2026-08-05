@@ -66,11 +66,11 @@ export function MessageList() {
   const pendingScrollRef = useRef(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
 
-  // Collapsed state for summary turns (keyed by turnId)
-  const [collapsedSummaries, setCollapsedSummaries] = useState<Set<number>>(new Set());
+  // Expanded state for summary turns (keyed by turnId) - default collapsed
+  const [expandedSummaries, setExpandedSummaries] = useState<Set<number>>(new Set());
 
   const toggleSummary = useCallback((turnId: number) => {
-    setCollapsedSummaries((prev) => {
+    setExpandedSummaries((prev) => {
       const next = new Set(prev);
       if (next.has(turnId)) {
         next.delete(turnId);
@@ -202,7 +202,7 @@ export function MessageList() {
         if (typeof item === "object" && "userMsg" in item) {
           // Summary turn group
           const { userMsg, assistantMsg, turnId, summaryEndTurn, summaryStartTurn } = item;
-          const isCollapsed = collapsedSummaries.has(turnId);
+          const isCollapsed = !expandedSummaries.has(turnId);
           return (
             <div
               key={`summary-${turnId}`}

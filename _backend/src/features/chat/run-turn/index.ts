@@ -57,6 +57,11 @@ import {
 import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
 import { getSessionModelConfigJson } from "../../sessions/db";
+import {
+  resolveRuntimeFirstTurnNumber,
+  type ContextScopeConfig,
+  type ContextSource,
+} from "../context-window";
 import type { TurnCreateMeta, TurnInput, TurnEvents, TurnResult } from "../types";
 import { generateId, autoTitle, isAbortError } from "./util";
 import { inArray, and, eq, lte } from "drizzle-orm";
@@ -64,6 +69,7 @@ import { getDb, getDbForDataDir } from "../../../db/client";
 import { turns, summaryBlocks } from "../../../db/schema";
 export { isAbortError } from "./util";
 import { registerSession, unregisterSession } from "../../../session/runtime";
+import { readFileSync } from "node:fs";
 
 export async function runTurn(
   dataDir: string,
@@ -182,35 +188,50 @@ export async function runTurn(
   // ── Context refs ─────────────────────────────────────────────────
   const includeFailedTurns = config.includeFailedTurnsInHistory ?? true;
 
-  // Read firstTurnNumber from the WS message (avoids race with REST save)
-  let firstTurnNumber: number | null =
-    input.contextFirstTurnNumber != null ? input.contextFirstTurnNumber : null;
-
-  // Fix B: Server-side fallback when WS field is null
-  // Load session model_config_json.context and use pinned/auto config if available
-  if (firstTurnNumber === null) {
-    try {
-      const modelCfgRaw = getSessionModelConfigJson(sessionId, dataDir);
-      if (modelCfgRaw) {
-        const modelCfg = JSON.parse(modelCfgRaw);
-        const sessionCtx = modelCfg?.context;
-        if (sessionCtx) {
-          if (sessionCtx.mode === "manual" && sessionCtx.firstTurnNumber != null) {
-            firstTurnNumber = sessionCtx.firstTurnNumber;
-            console.error("[run-turn] ctxFirstTurnNumber fallback: session manual pin", firstTurnNumber);
-          } else if (sessionCtx.mode === "auto" && sessionCtx.maxTurns) {
-            // Could compute from completed turns, but keep null for now (all turns)
-            // TODO: implement auto maxTurns fallback computation
-            console.error("[run-turn] ctxFirstTurnNumber fallback: session auto maxTurns", sessionCtx.maxTurns);
-          }
-        }
-      }
-    } catch (e) {
-      console.error("[run-turn] ctxFirstTurnNumber fallback error:", e instanceof Error ? e.message : e);
+  // Resolve firstTurnNumber: WS wins; else session pin / auto; else project; else global.
+  // Prior turns only (exclude the turn just created) so auto maxTurns matches UI semantics.
+  let sessionCtx: ContextScopeConfig | null = null;
+  let projectCtx: ContextScopeConfig | null = null;
+  let globalCtx: ContextScopeConfig | null = null;
+  try {
+    const modelCfgRaw = getSessionModelConfigJson(sessionId, dataDir);
+    if (modelCfgRaw) {
+      const modelCfg = JSON.parse(modelCfgRaw);
+      sessionCtx = (modelCfg?.context as ContextScopeConfig) ?? null;
     }
-  }
+  } catch { /* ignore */ }
+  try {
+    const scopedRaw = readFileSync(join(dataDir, "context-config.json"), "utf-8");
+    const scoped = JSON.parse(scopedRaw) as {
+      global?: ContextScopeConfig;
+      workspaces?: Record<string, ContextScopeConfig>;
+    };
+    globalCtx = scoped.global ?? null;
+    if (workspaceRoot && scoped.workspaces?.[workspaceRoot]) {
+      projectCtx = scoped.workspaces[workspaceRoot] ?? null;
+    }
+  } catch { /* ignore */ }
 
-  console.error("[run-turn] ctxFirstTurnNumber final:", firstTurnNumber);
+  const dbForCtx = dataDir ? getDbForDataDir(dataDir) : getDb();
+  const priorTurnRows = dbForCtx
+    .select({ turnNumber: turns.turnNumber })
+    .from(turns)
+    .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn")))
+    .all()
+    .filter((r) => r.turnNumber < turnNumber);
+  const completedTurnNumbers = priorTurnRows.map((r) => r.turnNumber);
+
+  const resolvedCtx = resolveRuntimeFirstTurnNumber({
+    wsFirstTurnNumber: input.contextFirstTurnNumber ?? null,
+    session: sessionCtx,
+    project: projectCtx,
+    global: globalCtx,
+    completedTurnNumbers,
+  });
+  const firstTurnNumber = resolvedCtx.firstTurnNumber;
+  const contextSource: ContextSource = resolvedCtx.source;
+
+  console.error("[run-turn] ctxFirstTurnNumber final:", firstTurnNumber, "source:", contextSource);
 
   const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns, firstTurnNumber });
 
@@ -337,25 +358,7 @@ export async function runTurn(
     // Store which turns were actually used (audit trail)
     insertTurnContext(traceTurnId, usedTurnIds, dataDir);
 
-    // Fix E: Structured context logging per turn
-    let contextSource: "ws" | "session" | "auto" | "none" = "none";
-    if (input.contextFirstTurnNumber != null) {
-      contextSource = "ws";
-    } else if (firstTurnNumber != null) {
-      // Check if it came from session fallback
-      const modelCfgRaw = getSessionModelConfigJson(sessionId, dataDir);
-      if (modelCfgRaw) {
-        try {
-          const modelCfg = JSON.parse(modelCfgRaw);
-          if (modelCfg?.context?.mode === "manual" && modelCfg?.context?.firstTurnNumber != null) {
-            contextSource = "session";
-          } else if (modelCfg?.context?.mode === "auto" && modelCfg?.context?.maxTurns) {
-            contextSource = "auto";
-          }
-        } catch {}
-      }
-    }
-    
+    // Fix E: Structured context logging per turn (source from resolveRuntimeFirstTurnNumber)
     // Get turn numbers for logging
     let contextTurnNumbers: number[] = [];
     if (usedTurnIds.length > 0) {
@@ -625,7 +628,7 @@ export async function runTurn(
         `Set Settings > Agents > Subagent to a tool-capable model.`;
       const rawEmpty = (rawResponse && JSON.stringify(rawResponse)) || "SDK returned no text, tool, or reasoning output";
       const errInfo: LlmErrorInfo = { message: error, raw: rawEmpty, isCustom: true, kind: "unknown" };
-      finalizeTurnTrace(traceTurnId, { success: false, errorMessage: error, errorRaw: rawEmpty, errorIsCustom: true }, dataDir);
+      finalizeTurnTrace(traceTurnId, { success: false, errorMessage: error, errorRaw: rawEmpty, errorIsCustom: true }, dataDir, streamResult.steps);
       await bus?.emit("turn.error", hookCtx, { sessionId, error, durationMs: Date.now() - turnStarted });
       unregisterSession(sessionId);
       return {
@@ -641,7 +644,7 @@ export async function runTurn(
       const msg = streamError.trim();
       const errInfo: LlmErrorInfo = { message: msg, raw, isCustom: streamErrorIsCustom === true && raw !== msg, kind: "unknown" };
       await bus?.emit("turn.error", hookCtx, { sessionId, error: errInfo.message, durationMs: Date.now() - turnStarted });
-      finalizeTurnTrace(traceTurnId, { success: false, errorMessage: errInfo.message, errorRaw: errInfo.raw, errorIsCustom: errInfo.isCustom }, dataDir);
+      finalizeTurnTrace(traceTurnId, { success: false, errorMessage: errInfo.message, errorRaw: errInfo.raw, errorIsCustom: errInfo.isCustom }, dataDir, streamResult.steps);
       unregisterSession(sessionId);
       return {
         sessionId, created, meta: session.meta, workspaceRoot, userMessage,
@@ -671,7 +674,7 @@ export async function runTurn(
       finalizeTurnTrace(traceTurnId, {
         success: true,
         finishReason: streamResult.finishReason ?? (lastStepFr != null ? String(lastStepFr) : "stop"),
-      }, dataDir);
+      }, dataDir, streamResult.steps);
     }
 
     unregisterSession(sessionId);

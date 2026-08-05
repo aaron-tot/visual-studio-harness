@@ -434,11 +434,40 @@ export function finalizeTurnTrace(
   turnId: number,
   outcome: { success: boolean; finishReason?: string; errorMessage?: string; errorRaw?: string; errorIsCustom?: boolean },
   dataDir?: string,
+  steps?: TraceStep[],
 ): void {
   const db = dbFor(dataDir);
 
-  // Recompute turn usage from steps
-  recomputeTurnUsage(turnId, dataDir);
+  // Recompute turn usage from steps - prefer passed steps (from streamChat result) over DB query
+  // to avoid race condition where step finalizations haven't completed DB writes yet
+  if (steps && steps.length > 0) {
+    const agg = steps.reduce(
+      (acc, s) => ({
+        inputTokens: acc.inputTokens + (s.inputTokens ?? 0),
+        outputTokens: acc.outputTokens + (s.outputTokens ?? 0),
+        totalTokens: acc.totalTokens + (s.totalTokens ?? 0),
+        reasoningTokens: acc.reasoningTokens + (s.reasoningTokens ?? 0),
+        cacheReadTokens: acc.cacheReadTokens + (s.cacheReadTokens ?? 0),
+        cacheWriteTokens: acc.cacheWriteTokens + (s.cacheWriteTokens ?? 0),
+        stepCount: acc.stepCount + 1,
+      }),
+      { inputTokens: 0, outputTokens: 0, totalTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, stepCount: 0 },
+    );
+    db.update(turns)
+      .set({
+        inputTokens: agg.inputTokens,
+        outputTokens: agg.outputTokens,
+        totalTokens: agg.totalTokens,
+        reasoningTokens: agg.reasoningTokens,
+        cacheReadTokens: agg.cacheReadTokens,
+        cacheWriteTokens: agg.cacheWriteTokens,
+        stepCount: agg.stepCount,
+      })
+      .where(eq(turns.id, turnId))
+      .run();
+  } else {
+    recomputeTurnUsage(turnId, dataDir);
+  }
 
   // Close open step_parts
   db.update(stepParts)

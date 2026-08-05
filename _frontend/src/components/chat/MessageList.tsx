@@ -277,7 +277,6 @@ interface SummaryTurnWrapperProps {
   onToggle: () => void;
 }
 
-import { MessageRow } from "./MessageRow";
 import type { Message } from "../../../_shared/types/message";
 
 function SummaryTurnWrapper({

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo, useCallback, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useChatStore } from "../../stores/chat";
 import { MessageRow } from "./MessageRow";
 import { ContextHistoryLine } from "./ContextHistoryLine";
@@ -277,7 +277,6 @@ interface SummaryTurnWrapperProps {
   onToggle: () => void;
 }
 
-import { ChevronRight, ChevronDown } from "lucide-react";
 import { MessageRow } from "./MessageRow";
 import type { Message } from "../../../_shared/types/message";
 

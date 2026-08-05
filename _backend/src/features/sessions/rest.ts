@@ -25,21 +25,24 @@ import {
   getTurnStepRawCapture,
 } from "../chat/project-chat";
 import { buildUsageTree } from "../chat/usage-tree";
-import { sessionHasTurns, getTurnByNumber, listContextTurnIds } from "../chat/db-trace";
+import { sessionHasTurns, getTurnByNumber, getNextTurnNumber, listContextTurnIds } from "../chat/db-trace";
 import { cancelSession } from "../chat/session-abort";
 import { buildModelMessages } from "../chat/message-builder";
-import { promptSnapshots, turns, toolsSnapshots } from "../../db/schema";
+import { promptSnapshots, turns, toolsSnapshots, summaryBlocks, steps, stepParts } from "../../db/schema";
 import { getDbForDataDir } from "../../db/client";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import {
   getSessionTodosJson,
   setSessionTodosJson,
   getSessionModelConfigJson,
   setSessionModelConfigJson,
+  insertSummaryBlock,
+  getLatestSummaryBlock,
+  getSummaryBlockByRange,
+  dbFor,
 } from "./db";
+import { runSummarizer, readSummarizationPrompt, splitModelRef, buildSummarizationMessages, type SummarizerResult } from "./summarizer";
 import { getWorkspaceGraphManager } from "../../core/workspaceGraph/service-singleton";
-import { streamText } from "ai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { loadConfig } from "../../storage/config";
 
 export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
@@ -321,36 +324,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
   });
 
   // ── Summarization test (preview how a summary would turn out) ───────────
-  const DEFAULT_SUMMARIZATION_PROMPT = [
-    "You are a meticulous summarizer. Read the user and agent turns below and produce a concise, faithful",
-    "summary that preserves key decisions, findings, and open questions. Keep it tight and skimmable.",
-  ].join(" ");
-
-  // Split a stored "Provider/Model" string into { providerName, modelName }.
-  const splitModelRef = (ref?: string | null): { providerName: string; modelName: string } | null => {
-    if (!ref) return null;
-    const idx = ref.indexOf("/");
-    if (idx <= 0 || idx === ref.length - 1) return null;
-    return { providerName: ref.slice(0, idx), modelName: ref.slice(idx + 1) };
-  };
-
-  // Try to read a summarization prompt. The value is either a file path (the
-  // stored promptPath) or inline content (when the user edits it in the test
-  // modal). If a file exists at the path, read its contents; otherwise treat
-  // the value as inline prompt content.
-  async function readSummarizationPrompt(promptRef?: string | null): Promise<string | null> {
-    if (!promptRef) return null;
-    try {
-      const info = await stat(promptRef);
-      const target = info.isDirectory() ? join(promptRef, "prompt.md") : promptRef;
-      const raw = await readFile(target, "utf-8");
-      return raw.trim() || null;
-    } catch {
-      // Not a readable file path → treat as inline prompt content.
-      const inline = promptRef.trim();
-      return inline || null;
-    }
-  }
+  // Uses the shared summarizer helper from ./summarizer.ts
 
   app.post("/api/context-config/summarization-test", async (request, reply) => {
     const body = (request.body || {}) as {
@@ -368,131 +342,321 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       return reply.code(400).send({ error: "userMessage or agentMessage is required" });
     }
 
-    // Resolve effective settings (falls back to whatever is stored per scope).
     const eff = await resolveEffectiveContext({ sessionId: body.sessionId, workspaceRoot: body.workspaceRoot });
-    const modelRef = splitModelRef(body.model ?? eff.summarizationModel);
-    const fallbackRef = splitModelRef(body.fallbackModel ?? eff.summarizationFallbackModel);
-    const promptPath = body.promptMd ?? eff.summarizationPromptMd;
+    const modelRef = body.model ?? eff.summarizationModel;
+    const fallbackModelRef = body.fallbackModel ?? eff.summarizationFallbackModel;
+    const promptMd = body.promptMd ?? eff.summarizationPromptMd;
 
-    // Determine what the summarization prompt should be.
-    const promptContent = (await readSummarizationPrompt(promptPath)) ?? DEFAULT_SUMMARIZATION_PROMPT;
-
-    let config;
-    try {
-      config = await loadConfig(dataDir);
-    } catch {
-      return reply.code(500).send({ error: "failed to load config" });
-    }
-    const providers = config.providers ?? [];
-
-    const resolveRef = (ref: { providerName: string; modelName: string } | null) => {
-      if (!ref) return null;
-      const provider = providers.find((p) => p.displayName === ref!.providerName && p.enabled !== false) ??
-        providers.find((p) => p.enabled !== false);
-      if (!provider) return null;
-      const model = provider.models.find(
-        (m) => m.displayName === ref!.modelName && m.enabled !== false,
-      ) ?? provider.models.find((m) => m.enabled !== false);
-      if (!model) return null;
-      return { provider, model };
-    };
-
-    const primary = resolveRef(modelRef);
-    const fallback = resolveRef(fallbackRef);
-    if (!primary) {
-      return reply.code(400).send({ error: "No summarization model configured" });
-    }
-
-    const instructions = promptContent + "\n\n" +
-      "You are summarizing a past conversation. You have no tools. Output only a plain-text summary.";
     const messages: { role: "user" | "assistant"; content: string }[] = [];
     if (userMessage) messages.push({ role: "user", content: userMessage });
     if (agentMessage) messages.push({ role: "assistant", content: agentMessage });
 
-    const makeSdkProvider = (p: typeof primary!.provider) => {
-      if (p.displayName === "Test") return null;
-      return createOpenAICompatible({
-        baseURL: p.baseUrl,
-        apiKey: p.apiKey || "no-key",
-        headers: p.headers,
-        name: p.displayName,
+    try {
+      const { runSummarizer } = await import("./summarizer");
+      const result = await runSummarizer(dataDir, {
+        promptMd,
+        modelRef,
+        fallbackModelRef,
+        messages,
+        sessionId: body.sessionId,
+        workspaceRoot: body.workspaceRoot,
       });
+
+      reply.hijack();
+      reply.raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+
+      const send = (delta: string) => {
+        reply.raw.write(`data: ${JSON.stringify({ d: delta })}\n\n`);
+      };
+
+      // Stream the result text character by character to simulate streaming
+      // (The runSummarizer collects full text; we stream it for compatibility)
+      for (const char of result.text) {
+        send(char);
+        await new Promise((r) => setTimeout(r, 1));
+      }
+      reply.raw.end();
+    } catch (err) {
+      return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // ── Summarize block (create summary turn + chain block) ──────────────────
+
+  app.post("/api/context-config/summarize-block", async (request, reply) => {
+    const body = (request.body || {}) as {
+      sessionId?: string;
+      workspaceRoot?: string;
+      startTurnNum?: number;        // optional: computed from chain tail if omitted
+      endTurnNum: number;           // required: slider position (inclusive)
+      promptMd?: string;            // optional: inline prompt or path
+      model?: string;               // optional: "Provider/Model"
+      fallbackModel?: string;       // optional: "Provider/Model"
     };
 
-    // Pick primary; fall back to fallbackRef if the primary fails.
+    const { sessionId, endTurnNum, startTurnNum, promptMd, model, fallbackModel } = body;
+    if (!sessionId || endTurnNum == null) {
+      return reply.code(400).send({ error: "sessionId and endTurnNum are required" });
+    }
 
-    reply.hijack();
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
+    const session = await getSession(dataDir, sessionId);
+    if (!session) return reply.code(404).send({ error: "session not found" });
+
+    // Resolve effective context config for the session
+    const eff = await resolveEffectiveContext({ sessionId, workspaceRoot: body.workspaceRoot });
+    const promptRef = promptMd ?? eff.summarizationPromptMd;
+    const modelRef = model ?? eff.summarizationModel;
+    const fallbackModelRef = fallbackModel ?? eff.summarizationFallbackModel;
+
+    if (!modelRef) {
+      return reply.code(400).send({ error: "No summarization model configured" });
+    }
+
+    // Validate modelRef format (should be "Provider/Model")
+    const modelRefParts = modelRef.split("/");
+    if (modelRefParts.length !== 2 || !modelRefParts[0] || !modelRefParts[1]) {
+      return reply.code(400).send({ error: "Invalid summarization model format. Expected 'Provider/Model'" });
+    }
+
+    // Determine the chain tail to compute startTurnNum if not provided
+    const latestBlock = getLatestSummaryBlock(dataDir, sessionId);
+    const computedStartTurnNum = startTurnNum ?? (latestBlock ? latestBlock.endTurn + 1 : 1);
+    const computedEndTurnNum = endTurnNum;
+
+    if (computedStartTurnNum > computedEndTurnNum) {
+      // The chain tail already extends past the slider, so there is nothing new
+      // to summarize ([tail+1 .. slider] is empty). Return the latest block
+      // (idempotent re-summarization) instead of erroring.
+      if (latestBlock) {
+        const db = getDbForDataDir(dataDir);
+        const summaryTurn = db.select().from(turns).where(eq(turns.id, latestBlock.summaryTurnId)).get();
+        return reply.code(200).send({
+          summaryTurnId: latestBlock.summaryTurnId,
+          blockId: latestBlock.id,
+          summary: summaryTurn?.userContent ?? "",
+          tokens: latestBlock.summaryTokens ?? 0,
+        });
+      }
+      return reply.code(400).send({ error: "startTurnNum cannot exceed endTurnNum" });
+    }
+
+    // Idempotency: check if a block already covers this exact range
+    const existingBlock = getSummaryBlockByRange(dataDir, sessionId, computedStartTurnNum, computedEndTurnNum);
+    if (existingBlock) {
+      // Return existing block (upsert behavior)
+      const db = getDbForDataDir(dataDir);
+      const summaryTurn = db.select().from(turns).where(eq(turns.id, existingBlock.summaryTurnId)).get();
+      return reply.code(200).send({
+        summaryTurnId: existingBlock.summaryTurnId,
+        blockId: existingBlock.id,
+        summary: summaryTurn?.userContent ?? "",
+        tokens: existingBlock.summaryTokens ?? 0,
+      });
+    }
+
+    // Build the summarizer input from the FULL conversation content of the
+    // covered turns (user + assistant text, including tool output), not just
+    // the raw user prompts. Reuse the chat projection which reconstructs
+    // role/assistant messages from step_parts.
+    const { projectSessionChat } = await import("../chat/project-chat");
+    const chatMessages = projectSessionChat(sessionId, dataDir);
+
+    const rangeTurns: { role: "user" | "assistant"; content: string }[] = [];
+    const seenTurn = new Set<number>();
+    for (const m of chatMessages) {
+      if (m.isSummary) continue;
+      const tn = m.turnId;
+      if (tn == null || tn < computedStartTurnNum || tn > computedEndTurnNum) continue;
+      if (m.role !== "user" && m.role !== "assistant") continue;
+      const content = m.content ?? "";
+      if (!content) continue;
+      rangeTurns.push({ role: m.role, content });
+      seenTurn.add(tn);
+    }
+    // Fallback: if projection yielded nothing (e.g. tool-only turns), include
+    // the user prompts at minimum so the summarizer isn't starved of context.
+    if (rangeTurns.length === 0) {
+      const turnRows = dbFor(dataDir)
+        .select({ turnNumber: turns.turnNumber, userContent: turns.userContent })
+        .from(turns)
+        .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn")))
+        .orderBy(turns.turnNumber)
+        .all();
+      for (const t of turnRows) {
+        if (t.turnNumber >= computedStartTurnNum && t.turnNumber <= computedEndTurnNum) {
+          rangeTurns.push({ role: "user", content: t.userContent });
+        }
+      }
+    }
+
+    // Get prior summary text if chain non-empty (summary text lives in step_parts)
+    const priorSummary = latestBlock
+      ? (dbFor(dataDir).select({ data: stepParts.data }).from(stepParts).where(and(eq(stepParts.turnId, latestBlock.summaryTurnId), eq(stepParts.type, "text"))).orderBy(stepParts.seq).limit(1).get()?.data ?? null)
+      : null;
+
+    // Build messages for summarizer: prior summary + turns in range
+    const messages = buildSummarizationMessages(priorSummary, rangeTurns);
+
+    // Run summarizer
+    let result: { text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } | null };
+    try {
+      const { runSummarizer } = await import("./summarizer");
+      result = await runSummarizer(dataDir, {
+        promptMd: promptRef,
+        modelRef,
+        fallbackModelRef,
+        messages,
+        sessionId,
+        workspaceRoot: body.workspaceRoot,
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+
+    const summaryText = result.text.trim();
+    const usage = result.usage;
+
+    // Read the actual summarization prompt content (used as the user-side
+    // message of the summary turn, so a human can see what instructed it).
+    let promptContent = promptRef ? await readSummarizationPrompt(promptRef) : null;
+    if (!promptContent) {
+      promptContent = `Summarize conversation turns ${computedStartTurnNum}–${computedEndTurnNum}`;
+    }
+
+    // Compute original tokens (sum of covered turns' totalTokens)
+    const coveredTurnRows = dbFor(dataDir)
+      .select({ totalTokens: turns.totalTokens })
+      .from(turns)
+      .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn")))
+      .all();
+    const originalTokens = coveredTurnRows
+      .filter((t) => t.turnNumber >= computedStartTurnNum && t.turnNumber <= computedEndTurnNum)
+      .reduce((sum, t) => sum + (t.totalTokens ?? 0), 0);
+
+    // Create summary turn row (kind='summary'). Use a distinct turnNumber that
+    // won't collide with real turns (getNextTurnNumber returns max+1).
+    const now = new Date().toISOString();
+    const summaryMeta = {
+      kind: "summary",
+      promptMd: promptRef ?? null,
+      model: modelRef,
+      provider: modelRef?.split("/")[0] ?? null,
+      range: { startTurn: computedStartTurnNum, endTurn: computedEndTurnNum },
+      prevBlockId: latestBlock?.id ?? null,
+      originalTokens,
+      summaryTokens: usage?.totalTokens ?? 0,
+    };
+    const summaryTurnResult = dbFor(dataDir)
+      .insert(turns)
+      .values({
+        sessionId,
+        turnNumber: getNextTurnNumber(sessionId, dataDir),
+        userContent: promptContent ?? `Summarize conversation turns ${computedStartTurnNum}–${computedEndTurnNum}`,
+        userTimestamp: now,
+        status: "success",
+        success: true,
+        modelName: modelRef?.split("/")[1] ?? "summarizer",
+        providerName: modelRef?.split("/")[0] ?? "unknown",
+        finishReason: "stop",
+        durationMs: 0,
+        startedAt: now,
+        completedAt: now,
+        inputTokens: usage?.inputTokens ?? 0,
+        outputTokens: usage?.outputTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        stepCount: 1,
+        kind: "summary",
+        configSnapshotJson: JSON.stringify(summaryMeta),
+      })
+      .returning({ id: turns.id })
+      .get();
+
+    const summaryTurnId = summaryTurnResult?.id;
+    if (!summaryTurnId) {
+      return reply.code(500).send({ error: "Failed to create summary turn" });
+    }
+
+    // Create a step with the summary as assistant text part
+    const stepResult = dbFor(dataDir)
+      .insert(steps)
+      .values({
+        sessionId,
+        turnId: summaryTurnId,
+        stepIndex: 0,
+        status: "completed",
+        providerName: modelRef?.split("/")[0] ?? "unknown",
+        modelId: modelRef?.split("/")[1] ?? "summarizer",
+        finishReason: "stop",
+        startedAt: now,
+        completedAt: now,
+        stepTimeMs: 0,
+      })
+      .returning({ id: steps.id })
+      .get();
+
+    const stepId = stepResult?.id;
+    if (stepId) {
+      dbFor(dataDir)
+        .insert(stepParts)
+        .values({
+          sessionId,
+          turnId: summaryTurnId,
+          stepId,
+          type: "text",
+          seq: 0,
+          status: "completed",
+          data: JSON.stringify({ content: summaryText }),
+          createdAt: now,
+        })
+        .run();
+    }
+
+    // Create summary block
+    const blockId = insertSummaryBlock(dataDir, {
+      sessionId,
+      summaryTurnId,
+      startTurn: computedStartTurnNum,
+      endTurn: computedEndTurnNum,
+      prevBlockId: latestBlock?.id ?? null,
+      originalTokens,
+      summaryTokens: usage?.totalTokens ?? 0,
+      createdAt: now,
     });
 
-    const send = (delta: string) => {
-      reply.raw.write(`data: ${JSON.stringify({ d: delta })}\n\n`);
-    };
-
-    const signal = new AbortController().signal;
-
-    // Stream from a model, yielding text deltas. Surface errors (auth, timeout,
-    // model-not-found) rather than silently returning an empty response.
-    // Some agent/tool models emit tool calls (e.g. <tool_call>{...} or cmd(`...`)).
-    // We drop those segments so the preview is a pure text summary.
-    const streamFrom = async (p: typeof primary!.provider, m: typeof primary!.model) => {
-      const prov = makeSdkProvider(p);
-      if (!prov) {
-        send("[Test model — no streaming preview applicable]");
-        return;
-      }
-      const result = streamText({
-        model: prov(m.modelName),
-        instructions,
-        messages,
-        abortSignal: signal,
-        maxRetries: 0,
-      });
-
-      for await (const event of result.fullStream) {
-        if (event.type === "text-delta") {
-          const text = "text" in event ? (event as { text?: string }).text : "";
-          if (text) send(text);
-        } else if (event.type === "error") {
-          const err = "error" in event ? (event as { error?: unknown }).error : undefined;
-          throw err instanceof Error ? err : new Error(String(err));
-        } else if (event.type === "finish") {
-          // done
-        }
-      }
-    };
-
+    // Push the updated session state to connected clients so the new summary
+    // appears immediately in the UI without a manual refresh.
     try {
-      try {
-        await streamFrom(primary.provider, primary.model);
-      } catch (primaryErr) {
-        // Fall back to the second preference if the first model fails.
-        if (fallback) {
-          const fbSdk = makeSdkProvider(fallback.provider);
-          if (fbSdk) {
-            send(`\n[Primary model failed: ${primaryErr instanceof Error ? primaryErr.message : String(primaryErr)}]`);
-            send("\n[Switching to fallback model...]\n");
-            await streamFrom(fallback.provider, fallback.model);
-          } else {
-            throw primaryErr;
-          }
-        } else {
-          throw primaryErr;
-        }
-      }
+      const { sendSessionStateToSession } = await import("../sessions/view-tracker");
+      sendSessionStateToSession(sessionId);
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        // aborted — end silently
-      } else {
-        send(`\n[Error: ${err instanceof Error ? err.message : String(err)}]`);
-      }
-    } finally {
-      reply.raw.end();
+      console.warn("[summarize-block] could not push session state:", err);
     }
+
+    return reply.code(201).send({
+      summaryTurnId,
+      blockId,
+      summary: summaryText,
+      tokens: usage?.totalTokens ?? 0,
+    });
+  });
+
+  // ── Get summary blocks for a session ────────────────────────────────────
+
+  app.get("/api/sessions/:id/summary-blocks", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const session = await getSession(dataDir, id);
+    if (!session) return reply.code(404).send({ error: "session not found" });
+
+    const blocks = getSummaryBlocksForSession(dataDir, id);
+    return { blocks };
   });
 
   app.delete("/api/sessions/:id", async (request) => {

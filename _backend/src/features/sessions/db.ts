@@ -1,9 +1,9 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, lte } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
-import { sessions, sessionLayouts } from "../../db/schema";
+import { sessions, sessionLayouts, summaryBlocks } from "../../db/schema";
 import type { SessionMeta, LayoutNode } from "../../../../_shared/types";
 
-function dbFor(dataDir?: string) {
+export function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
 }
 
@@ -249,4 +249,99 @@ export function setSessionLayout(
       set: { itemsJson: json, updated: now },
     })
     .run();
+}
+
+// ── Summary blocks (in-context summarization) ──────────────────────────
+
+export interface SummaryBlock {
+  id: number;
+  sessionId: string;
+  summaryTurnId: number;
+  startTurn: number;
+  endTurn: number;
+  prevBlockId: number | null;
+  originalTokens: number | null;
+  summaryTokens: number | null;
+  createdAt: string;
+}
+
+export function insertSummaryBlock(
+  dataDir: string,
+  block: Omit<SummaryBlock, "id">
+): number {
+  const db = dbFor(dataDir);
+  const result = db
+    .insert(summaryBlocks)
+    .values({
+      sessionId: block.sessionId,
+      summaryTurnId: block.summaryTurnId,
+      startTurn: block.startTurn,
+      endTurn: block.endTurn,
+      prevBlockId: block.prevBlockId,
+      originalTokens: block.originalTokens,
+      summaryTokens: block.summaryTokens,
+      createdAt: block.createdAt,
+    })
+    .returning({ id: summaryBlocks.id })
+    .get();
+  return result?.id ?? 0;
+}
+
+export function getLatestSummaryBlock(
+  dataDir: string,
+  sessionId: string
+): SummaryBlock | null {
+  const db = dbFor(dataDir);
+  const row = db
+    .select()
+    .from(summaryBlocks)
+    .where(eq(summaryBlocks.sessionId, sessionId))
+    .orderBy(desc(summaryBlocks.endTurn))
+    .limit(1)
+    .get();
+  return row ?? null;
+}
+
+export function getEarliestLiveSummaryBlock(
+  dataDir: string,
+  sessionId: string,
+  sliderTurn: number
+): SummaryBlock | null {
+  const db = dbFor(dataDir);
+  const row = db
+    .select()
+    .from(summaryBlocks)
+    .where(and(eq(summaryBlocks.sessionId, sessionId), lte(summaryBlocks.endTurn, sliderTurn)))
+    .orderBy(summaryBlocks.endTurn)
+    .limit(1)
+    .get();
+  return row ?? null;
+}
+
+export function getSummaryBlockByRange(
+  dataDir: string,
+  sessionId: string,
+  startTurn: number,
+  endTurn: number
+): SummaryBlock | null {
+  const db = dbFor(dataDir);
+  const row = db
+    .select()
+    .from(summaryBlocks)
+    .where(and(eq(summaryBlocks.sessionId, sessionId), eq(summaryBlocks.startTurn, startTurn), eq(summaryBlocks.endTurn, endTurn)))
+    .get();
+  return row ?? null;
+}
+
+export function getSummaryBlocksForSession(
+  dataDir: string,
+  sessionId: string
+): SummaryBlock[] {
+  const db = dbFor(dataDir);
+  return db
+    .select()
+    .from(summaryBlocks)
+    .where(eq(summaryBlocks.sessionId, sessionId))
+    .orderBy(summaryBlocks.endTurn)
+    .all();
 }

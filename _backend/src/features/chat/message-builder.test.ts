@@ -2,7 +2,9 @@ import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { eq } from "drizzle-orm";
 import { getDbForDataDir } from "../../db/client";
+import { summaryBlocks } from "../../db/schema";
 import {
   getNextTurnNumber,
   createTurn,
@@ -134,5 +136,51 @@ describe("buildModelMessages tool parts", () => {
 
     expect(assistant).toBeUndefined();
     expect(tool).toBeUndefined();
+  });
+
+  test("live summary block is prepended and covered turns are skipped", async () => {
+    // Build a summary turn with a text part (the produced summary).
+    const summaryTurnId = createTurn(SESSION_ID, 200, "Summarize conversation turns 10–12", new Date().toISOString(), {}, dataDir);
+    const summaryStepId = createStep(summaryTurnId, SESSION_ID, 0, {}, dataDir);
+    insertStepPart(SESSION_ID, summaryTurnId, summaryStepId, "text", { content: "SUMMARY_TEXT" }, 1, "completed", {}, dataDir);
+
+    // Insert a summary block covering turns 10–12.
+    const db = getDbForDataDir(dataDir);
+    db.insert(summaryBlocks).values({
+      sessionId: SESSION_ID,
+      summaryTurnId,
+      startTurn: 10,
+      endTurn: 12,
+      prevBlockId: null,
+      originalTokens: 100,
+      summaryTokens: 10,
+      createdAt: new Date().toISOString(),
+    }).run();
+
+    // Real turns: 10 (covered), 12 (covered), 13 (not covered).
+    const t10 = await makeTurn(10, [{ type: "text", data: { content: "ten" } }], true);
+    const t12 = await makeTurn(12, [{ type: "text", data: { content: "twelve" } }], true);
+    const t13 = await makeTurn(13, [{ type: "text", data: { content: "thirteen" } }], true);
+
+    // Slider at turn 14: summary block (endTurn=12 <= 14) is live.
+    const { messages } = await buildModelMessages(SESSION_ID, "sys", options({
+      contextTurnIds: [t10, t12, t13],
+      currentTurnNumber: 14,
+      currentUserMessage: "current",
+    }), dataDir);
+
+    const textMessages = messages.filter((m) => m.role === "user" || m.role === "assistant").map((m) =>
+      Array.isArray(m.content) ? (m.content as any[]).map((p) => p.text).join("") : (m.content as string),
+    );
+
+    // Summary prepended, covered turns (10,12) skipped, turn 13 included, current appended.
+    expect(textMessages.some((t) => t.includes("SUMMARY_TEXT"))).toBe(true);
+    expect(textMessages).not.toContain("ten");
+    expect(textMessages).not.toContain("twelve");
+    expect(textMessages).toContain("thirteen");
+    expect(textMessages).toContain("current");
+
+    // Cleanup
+    db.delete(summaryBlocks).where(eq(summaryBlocks.sessionId, SESSION_ID)).run();
   });
 });

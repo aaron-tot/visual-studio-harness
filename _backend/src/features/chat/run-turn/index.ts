@@ -272,7 +272,7 @@ export async function runTurn(
           onSlotWaitStart: events.onSlotWaitStart,
           onSlotWaitStatus: events.onSlotWaitStatus,
           onSlotWaitEnd: events.onSlotWaitEnd,
-        }), resolveCtx)
+        }), resolveCtx, config.toolExecutionMode)
       : undefined;
 
     const noSystemPrompt = input.noSystemPrompt ?? false;

@@ -1,10 +1,70 @@
-import { inArray } from "drizzle-orm";
+import { inArray, eq, and, desc, lte } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
-import { turns, stepParts } from "../../db/schema";
+import { turns, stepParts, summaryBlocks } from "../../db/schema";
 import type { CoreMessage } from "ai";
 
 function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
+}
+
+interface SummaryBlock {
+  id: number;
+  sessionId: string;
+  summaryTurnId: number;
+  startTurn: number;
+  endTurn: number;
+  prevBlockId: number | null;
+  originalTokens: number | null;
+  summaryTokens: number | null;
+  createdAt: string;
+}
+
+async function getEarliestLiveSummaryBlock(
+  sessionId: string,
+  sliderTurn: number,
+  dataDir?: string
+): Promise<SummaryBlock | null> {
+  const db = dbFor(dataDir);
+  const row = db
+    .select()
+    .from(summaryBlocks)
+    .where(and(eq(summaryBlocks.sessionId, sessionId), lte(summaryBlocks.endTurn, sliderTurn)))
+    .orderBy(summaryBlocks.endTurn)
+    .limit(1)
+    .get();
+  return row ?? null;
+}
+
+async function getSummaryTurnContent(
+  summaryTurnId: number,
+  dataDir?: string
+): Promise<string | null> {
+  const db = dbFor(dataDir);
+  // The summary text is stored as a text step_part on the summary turn, not in
+  // userContent (which holds the summarization prompt). Read the text part.
+  const row = db
+    .select({ data: stepParts.data })
+    .from(stepParts)
+    .where(and(eq(stepParts.turnId, summaryTurnId), eq(stepParts.type, "text")))
+    .orderBy(stepParts.seq)
+    .limit(1)
+    .get();
+  if (row?.data) {
+    try {
+      const parsed = JSON.parse(row.data);
+      if (typeof parsed.content === "string" && parsed.content) return parsed.content;
+    } catch {
+      /* fall through */
+    }
+    return row.data;
+  }
+  // Fallback: if no text part, use the user content (prompt) as last resort.
+  const turnRow = db
+    .select({ userContent: turns.userContent })
+    .from(turns)
+    .where(eq(turns.id, summaryTurnId))
+    .get();
+  return turnRow?.userContent ?? null;
 }
 
 export interface BuildModelMessagesOptions {
@@ -42,6 +102,16 @@ export async function buildModelMessages(
 ): Promise<BuildModelMessagesResult> {
   const db = dbFor(dataDir);
 
+  // NEW: Check for live summary block (earliest block with endTurn <= slider position)
+  // The slider position is options.currentTurnNumber
+  const liveBlock = await getEarliestLiveSummaryBlock(sessionId, options.currentTurnNumber, dataDir);
+
+  // If there's a live summary, we need to skip all turns covered by it (and any prior blocks)
+  let skipThroughTurn = 0;
+  if (liveBlock) {
+    skipThroughTurn = liveBlock.endTurn;
+  }
+
   // 1. Filter contextTurnIds by completion status and maxTurns
   let filteredTurnIds = [...options.contextTurnIds];
 
@@ -75,6 +145,19 @@ export async function buildModelMessages(
     filteredTurnIds = filteredTurnIds.filter((id) => validIds.has(id));
   }
 
+  // NEW: Skip turns covered by summary block
+  if (skipThroughTurn > 0) {
+    const turnRows = db
+      .select({ id: turns.id, turnNumber: turns.turnNumber })
+      .from(turns)
+      .where(inArray(turns.id, filteredTurnIds))
+      .all();
+    const turnsToSkip = new Set(
+      turnRows.filter((t) => t.turnNumber <= skipThroughTurn).map((t) => t.id)
+    );
+    filteredTurnIds = filteredTurnIds.filter((id) => !turnsToSkip.has(id));
+  }
+
   // Apply maxTurns (slice from end to keep most recent)
   if (options.maxTurns && filteredTurnIds.length > options.maxTurns) {
     filteredTurnIds = filteredTurnIds.slice(-options.maxTurns);
@@ -82,6 +165,17 @@ export async function buildModelMessages(
 
   // 2. Fetch all turns and their stepParts in batch
   const messages: CoreMessage[] = [];
+
+  // NEW: Prepend live summary as leading user message if exists
+  if (liveBlock) {
+    const summaryContent = await getSummaryTurnContent(liveBlock.summaryTurnId, dataDir);
+    if (summaryContent) {
+      messages.push({
+        role: "user",
+        content: `[Summary of turns ${liveBlock.startTurn}–${liveBlock.endTurn}]\n${summaryContent}`,
+      });
+    }
+  }
 
   if (filteredTurnIds.length > 0) {
     // Fetch turn metadata

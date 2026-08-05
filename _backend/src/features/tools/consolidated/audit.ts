@@ -57,7 +57,9 @@ const ORIGINAL_TOOLS: Record<AuditAction, ToolDef> = {
   prompt_delete: auditPromptDeleteTool,
 };
 
-const scopeSchema = z.enum(["global", "project", "session"]).describe("Scope (default: global)");
+const scopeSchema = z
+  .enum(["global", "project", "session"])
+  .describe("Scope (omit on edit/read to resolve existing doc: session→project→global)");
 
 const auditSchema = z.object({
   action: z.enum(AUDIT_ACTIONS).describe("Operation: create, read, edit, delete, prompt_*"),

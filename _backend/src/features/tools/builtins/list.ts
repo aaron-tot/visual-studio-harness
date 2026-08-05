@@ -72,8 +72,8 @@ export const listTool: ToolDef = {
           case "designs": {
             const entries = await listDesigns(ctx.dataDir, s as DesignsScope, ctx.workspaceRoot, ctx.sessionId);
             return entries.map((e) => {
-              const sv = e.specs.map((sp) => `v${sp.meta.version}`).join(", ") || "none";
-              const pv = e.plans.map((p) => `v${p.meta.version}`).join(", ") || "none";
+              const sv = e.specs.map((sp) => `v${sp.meta?.version ?? "?"}`).join(", ") || "none";
+              const pv = e.plans.map((p) => `v${p.meta?.version ?? "?"}`).join(", ") || "none";
               return `  ${e.name}/  (specs: ${sv}, plans: ${pv})`;
             });
           }

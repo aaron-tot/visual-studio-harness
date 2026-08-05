@@ -20,14 +20,31 @@ export const designAbandonTool: ToolDef = {
     name: z.string().min(1).describe("Design directory name"),
     reason: z.string().min(1).describe("Why this design is being abandoned"),
     successor: z.string().optional().describe("Replacement design name"),
+    scope: z.enum(["global", "project", "session"]).optional().describe("Scope (omit to find existing)"),
   }),
   execute: async (args, ctx) => {
-    const designsDir = resolveDesignsDir(ctx.dataDir, "global" as DesignsScope, ctx.workspaceRoot, ctx.sessionId);
-    const pd = join(designsDir, args.name);
-    const metaPath = join(pd, "meta.json");
-    if (!existsSync(pd)) {
+    // Prefer explicit scope; else find existing design session→project→global.
+    const tryScopes: DesignsScope[] = [];
+    if (args.scope) tryScopes.push(args.scope as DesignsScope);
+    else {
+      if (ctx.sessionId) tryScopes.push("session");
+      if (ctx.workspaceRoot) tryScopes.push("project");
+      tryScopes.push("global");
+    }
+    let pd: string | null = null;
+    for (const sc of tryScopes) {
+      const base = resolveDesignsDir(ctx.dataDir, sc, ctx.workspaceRoot, ctx.sessionId);
+      if (!base) continue;
+      const candidate = join(base, args.name);
+      if (existsSync(candidate)) {
+        pd = candidate;
+        break;
+      }
+    }
+    if (!pd) {
       return { title: "Not found", output: `Design "${args.name}" not found`, metadata: { abandoned: false } };
     }
+    const metaPath = join(pd, "meta.json");
     let meta: DesignMeta = {};
     try { const raw = await readFile(metaPath, "utf-8"); meta = JSON.parse(raw); } catch {}
     meta.abandoned = { reason: args.reason, successor: args.successor || undefined, timestamp: new Date().toISOString() };

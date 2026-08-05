@@ -21,12 +21,25 @@ export const designsListTool: ToolDef = {
     if (entries.length === 0) {
       return { title: "No designs", output: `No designs found in "${scope}" scope. Use design_create to create one.`, metadata: { count: 0, scope } };
     }
+    const ver = (doc: { meta?: { version?: number } }) => doc?.meta?.version;
     const lines = entries.map((e) => {
-      const sv = e.specs.map((s) => `v${s.meta.version}`).join(", ") || "none";
-      const pv = e.plans.map((p) => `v${p.meta.version}`).join(", ") || "none";
+      const sv = e.specs.map((s) => `v${ver(s) ?? "?"}`).join(", ") || "none";
+      const pv = e.plans.map((p) => `v${ver(p) ?? "?"}`).join(", ") || "none";
       return `  ${e.name}/  (specs: ${sv}, plans: ${pv})`;
     });
-    return { title: `${entries.length} design(s) in ${scope} scope`, output: lines.join("\n"),
-      metadata: { count: entries.length, scope, designs: entries.map((e) => ({ name: e.name, path: e.path, specVersions: e.specs.map((s) => s.meta.version), planVersions: e.plans.map((p) => p.meta.version) })) } };
+    return {
+      title: `${entries.length} design(s) in ${scope} scope`,
+      output: lines.join("\n"),
+      metadata: {
+        count: entries.length,
+        scope,
+        designs: entries.map((e) => ({
+          name: e.name,
+          path: e.path,
+          specVersions: e.specs.map((s) => ver(s)).filter((v): v is number => v != null),
+          planVersions: e.plans.map((p) => ver(p)).filter((v): v is number => v != null),
+        })),
+      },
+    };
   },
 };

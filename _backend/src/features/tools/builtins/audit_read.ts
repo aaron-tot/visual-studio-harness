@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { ToolDef } from "../types";
-import { resolveAuditsDir } from "../../../rest/audits";
+import { resolveAuditsDir, findAuditScope } from "../../../rest/audits";
+import type { AuditScope } from "../../../rest/audits";
 
 export const auditReadTool: ToolDef = {
   name: "audit_read",
@@ -21,10 +22,20 @@ export const auditReadTool: ToolDef = {
     scope: z
       .enum(["global", "project", "session"])
       .optional()
-      .describe("Scope (default: global)"),
+      .describe("Scope (omit to search session→project→global)"),
   }),
   execute: async (args, ctx) => {
-    const scope = (args.scope || "global") as "global" | "project" | "session";
+    let scope = args.scope as AuditScope | undefined;
+    if (!scope) {
+      scope = (await findAuditScope(args.name, ctx.dataDir, ctx.workspaceRoot, ctx.sessionId)) ?? undefined;
+      if (!scope) {
+        return {
+          title: "Not found",
+          output: `Audit "${args.name}" not found in session/project/global scopes.`,
+          metadata: { found: false },
+        };
+      }
+    }
     const auditsDir = resolveAuditsDir(ctx.dataDir, scope, ctx.workspaceRoot, ctx.sessionId);
     if (!auditsDir) {
       return {
@@ -61,7 +72,7 @@ export const auditReadTool: ToolDef = {
         infoCount: m.infoCount,
         summary: m.summary,
         overallStatus: m.overallStatus,
-        scope: m.scope,
+        scope,
       },
     };
   },

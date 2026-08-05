@@ -78,8 +78,7 @@ export const auditEditTool: ToolDef = {
     scope: z
       .enum(["global", "project", "session"])
       .optional()
-      .default("global")
-      .describe("Scope level"),
+      .describe("Scope level (omit to resolve from existing audit — session→project→global)"),
   }),
 
   outputFields: [
@@ -89,7 +88,9 @@ export const auditEditTool: ToolDef = {
   ],
 
   async execute(args, ctx) {
-    const scope = (args.scope || "global") as "global" | "project" | "session";
+    // Do NOT default scope to global — editAudit resolves the existing doc's
+    // scope when omitted, so project/session audits are not duplicated globally.
+    const scope = args.scope as "global" | "project" | "session" | undefined;
     try {
       const result = await editAudit({
         name: args.name,
@@ -101,8 +102,8 @@ export const auditEditTool: ToolDef = {
       });
       return {
         title: "Audit updated",
-        output: `Updated audit "${args.name}" in ${scope} scope.`,
-        metadata: { updated: true, name: args.name, path: result.path },
+        output: `Updated audit "${args.name}" in ${result.scope} scope.`,
+        metadata: { updated: true, name: args.name, path: result.path, scope: result.scope },
       };
     } catch (err) {
       return {

@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { getDbForDataDir } from "../../db/client";
-import { turns, summaryBlocks, steps, stepParts } from "../../db/schema";
+import { turns, summaryRanges, steps, stepParts } from "../../db/schema";
 import { createSession } from "../sessions/db";
 import { projectSessionChat } from "./project-chat";
 
@@ -112,13 +112,13 @@ describe("projectSessionChat summary placement", () => {
     const summaryTurnId = insertSummaryTurn(99, "SUMMARY_OF_1_TO_3");
 
     const db = getDbForDataDir(dataDir);
-    db.insert(summaryBlocks)
+    db.insert(summaryRanges)
       .values({
         sessionId: SESSION_ID,
         summaryTurnId,
         startTurn: 1,
         endTurn: 3,
-        prevBlockId: null,
+        prevRangeId: null,
         originalTokens: 100,
         summaryTokens: 10,
         createdAt: new Date().toISOString(),

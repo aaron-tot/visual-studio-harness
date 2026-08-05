@@ -208,6 +208,7 @@ export function GeneralPanel() {
       <h2 className="text-sm font-medium text-zinc-100 mb-4">General Settings</h2>
 
       <div className="space-y-4">
+        {/* Defaults for new chats */}
         <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
           <div className="text-sm text-zinc-200">Defaults for new chats</div>
           <div className="space-y-2">
@@ -230,6 +231,7 @@ export function GeneralPanel() {
           </div>
         </div>
 
+        {/* Rate limit rows */}
         <RateLimitRow
           config={config}
           onPatch={patch}
@@ -260,6 +262,7 @@ export function GeneralPanel() {
           }}
         />
 
+        {/* Checkbox settings */}
         <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
           <label className="flex items-start gap-3 cursor-pointer group">
             <input
@@ -334,111 +337,9 @@ export function GeneralPanel() {
               </div>
             </div>
           </label>
-
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={(config.includeFailedTurnsInHistory as boolean) ?? true}
-              onChange={(e) => patch({ includeFailedTurnsInHistory: e.target.checked })}
-              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-            />
-            <div>
-              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
-                Include failed/aborted turns in history
-              </div>
-              <div className="text-xs text-zinc-500 mt-0.5">
-                When enabled, turns that errored or were aborted are included in the
-                conversation history sent to the model. When disabled, only successful
-                turns are included. Default: on.
-              </div>
-            </div>
-          </label>
-
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={(config.includeToolCallsInHistory as boolean) ?? true}
-              onChange={(e) => patch({ includeToolCallsInHistory: e.target.checked })}
-              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-            />
-            <div>
-              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
-                Include tool calls and results in history
-              </div>
-              <div className="text-xs text-zinc-500 mt-0.5">
-                When enabled, tool calls and their results from previous turns are sent
-                to the model. Disabled turns with incomplete tool calls are reported as
-                failed. Default: on.
-              </div>
-            </div>
-          </label>
-
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={(config.includeReasoningInHistory as boolean) ?? false}
-              onChange={(e) => patch({ includeReasoningInHistory: e.target.checked })}
-              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-            />
-            <div>
-              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
-                Include reasoning in history
-              </div>
-              <div className="text-xs text-zinc-500 mt-0.5">
-                When enabled, reasoning/thinking blocks from previous turns are sent to the model.
-              </div>
-            </div>
-          </label>
-
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={(config.includePatchesInHistory as boolean) ?? false}
-              onChange={(e) => patch({ includePatchesInHistory: e.target.checked })}
-              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-            />
-            <div>
-              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
-                Include patches in history
-              </div>
-              <div className="text-xs text-zinc-500 mt-0.5">
-                When enabled, patches/diffs from previous turns are sent to the model.
-              </div>
-            </div>
-          </label>
-
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={(config.includeOtherPartsInHistory as boolean) ?? false}
-              onChange={(e) => patch({ includeOtherPartsInHistory: e.target.checked })}
-              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-            />
-            <div>
-              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
-                Include other parts in history
-              </div>
-              <div className="text-xs text-zinc-500 mt-0.5">
-                When enabled, other part types (snapshots, errors, questions, etc.) from previous turns are sent to the model.
-              </div>
-            </div>
-          </label>
-
-          <div className="space-y-2">
-            <label className="text-xs text-zinc-500">Max history turns</label>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={(config.contextMaxTurns as number) ?? ""}
-              onChange={(e) => patch({ contextMaxTurns: e.target.value ? Math.max(1, Number(e.target.value)) : undefined })}
-              className="w-24 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center"
-              placeholder="unlimited"
-            />
-            <span className="text-xs text-zinc-500">Leave empty for no limit</span>
-          </div>
         </div>
 
+        {/* Coming Soon section */}
         <div className="border border-zinc-800 rounded-lg p-3 opacity-60 select-none">
           <div className="flex items-start gap-3">
             <input
@@ -468,6 +369,7 @@ export function GeneralPanel() {
         </div>
       </div>
 
+      {/* MDS Tool Skills */}
       <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
         <div className="text-sm text-zinc-200">MDS Tool Skills</div>
         <div className="text-xs text-zinc-500">

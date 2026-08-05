@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getSessionContextConfig, putSessionContextConfig, getScopedContextConfig, putScopedContextConfig } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
+import { useConfigStore } from "../../stores/config";
 import { ScopePicker } from "../../features/info-panel/components/ScopePicker";
 import type { PlanScope } from "../../features/info-panel/types";
 import { SummarizationCard } from "./SummarizationCard";
@@ -19,28 +20,55 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   const [summarizationPromptMd, setSummarizationPromptMd] = useState<string | undefined>();
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
+
+  // History inclusion settings (moved from General)
+  const [includeFailedTurns, setIncludeFailedTurns] = useState(true);
+  const [includeToolCalls, setIncludeToolCalls] = useState(true);
+  const [includeReasoning, setIncludeReasoning] = useState(false);
+  const [includePatches, setIncludePatches] = useState(false);
+  const [includeOtherParts, setIncludeOtherParts] = useState(false);
+  const [contextMaxTurns, setContextMaxTurns] = useState<number | undefined>();
+  const [summarizeIncludePriorSummary, setSummarizeIncludePriorSummary] = useState(true);
+
   const bumpVer = useChatStore((s) => s.bumpContextConfigVersion);
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
+  const config = useConfigStore((s) => s.config);
 
   const loadConfig = async () => {
     if (!sessionId && scope === "session") { setLoading(false); return; }
     setLoading(true);
     try {
-      let config: {
+      let ctxConfig: {
         mode: "auto" | "manual"; maxTurns: number; firstTurnNumber: number | null; enabled?: boolean;
         summarizationModel?: string; summarizationFallbackModel?: string; summarizationPromptMd?: string;
+        includeFailedTurnsInHistory?: boolean;
+        includeToolCallsInHistory?: boolean;
+        includeReasoningInHistory?: boolean;
+        includePatchesInHistory?: boolean;
+        includeOtherPartsInHistory?: boolean;
+        contextMaxTurns?: number;
+        summarizeIncludePriorSummary?: boolean;
       };
       if (scope === "session" && sessionId) {
-        config = await getSessionContextConfig(sessionId);
+        ctxConfig = await getSessionContextConfig(sessionId);
       } else {
-        config = await getScopedContextConfig(scope, { workspaceRoot });
+        ctxConfig = await getScopedContextConfig(scope, { workspaceRoot });
       }
-      setMode(config.mode ?? "manual");
-      setAutoMaxTurns(config.maxTurns ?? 10);
-      setEnabled(scope === "global" ? true : (config.enabled ?? false));
-      setSummarizationModel(config.summarizationModel);
-      setSummarizationFallbackModel(config.summarizationFallbackModel);
-      setSummarizationPromptMd(config.summarizationPromptMd);
+      setMode(ctxConfig.mode ?? "manual");
+      setAutoMaxTurns(ctxConfig.maxTurns ?? 10);
+      setEnabled(scope === "global" ? true : (ctxConfig.enabled ?? false));
+      setSummarizationModel(ctxConfig.summarizationModel);
+      setSummarizationFallbackModel(ctxConfig.summarizationFallbackModel);
+      setSummarizationPromptMd(ctxConfig.summarizationPromptMd);
+
+      // History inclusion settings
+      setIncludeFailedTurns(ctxConfig.includeFailedTurnsInHistory ?? true);
+      setIncludeToolCalls(ctxConfig.includeToolCallsInHistory ?? true);
+      setIncludeReasoning(ctxConfig.includeReasoningInHistory ?? false);
+      setIncludePatches(ctxConfig.includePatchesInHistory ?? false);
+      setIncludeOtherParts(ctxConfig.includeOtherPartsInHistory ?? false);
+      setContextMaxTurns(ctxConfig.contextMaxTurns);
+      setSummarizeIncludePriorSummary(ctxConfig.summarizeIncludePriorSummary ?? true);
     } catch { /* ignore */ }
     setLoading(false);
   };
@@ -53,6 +81,13 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     mode?: "auto" | "manual"; autoMaxTurns?: number; manualTurnsBack?: number; manualMode?: "turnsBack" | "pinned";
     enabled?: boolean;
     summarizationModel?: string | null; summarizationFallbackModel?: string | null; summarizationPromptMd?: string | null;
+    includeFailedTurnsInHistory?: boolean;
+    includeToolCallsInHistory?: boolean;
+    includeReasoningInHistory?: boolean;
+    includePatchesInHistory?: boolean;
+    includeOtherPartsInHistory?: boolean;
+    contextMaxTurns?: number;
+    summarizeIncludePriorSummary?: boolean;
   }) => {
     const body: Record<string, unknown> = {
       mode: partial.mode ?? mode,
@@ -62,6 +97,13 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     if (partial.summarizationModel !== undefined) body.summarizationModel = partial.summarizationModel;
     if (partial.summarizationFallbackModel !== undefined) body.summarizationFallbackModel = partial.summarizationFallbackModel;
     if (partial.summarizationPromptMd !== undefined) body.summarizationPromptMd = partial.summarizationPromptMd;
+    if (partial.includeFailedTurnsInHistory !== undefined) body.includeFailedTurnsInHistory = partial.includeFailedTurnsInHistory;
+    if (partial.includeToolCallsInHistory !== undefined) body.includeToolCallsInHistory = partial.includeToolCallsInHistory;
+    if (partial.includeReasoningInHistory !== undefined) body.includeReasoningInHistory = partial.includeReasoningInHistory;
+    if (partial.includePatchesInHistory !== undefined) body.includePatchesInHistory = partial.includePatchesInHistory;
+    if (partial.includeOtherPartsInHistory !== undefined) body.includeOtherPartsInHistory = partial.includeOtherPartsInHistory;
+    if (partial.contextMaxTurns !== undefined) body.contextMaxTurns = partial.contextMaxTurns;
+    if (partial.summarizeIncludePriorSummary !== undefined) body.summarizeIncludePriorSummary = partial.summarizeIncludePriorSummary;
     try {
       if (scope === "session" && sessionId) {
         const current = await getSessionContextConfig(sessionId);
@@ -88,6 +130,13 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       if (partial.summarizationModel !== undefined) setSummarizationModel(partial.summarizationModel ?? undefined);
       if (partial.summarizationFallbackModel !== undefined) setSummarizationFallbackModel(partial.summarizationFallbackModel ?? undefined);
       if (partial.summarizationPromptMd !== undefined) setSummarizationPromptMd(partial.summarizationPromptMd ?? undefined);
+      if (partial.includeFailedTurnsInHistory !== undefined) setIncludeFailedTurns(partial.includeFailedTurnsInHistory);
+      if (partial.includeToolCallsInHistory !== undefined) setIncludeToolCalls(partial.includeToolCallsInHistory);
+      if (partial.includeReasoningInHistory !== undefined) setIncludeReasoning(partial.includeReasoningInHistory);
+      if (partial.includePatchesInHistory !== undefined) setIncludePatches(partial.includePatchesInHistory);
+      if (partial.includeOtherPartsInHistory !== undefined) setIncludeOtherParts(partial.includeOtherPartsInHistory);
+      if (partial.contextMaxTurns !== undefined) setContextMaxTurns(partial.contextMaxTurns);
+      if (partial.summarizeIncludePriorSummary !== undefined) setSummarizeIncludePriorSummary(partial.summarizeIncludePriorSummary);
     } catch { /* ignore */ }
   };
 
@@ -130,14 +179,117 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
             </label>
           )}
 
-          {!enabled ? (
+{!enabled ? (
             <p className="text-xs text-zinc-500">
               Disabled — this {scope === "session" ? "session" : "workspace"} inherits its context
               and summarization settings from the {scope === "session" ? "workspace or global" : "global"} scope.
             </p>
           ) : (
             <>
-          <div>
+              {/* History Inclusion Settings */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-zinc-100 mb-2">History Included in Context</h3>
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={includeFailedTurns}
+                    onChange={(e) => save({ includeFailedTurnsInHistory: e.target.checked })}
+                    className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                  />
+                  <div>
+                    <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+                      Include failed/aborted turns
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      When enabled, turns that ended with an error or were aborted are still sent to the model.
+                    </div>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={includeToolCalls}
+                    onChange={(e) => save({ includeToolCallsInHistory: e.target.checked })}
+                    className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                  />
+                  <div>
+                    <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+                      Include tool calls and results
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      When enabled, tool calls and their results from previous turns are sent to the model.
+                    </div>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={includeReasoning}
+                    onChange={(e) => save({ includeReasoningInHistory: e.target.checked })}
+                    className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                  />
+                  <div>
+                    <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+                      Include reasoning/thinking
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      When enabled, reasoning/thinking blocks from previous turns are sent to the model.
+                    </div>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={includePatches}
+                    onChange={(e) => save({ includePatchesInHistory: e.target.checked })}
+                    className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                  />
+                  <div>
+                    <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+                      Include patches/diffs
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      When enabled, patches/diffs from previous turns are sent to the model.
+                    </div>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={includeOtherParts}
+                    onChange={(e) => save({ includeOtherPartsInHistory: e.target.checked })}
+                    className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                  />
+                  <div>
+                    <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+                      Include other parts
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      When enabled, other part types (snapshots, errors, questions, etc.) from previous turns are sent to the model.
+                    </div>
+                  </div>
+                </label>
+
+                <div>
+                  <label className="text-xs text-zinc-500">Max history turns (auto mode only)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={contextMaxTurns ?? ""}
+                    onChange={(e) => save({ contextMaxTurns: e.target.value ? Math.max(1, Number(e.target.value)) : undefined })}
+                    className="w-24 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center mt-1"
+                    placeholder="unlimited"
+                  />
+                  <span className="text-xs text-zinc-500">Leave empty for no limit</span>
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-800 pt-4">
             <h3 className="text-sm font-medium text-zinc-100 mb-1">
               {mode === "auto" ? "Auto-limit" : "Manual"} Context
             </h3>

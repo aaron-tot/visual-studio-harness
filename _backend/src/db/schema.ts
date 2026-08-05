@@ -266,18 +266,18 @@ export const subagentSpawns = sqliteTable("subagent_spawns", {
 // ── Old tables removed in Phase 6 ─────────────────────────────────────
 // messages and parts tables were dropped; trace schema (turns/steps/step_parts) is the SoT.
 
-// ── Summary blocks (in-context summarization sliding chain) ──────────────
+// ── Summary ranges (in-context summarization sliding chain) ──────────────
 
-export const summaryBlocks = sqliteTable("summary_blocks", {
+export const summaryRanges = sqliteTable("summary_ranges", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   sessionId: text("session_id").notNull().references(() => sessions.id),
   summaryTurnId: integer("summary_turn_id").notNull().references(() => turns.id),
   startTurn: integer("start_turn").notNull(),   // inclusive
-  endTurn: integer("end_turn").notNull(),        // inclusive (slider position)
-  prevBlockId: integer("prev_block_id"),          // NULL for first block
+  endTurn: integer("end_turn").notNull(),        // inclusive (slider position when created)
+  prevRangeId: integer("prev_range_id"),         // links to prior range in the chain (NULL for first)
   originalTokens: integer("original_tokens"),
   summaryTokens: integer("summary_tokens"),
   createdAt: text("created_at").notNull(),
 }, (t) => ({
-  sessionIdx: index("idx_summary_blocks_session").on(t.sessionId),
+  sessionIdx: index("idx_summary_ranges_session").on(t.sessionId),
 }));

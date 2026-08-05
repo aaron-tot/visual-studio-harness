@@ -24,7 +24,16 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
       ...(options?.headers as Record<string, string> | undefined),
     },
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json() as { error?: string; message?: string };
+      detail = body.error || body.message || "";
+    } catch {
+      try { detail = await res.text(); } catch { /* ignore */ }
+    }
+    throw new Error(detail ? `${detail} (${res.status})` : `API error: ${res.status}`);
+  }
   return res.json();
 }
 
@@ -1252,7 +1261,7 @@ export function getSessionContextConfig(sessionId: string) {
   return fetchJson<SessionContextConfig>(`${BASE}/sessions/${sessionId}/context-config`);
 }
 
-export function putSessionContextConfig(sessionId: string, config: SessionContextConfig) {
+export function putSessionContextConfig(sessionId: string, config: Partial<SessionContextConfig>) {
   return fetchJson<{ ok: boolean }>(`${BASE}/sessions/${sessionId}/context-config`, {
     method: "PUT",
     body: JSON.stringify(config),
@@ -1277,6 +1286,43 @@ export function getEffectiveContextConfig(
   const params = new URLSearchParams({ sessionId });
   if (workspaceRoot) params.set("workspaceRoot", workspaceRoot);
   return fetchJson<SessionContextConfig>(`${BASE}/context-config/effective?${params}`);
+}
+
+export interface SummaryRange {
+  rangeId: number;
+  startTurn: number;
+  endTurn: number;
+  prevRangeId: number | null;
+  summary: string;
+}
+
+/** Create (or return existing) summary range covering turns up to endTurnNum. */
+export function summarizeRange(req: {
+  sessionId: string;
+  workspaceRoot?: string;
+  startTurnNum?: number;
+  endTurnNum: number;
+  promptMd?: string;
+  model?: string;
+  fallbackModel?: string;
+  includePriorSummary?: boolean;
+}) {
+  return fetchJson<{
+    summaryTurnId: number;
+    rangeId: number;
+    summary: string;
+    tokens: number;
+    created?: boolean;
+    startTurn?: number;
+    endTurn?: number;
+  }>(
+    `${BASE}/context-config/summarize-range`,
+    { method: "POST", body: JSON.stringify(req) },
+  );
+}
+
+export function listSummaryRanges(sessionId: string) {
+  return fetchJson<{ ranges: SummaryRange[] }>(`${BASE}/sessions/${sessionId}/summary-ranges`);
 }
 
 export function putScopedContextConfig(scope: string, body: Partial<SessionContextConfig>, opts?: { workspaceRoot?: string }) {

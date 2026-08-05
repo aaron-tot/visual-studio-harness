@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { putSessionContextConfig, getEffectiveContextConfig } from "../../lib/api";
+import { putSessionContextConfig, getEffectiveContextConfig, summarizeRange } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
+import type { ConfigFile } from "../../../../_shared/types";
 
 /**
  * Vertical history line rendered alongside chat messages.
@@ -27,6 +28,10 @@ export function ContextHistoryLine({
   const [dragging, setDragging] = useState(false);
   const [dragClientY, setDragClientY] = useState(0);
   const dragClientYRef = useRef(0);
+  const [summarizing, setSummarizing] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [summarizeError, setSummarizeError] = useState<string | null>(null);
+  const [config, setConfig] = useState<ConfigFile | null>(null);
 
   // Turn Y positions (scroll-dependent — recalculated on every scroll)
   const [turnPositions, setTurnPositions] = useState<{ number: number; y: number }[]>([]);
@@ -187,6 +192,7 @@ setStoreCtxTn(firstTurnNumber);
     if (!sessionId) return;
     getEffectiveContextConfig(sessionId, workspaceRoot || undefined)
       .then((c) => {
+        setConfig(c);
         setFirstTurnNumber(c.firstTurnNumber);
         setContextMode(c.mode ?? "manual");
         setContextMaxTurns(c.maxTurns ?? 10);
@@ -313,6 +319,81 @@ setStoreCtxTn(firstTurnNumber);
     }
   }, [sessionId, firstTurnNumber, manualTurnsBack, turnPositions, pinned]);
 
+  // endTurnNum = slider position (turn the handle sits on), per design spec.
+  // firstTurnNumber set → that turn; null (all turns) → last turn on the line.
+  const summarizeEndTurn = (() => {
+    if (firstTurnNumber != null && firstTurnNumber >= 1) return firstTurnNumber;
+    if (turnPositions.length > 0) return turnPositions[turnPositions.length - 1]!.number;
+    return null;
+  })();
+  const canSummarize =
+    !!sessionId && summarizeEndTurn != null && summarizeEndTurn >= 1 && !summarizing && turnPositions.length > 0;
+
+  const runSummarize = useCallback(async () => {
+    setCtxMenu(null);
+    if (!sessionId || summarizeEndTurn == null || summarizeEndTurn < 1) {
+      setSummarizeError(!sessionId ? "No session" : "No turns to summarize");
+      return;
+    }
+    if (summarizing) return;
+    setSummarizing(true);
+    setSummarizeError(null);
+    try {
+      const result = await summarizeRange({
+        sessionId,
+        workspaceRoot: workspaceRoot || undefined,
+        endTurnNum: summarizeEndTurn,
+        includePriorSummary: config?.summarizeIncludePriorSummary ?? true,
+      });
+      console.info("[summarize] ok", result);
+      if (result.created === false) {
+        // Idempotent hit — already have this block. Do not reload/scroll.
+        setSummarizeError(`Already have summary through turn ${result.endTurn ?? summarizeEndTurn}`);
+        window.setTimeout(() => setSummarizeError(null), 2500);
+        return;
+      }
+      // New summary: backend pushes session_state. Soft refresh without loadSession.
+      try {
+        const { beginReconnectSession } = await import("../../features/chat/session-hydrate");
+        const { wsClient } = await import("../../lib/ws");
+        const requestId = beginReconnectSession();
+        wsClient.send({ type: "request_session_state", sessionId, requestId });
+      } catch {
+        /* ignore */
+      }
+      window.setTimeout(() => {
+        const nodes = document.querySelectorAll<HTMLElement>("[data-summary-end]");
+        let target: HTMLElement | null = null;
+        nodes.forEach((n) => {
+          const end = Number(n.dataset.summaryEnd || 0);
+          if (end === (result.endTurn ?? summarizeEndTurn)) target = n;
+        });
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 500);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Summarize failed";
+      console.error("[summarize] failed", e);
+      setSummarizeError(msg);
+    } finally {
+      setSummarizing(false);
+    }
+  }, [sessionId, summarizeEndTurn, summarizing, workspaceRoot, config]);
+
+  // Cmd/Ctrl+Shift+S → summarize at slider
+  useEffect(() => {
+    if (!sessionId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return;
+      if (e.key !== "S" && e.key !== "s") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      void runSummarize();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sessionId, runSummarize]);
+
   // Handle Y in scroll-container-relative coords
   let handleY: number | null = null;
   if (turnPositions.length > 0) {
@@ -377,23 +458,25 @@ setStoreCtxTn(firstTurnNumber);
       ? `${ownerLabel} · Manual · Pinned to turn ${firstTurnNumber} (${turnsLabel} included)`
       : `${ownerLabel} · Manual · ${turnsLabel} back`;
 
+  // Line sits in center of the 64px gutter so pin/summarize stay inside the rail
+  // (not over the message scroller, which was stealing clicks → scroll).
+  const lineX = 24; // center of w-16 rail
+
   return (
     <div
       ref={barRef}
-      className="absolute left-0 top-0 w-6 z-10 touch-none"
-      style={{ height: barH, pointerEvents: dragging ? "auto" : "none" }}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={() => setDragging(false)}
+      className="absolute inset-0 z-30"
+      style={{ height: barH, pointerEvents: "none" }}
     >
       {visibleHandleY != null && lineBottom > 0 && (
         <>
           {/* Gray line above the handle */}
           <div
-            className={`absolute left-[9px] w-[3px] rounded-full transition-colors pointer-events-none ${
+            className={`absolute w-[3px] rounded-full transition-colors pointer-events-none ${
               contextMode === "auto" && !dragging ? "opacity-50" : ""
             }`}
             style={{
+              left: lineX - 1,
               top: 0,
               height: Math.max(0, visibleHandleY),
               background: dragging ? "rgba(96, 165, 250, 0.35)" : "rgba(113, 113, 122, 0.25)",
@@ -402,10 +485,11 @@ setStoreCtxTn(firstTurnNumber);
 
           {/* Colored line below the handle */}
           <div
-            className={`absolute left-[9px] w-[3px] rounded-full pointer-events-none ${
+            className={`absolute w-[3px] rounded-full pointer-events-none ${
               contextMode === "auto" && !dragging ? "opacity-50" : ""
             }`}
             style={{
+              left: lineX - 1,
               top: visibleHandleY,
               height: Math.max(0, visibleLineBottom - visibleHandleY),
               background: dragging
@@ -414,14 +498,13 @@ setStoreCtxTn(firstTurnNumber);
             }}
           />
 
-          {/* Snap direction chevron — positioned further from the handle */}
+          {/* Snap direction chevron */}
           {dragging && (
             <div
-              className="absolute left-0 z-30 pointer-events-none"
+              className="absolute z-30 pointer-events-none"
               style={{
-                top: snapAbove
-                  ? visibleHandleY - 32  /* above */
-                  : visibleHandleY + 24, /* below */
+                left: lineX - 11,
+                top: snapAbove ? visibleHandleY - 32 : visibleHandleY + 24,
               }}
             >
               {snapAbove ? (
@@ -436,48 +519,129 @@ setStoreCtxTn(firstTurnNumber);
             </div>
           )}
 
-          {/* Draggable handle */}
+          {/* Drag circle ONLY — separate from action buttons.
+              move/up on this node (setPointerCapture target). */}
           <div
-            className="absolute left-[2px] z-20 cursor-ns-resize group/handle"
-            style={{ top: visibleHandleY, pointerEvents: "auto" }}
+            className="absolute z-40 cursor-ns-resize group/handle"
+            style={{
+              left: lineX - 9,
+              top: visibleHandleY - 9,
+              width: 18,
+              height: 18,
+              pointerEvents: "auto",
+              touchAction: "none",
+            }}
+            title={tooltipText}
             onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={() => setDragging(false)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setCtxMenu({ x: e.clientX, y: e.clientY });
+            }}
           >
             <div
-              className={`w-[17px] h-[17px] -translate-y-1/2 rounded-full border-2 shadow-lg transition-all ${
+              className={`w-[18px] h-[18px] rounded-full border-2 shadow-lg transition-all ${
                 dragging
                   ? "border-blue-300 bg-blue-500 shadow-blue-500/40 scale-125"
-                  : `${
-                      contextMode === "auto"
-                        ? "border-zinc-600 bg-zinc-800/40 hover:border-blue-400 hover:bg-blue-600/40"
-                        : "border-zinc-600 bg-zinc-800 hover:border-blue-400 hover:bg-blue-600/40"
-                    }`
+                  : contextMode === "auto"
+                    ? "border-zinc-600 bg-zinc-800/40 hover:border-blue-400 hover:bg-blue-600/40"
+                    : "border-zinc-600 bg-zinc-800 hover:border-blue-400 hover:bg-blue-600/40"
               }`}
             />
-            {/* Pin toggle (manual mode only) */}
+          </div>
+
+          {/* Pin + summarize horizontal, below circle, inside gutter */}
+          <div
+            className="absolute z-50 flex flex-row items-center gap-0.5"
+            style={{
+              left: lineX - 26,
+              top: visibleHandleY + 12,
+              width: 52,
+              pointerEvents: "auto",
+            }}
+          >
             {contextMode === "manual" && (
               <button
-                className="absolute top-1/2 -translate-y-1/2 left-full ml-1.5 p-0.5 rounded transition-colors hover:bg-zinc-700"
-                onClick={togglePin}
-                onPointerDown={e => { e.stopPropagation(); e.preventDefault(); }}
-                onPointerUp={e => e.stopPropagation()}
+                type="button"
+                title={pinned ? "Unpin (switch to turns-back)" : "Pin to this turn"}
+                className="w-6 h-6 flex items-center justify-center rounded bg-zinc-900/90 border border-zinc-700 hover:bg-zinc-700 shrink-0"
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePin(); }}
               >
-                {pinned ? (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400">
-                    <path d="M2 10V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6" />
-                    <circle cx="6" cy="10" r="1" fill="currentColor" />
-                  </svg>
-                ) : (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-zinc-500 hover:text-amber-400">
-                    <path d="M2 10V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6" />
-                    <circle cx="6" cy="10" r="1" fill="currentColor" />
-                  </svg>
-                )}
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={pinned ? 2 : 1.5} className={pinned ? "text-amber-400" : "text-zinc-400"}>
+                  <path d="M2 10V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6" />
+                  <circle cx="6" cy="10" r="1" fill="currentColor" />
+                </svg>
               </button>
             )}
-            {/* Hover tooltip: scope · mode · turn count */}
-            <div className="absolute top-1/2 -translate-y-1/2 left-full ml-3 px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg opacity-0 group-hover/handle:opacity-100 transition-opacity pointer-events-none z-30">
-              {tooltipText}
-            </div>
+            <button
+              type="button"
+              title={
+                canSummarize
+                  ? `Summarize up to turn ${summarizeEndTurn} (Ctrl/⌘+Shift+S)`
+                  : summarizing
+                    ? "Summarizing…"
+                    : "No turns to summarize"
+              }
+              className={`w-6 h-6 flex items-center justify-center rounded border transition-colors shrink-0 ${
+                summarizing
+                  ? "bg-violet-900/80 border-violet-500 text-violet-200 animate-pulse"
+                  : canSummarize
+                    ? "bg-zinc-900/90 border-zinc-700 text-violet-400 hover:bg-violet-950 hover:border-violet-500"
+                    : "bg-zinc-900/50 border-zinc-800 text-zinc-600"
+              }`}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.button === 0) void runSummarize();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M2 2.5h8M2 9.5h8M3.5 6h5" strokeLinecap="round" />
+                <path d="M6 4v4M4.5 5L6 4l1.5 1M4.5 7L6 8l1.5-1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {summarizeError && (
+              <div className="absolute left-0 top-full mt-1 px-2 py-1 rounded bg-red-950 border border-red-700 text-[10px] text-red-300 whitespace-nowrap shadow-lg max-w-[200px] truncate z-50">
+                {summarizeError}
+              </div>
+            )}
+            {summarizing && (
+              <div className="absolute left-0 top-full mt-1 px-2 py-1 rounded bg-zinc-900 border border-zinc-600 text-[10px] text-zinc-300 whitespace-nowrap shadow-lg z-50">
+                Summarizing…
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Right-click menu */}
+      {ctxMenu && (
+        <>
+          <div className="fixed inset-0 z-[60]" style={{ pointerEvents: "auto" }} onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }} />
+          <div
+            className="fixed z-[70] bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl py-1 min-w-[180px]"
+            style={{ left: ctxMenu.x, top: ctxMenu.y, pointerEvents: "auto" }}
+          >
+            <button
+              type="button"
+              className="w-full text-left px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700 disabled:opacity-40"
+              disabled={!canSummarize}
+              onClick={() => { void runSummarize(); }}
+            >
+              {summarizing
+                ? "Summarizing…"
+                : summarizeEndTurn != null
+                  ? `Summarize up to turn ${summarizeEndTurn}`
+                  : "Summarize up to here"}
+            </button>
           </div>
         </>
       )}

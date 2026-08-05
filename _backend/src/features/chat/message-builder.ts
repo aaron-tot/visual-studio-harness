@@ -1,35 +1,36 @@
 import { inArray, eq, and, desc, lte } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
-import { turns, stepParts, summaryBlocks } from "../../db/schema";
+import { turns, stepParts, summaryRanges } from "../../db/schema";
 import type { CoreMessage } from "ai";
 
 function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
 }
 
-interface SummaryBlock {
+/** A range = one summarization run covering [startTurn .. endTurn]. */
+interface SummaryRange {
   id: number;
   sessionId: string;
   summaryTurnId: number;
   startTurn: number;
   endTurn: number;
-  prevBlockId: number | null;
+  prevRangeId: number | null;
   originalTokens: number | null;
   summaryTokens: number | null;
   createdAt: string;
 }
 
-async function getEarliestLiveSummaryBlock(
+async function getEarliestLiveSummaryRange(
   sessionId: string,
   sliderTurn: number,
   dataDir?: string
-): Promise<SummaryBlock | null> {
+): Promise<SummaryRange | null> {
   const db = dbFor(dataDir);
   const row = db
     .select()
-    .from(summaryBlocks)
-    .where(and(eq(summaryBlocks.sessionId, sessionId), lte(summaryBlocks.endTurn, sliderTurn)))
-    .orderBy(summaryBlocks.endTurn)
+    .from(summaryRanges)
+    .where(and(eq(summaryRanges.sessionId, sessionId), lte(summaryRanges.endTurn, sliderTurn)))
+    .orderBy(summaryRanges.endTurn)
     .limit(1)
     .get();
   return row ?? null;
@@ -103,18 +104,17 @@ export async function buildModelMessages(
 ): Promise<BuildModelMessagesResult> {
   const db = dbFor(dataDir);
 
-  // NEW: Check for live summary block (earliest block with endTurn <= slider position)
-  // Slider position is firstTurnNumber - 1 (summaries covering turns before the circle),
-  // or currentTurnNumber if no manual firstTurnNumber is set
+  // Live summary = earliest range with endTurn <= slider position.
+  // Slider position = firstTurnNumber (turn the handle sits on), or current turn if unpinned/all.
   const sliderTurn = options.firstTurnNumber != null
-    ? options.firstTurnNumber - 1
+    ? options.firstTurnNumber
     : options.currentTurnNumber;
-  const liveBlock = await getEarliestLiveSummaryBlock(sessionId, sliderTurn, dataDir);
+  const liveRange = await getEarliestLiveSummaryRange(sessionId, sliderTurn, dataDir);
 
-  // If there's a live summary, we need to skip all turns covered by it (and any prior blocks)
+  // If there's a live summary, we need to skip all turns covered by it (and any prior ranges)
   let skipThroughTurn = 0;
-  if (liveBlock) {
-    skipThroughTurn = liveBlock.endTurn;
+  if (liveRange) {
+    skipThroughTurn = liveRange.endTurn;
   }
 
   // 1. Filter contextTurnIds by completion status and maxTurns
@@ -174,12 +174,12 @@ export async function buildModelMessages(
   const messages: CoreMessage[] = [];
 
   // NEW: Prepend live summary as leading user message if exists
-  if (liveBlock) {
-    const summaryContent = await getSummaryTurnContent(liveBlock.summaryTurnId, dataDir);
+  if (liveRange) {
+    const summaryContent = await getSummaryTurnContent(liveRange.summaryTurnId, dataDir);
     if (summaryContent) {
       messages.push({
         role: "user",
-        content: `[Summary of turns ${liveBlock.startTurn}–${liveBlock.endTurn}]\n${summaryContent}`,
+        content: `[Summary of turns ${liveRange.startTurn}–${liveRange.endTurn}]\n${summaryContent}`,
       });
     }
   }

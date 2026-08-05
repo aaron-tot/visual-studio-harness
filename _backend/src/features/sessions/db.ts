@@ -1,6 +1,6 @@
-import { eq, desc, and, lte } from "drizzle-orm";
+import { eq, desc, and, lte, lt } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
-import { sessions, sessionLayouts, summaryBlocks } from "../../db/schema";
+import { sessions, sessionLayouts, summaryRanges } from "../../db/schema";
 import type { SessionMeta, LayoutNode } from "../../../../_shared/types";
 
 export function dbFor(dataDir?: string) {
@@ -251,97 +251,131 @@ export function setSessionLayout(
     .run();
 }
 
-// ── Summary blocks (in-context summarization) ──────────────────────────
+// ── Summary ranges (in-context summarization sliding chain) ──────────────
+// A "range" = one summarization run. It links a summary turn (kind='summary')
+// to the turn span it compresses: [startTurn .. endTurn]. Chained via prevRangeId.
 
-export interface SummaryBlock {
+export interface SummaryRange {
   id: number;
   sessionId: string;
   summaryTurnId: number;
   startTurn: number;
   endTurn: number;
-  prevBlockId: number | null;
+  prevRangeId: number | null;
   originalTokens: number | null;
   summaryTokens: number | null;
   createdAt: string;
 }
 
-export function insertSummaryBlock(
+export function insertSummaryRange(
   dataDir: string,
-  block: Omit<SummaryBlock, "id">
+  range: Omit<SummaryRange, "id">
 ): number {
   const db = dbFor(dataDir);
   const result = db
-    .insert(summaryBlocks)
+    .insert(summaryRanges)
     .values({
-      sessionId: block.sessionId,
-      summaryTurnId: block.summaryTurnId,
-      startTurn: block.startTurn,
-      endTurn: block.endTurn,
-      prevBlockId: block.prevBlockId,
-      originalTokens: block.originalTokens,
-      summaryTokens: block.summaryTokens,
-      createdAt: block.createdAt,
+      sessionId: range.sessionId,
+      summaryTurnId: range.summaryTurnId,
+      startTurn: range.startTurn,
+      endTurn: range.endTurn,
+      prevRangeId: range.prevRangeId,
+      originalTokens: range.originalTokens,
+      summaryTokens: range.summaryTokens,
+      createdAt: range.createdAt,
     })
-    .returning({ id: summaryBlocks.id })
+    .returning({ id: summaryRanges.id })
     .get();
   return result?.id ?? 0;
 }
 
-export function getLatestSummaryBlock(
+export function getLatestSummaryRange(
   dataDir: string,
   sessionId: string
-): SummaryBlock | null {
+): SummaryRange | null {
   const db = dbFor(dataDir);
   const row = db
     .select()
-    .from(summaryBlocks)
-    .where(eq(summaryBlocks.sessionId, sessionId))
-    .orderBy(desc(summaryBlocks.endTurn))
+    .from(summaryRanges)
+    .where(eq(summaryRanges.sessionId, sessionId))
+    .orderBy(desc(summaryRanges.endTurn))
     .limit(1)
     .get();
   return row ?? null;
 }
 
-export function getEarliestLiveSummaryBlock(
+/** Latest range whose endTurn is strictly before `beforeEndTurn` (for chain start). */
+export function getLatestSummaryRangeBefore(
+  dataDir: string,
+  sessionId: string,
+  beforeEndTurn: number,
+): SummaryRange | null {
+  const db = dbFor(dataDir);
+  const row = db
+    .select()
+    .from(summaryRanges)
+    .where(and(eq(summaryRanges.sessionId, sessionId), lt(summaryRanges.endTurn, beforeEndTurn)))
+    .orderBy(desc(summaryRanges.endTurn))
+    .limit(1)
+    .get();
+  return row ?? null;
+}
+
+/** Range that ends exactly at endTurn (slider position already summarized). */
+export function getSummaryRangeByEndTurn(
+  dataDir: string,
+  sessionId: string,
+  endTurn: number,
+): SummaryRange | null {
+  const db = dbFor(dataDir);
+  const row = db
+    .select()
+    .from(summaryRanges)
+    .where(and(eq(summaryRanges.sessionId, sessionId), eq(summaryRanges.endTurn, endTurn)))
+    .get();
+  return row ?? null;
+}
+
+export function getEarliestLiveSummaryRange(
   dataDir: string,
   sessionId: string,
   sliderTurn: number
-): SummaryBlock | null {
+): SummaryRange | null {
   const db = dbFor(dataDir);
   const row = db
     .select()
-    .from(summaryBlocks)
-    .where(and(eq(summaryBlocks.sessionId, sessionId), lte(summaryBlocks.endTurn, sliderTurn)))
-    .orderBy(summaryBlocks.endTurn)
+    .from(summaryRanges)
+    .where(and(eq(summaryRanges.sessionId, sessionId), lte(summaryRanges.endTurn, sliderTurn)))
+    .orderBy(summaryRanges.endTurn)
     .limit(1)
     .get();
   return row ?? null;
 }
 
-export function getSummaryBlockByRange(
+export function getSummaryRangeByRange(
   dataDir: string,
   sessionId: string,
   startTurn: number,
   endTurn: number
-): SummaryBlock | null {
+): SummaryRange | null {
   const db = dbFor(dataDir);
   const row = db
     .select()
-    .from(summaryBlocks)
-    .where(and(eq(summaryBlocks.sessionId, sessionId), eq(summaryBlocks.startTurn, startTurn), eq(summaryBlocks.endTurn, endTurn)))
+    .from(summaryRanges)
+    .where(and(eq(summaryRanges.sessionId, sessionId), eq(summaryRanges.startTurn, startTurn), eq(summaryRanges.endTurn, endTurn)))
     .get();
   return row ?? null;
 }
 
-export function getSummaryBlocksForSession(
+export function getSummaryRangesForSession(
   dataDir: string,
   sessionId: string
-): SummaryBlock[] {
+): SummaryRange[] {
   const db = dbFor(dataDir);
   return db
     .select()
-    .from(summaryBlocks)
-    .where(eq(summaryBlocks.sessionId, sessionId))
-    .orderBy(summaryBlocks.endTurn)
+    .from(summaryRanges)
+    .where(eq(summaryRanges.sessionId, sessionId))
+    .orderBy(summaryRanges.endTurn)
     .all();
 }

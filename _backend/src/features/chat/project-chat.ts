@@ -1,6 +1,6 @@
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
-import { turns, turnContext, steps, stepParts, promptSnapshots, toolsSnapshots, sessions, summaryBlocks } from "../../db/schema";
+import { turns, turnContext, steps, stepParts, promptSnapshots, toolsSnapshots, sessions, summaryRanges } from "../../db/schema";
 import type { CoreMessage } from "ai";
 import type { Message, MessagePartType } from "../../../../_shared/types";
 import type { TurnSummary, StepSummary, TurnDetail, SessionUsage, TurnStatus, StepPart, TurnRawCapture, TurnStepRawDetail } from "../../../../_shared/types/trace";
@@ -46,13 +46,13 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
   // Summary turns sit in the timeline at the circle position: immediately AFTER
   // the last covered real turn (block.endTurn) and BEFORE the next live turn.
   // Sort key is endTurn + 0.5 so they never sort as "last turn" via turnNumber.
-  const blockBySummaryTurn = new Map<number, { endTurn: number; startTurn: number }>();
-  const blocks = db
-    .select({ summaryTurnId: summaryBlocks.summaryTurnId, endTurn: summaryBlocks.endTurn, startTurn: summaryBlocks.startTurn })
-    .from(summaryBlocks)
-    .where(eq(summaryBlocks.sessionId, sessionId))
+  const rangeBySummaryTurn = new Map<number, { endTurn: number; startTurn: number }>();
+  const ranges = db
+    .select({ summaryTurnId: summaryRanges.summaryTurnId, endTurn: summaryRanges.endTurn, startTurn: summaryRanges.startTurn })
+    .from(summaryRanges)
+    .where(eq(summaryRanges.sessionId, sessionId))
     .all();
-  for (const b of blocks) blockBySummaryTurn.set(b.summaryTurnId, b);
+  for (const r of ranges) rangeBySummaryTurn.set(r.summaryTurnId, r);
 
   type OrderEntry = {
     pos: number;
@@ -66,9 +66,9 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
   const order: OrderEntry[] = [];
   for (const t of turnRows) {
     if ((t.kind ?? "turn") === "summary") {
-      const blk = blockBySummaryTurn.get(t.id);
-      const endTurn = blk?.endTurn ?? t.turnNumber;
-      const startTurn = blk?.startTurn ?? endTurn;
+      const rng = rangeBySummaryTurn.get(t.id);
+      const endTurn = rng?.endTurn ?? t.turnNumber;
+      const startTurn = rng?.startTurn ?? endTurn;
       // Half-step after last covered turn ⇒ between covered range and live turns.
       order.push({
         pos: endTurn + 0.5,

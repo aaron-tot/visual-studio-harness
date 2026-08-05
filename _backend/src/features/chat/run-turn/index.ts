@@ -66,7 +66,7 @@ import type { TurnCreateMeta, TurnInput, TurnEvents, TurnResult } from "../types
 import { generateId, autoTitle, isAbortError } from "./util";
 import { inArray, and, eq, lte } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../../db/client";
-import { turns, summaryBlocks } from "../../../db/schema";
+import { turns, summaryRanges } from "../../../db/schema";
 export { isAbortError } from "./util";
 import { registerSession, unregisterSession } from "../../../session/runtime";
 import { readFileSync } from "node:fs";
@@ -371,26 +371,26 @@ export async function runTurn(
       contextTurnNumbers = turnRows.map(r => r.turnNumber).sort((a, b) => a - b);
     }
     
-    // Get summary block ID if any
-    let summaryBlockId: number | null = null;
+// Get summary range ID if any
+    let summaryRangeId: number | null = null;
     if (firstTurnNumber != null) {
       const db = dataDir ? getDbForDataDir(dataDir) : getDb();
-      const sliderTurn = firstTurnNumber - 1;
-      const block = db
-        .select({ id: summaryBlocks.id })
-        .from(summaryBlocks)
-        .where(and(eq(summaryBlocks.sessionId, sessionId), lte(summaryBlocks.endTurn, sliderTurn)))
-        .orderBy(summaryBlocks.endTurn)
+      const sliderTurn = firstTurnNumber != null ? firstTurnNumber : turnNumber;
+      const range = db
+        .select({ id: summaryRanges.id })
+        .from(summaryRanges)
+        .where(and(eq(summaryRanges.sessionId, sessionId), lte(summaryRanges.endTurn, sliderTurn)))
+        .orderBy(summaryRanges.endTurn)
         .limit(1)
         .get();
-      summaryBlockId = block?.id ?? null;
+      summaryRangeId = range?.id ?? null;
     }
 
     console.error("[context] session=" + sessionId + " turn=" + turnNumber + 
       " firstTurnNumber=" + (firstTurnNumber ?? "null") + 
       " source=" + contextSource +
       " contextTurnNumbers=" + JSON.stringify(contextTurnNumbers) +
-      " summaryBlock=" + (summaryBlockId ?? "none") +
+      " summaryRange=" + (summaryRangeId ?? "none") +
       " inputTokens=" + "pending"); // Tokens not known yet at this stage
 
     await writeSessionSystemPrompt(dataDir, sessionId, systemBlock);

@@ -28,18 +28,19 @@ import { buildUsageTree } from "../chat/usage-tree";
 import { sessionHasTurns, getTurnByNumber, getNextTurnNumber, listContextTurnIds } from "../chat/db-trace";
 import { cancelSession } from "../chat/session-abort";
 import { buildModelMessages } from "../chat/message-builder";
-import { promptSnapshots, turns, toolsSnapshots, summaryBlocks, steps, stepParts } from "../../db/schema";
+import { promptSnapshots, turns, toolsSnapshots, summaryRanges, steps, stepParts } from "../../db/schema";
 import { getDbForDataDir } from "../../db/client";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, lt } from "drizzle-orm";
 import {
   getSessionTodosJson,
   setSessionTodosJson,
   getSessionModelConfigJson,
   setSessionModelConfigJson,
-  insertSummaryBlock,
-  getLatestSummaryBlock,
-  getSummaryBlockByRange,
-  dbFor,
+  insertSummaryRange,
+  getLatestSummaryRange,
+  getLatestSummaryRangeBefore,
+  getSummaryRangeByEndTurn,
+  getSummaryRangeByRange,
 } from "./db";
 import { runSummarizer, readSummarizationPrompt, splitModelRef, buildSummarizationMessages, type SummarizerResult } from "./summarizer";
 import { getWorkspaceGraphManager } from "../../core/workspaceGraph/service-singleton";
@@ -385,9 +386,9 @@ const sessionEnabled = session["enabled"] === true ||
     }
   });
 
-  // ── Summarize block (create summary turn + chain block) ──────────────────
+  // ── Summarize range (create summary turn + chain range) ──────────────────
 
-  app.post("/api/context-config/summarize-block", async (request, reply) => {
+  app.post("/api/context-config/summarize-range", async (request, reply) => {
     const body = (request.body || {}) as {
       sessionId?: string;
       workspaceRoot?: string;
@@ -398,7 +399,7 @@ const sessionEnabled = session["enabled"] === true ||
       fallbackModel?: string;       // optional: "Provider/Model"
     };
 
-    const { sessionId, endTurnNum, startTurnNum, promptMd, model, fallbackModel } = body;
+    const { sessionId, endTurnNum, startTurnNum, promptMd, model, fallbackModel, includePriorSummary } = body;
     if (!sessionId || endTurnNum == null) {
       return reply.code(400).send({ error: "sessionId and endTurnNum are required" });
     }
@@ -422,41 +423,74 @@ const sessionEnabled = session["enabled"] === true ||
       return reply.code(400).send({ error: "Invalid summarization model format. Expected 'Provider/Model'" });
     }
 
-    // Determine the chain tail to compute startTurnNum if not provided
-    const latestBlock = getLatestSummaryBlock(dataDir, sessionId);
-    const computedStartTurnNum = startTurnNum ?? (latestBlock ? latestBlock.endTurn + 1 : 1);
+    // Chain start = after the latest range that ends *before* the slider end.
+    // This allows summarizing earlier ranges even when later ranges already exist
+    // (e.g. slider at turn 3 while ranges end at 8 and 10).
     const computedEndTurnNum = endTurnNum;
+    // Don't include endTurnNum in the summary range — that turn is already in context for the next turn.
+    const summarizedEndTurn = computedEndTurnNum - 1;
+    const priorRange = getLatestSummaryRangeBefore(dataDir, sessionId, computedEndTurnNum);
+    const computedStartTurnNum = startTurnNum ?? (priorRange ? priorRange.endTurn + 1 : 1);
 
-    if (computedStartTurnNum > computedEndTurnNum) {
-      // The chain tail already extends past the slider, so there is nothing new
-      // to summarize ([tail+1 .. slider] is empty). Return the latest block
-      // (idempotent re-summarization) instead of erroring.
-      if (latestBlock) {
-        const db = getDbForDataDir(dataDir);
-        const summaryTurn = db.select().from(turns).where(eq(turns.id, latestBlock.summaryTurnId)).get();
-        return reply.code(200).send({
-          summaryTurnId: latestBlock.summaryTurnId,
-          blockId: latestBlock.id,
-          summary: summaryTurn?.userContent ?? "",
-          tokens: latestBlock.summaryTokens ?? 0,
-        });
-      }
-      return reply.code(400).send({ error: "startTurnNum cannot exceed endTurnNum" });
-    }
-
-    // Idempotency: check if a block already covers this exact range
-    const existingBlock = getSummaryBlockByRange(dataDir, sessionId, computedStartTurnNum, computedEndTurnNum);
-    if (existingBlock) {
-      // Return existing block (upsert behavior)
+    // Already have a range ending at this slider position → return it (no regen).
+    const atEnd = getSummaryRangeByEndTurn(dataDir, sessionId, computedEndTurnNum);
+    if (atEnd) {
       const db = getDbForDataDir(dataDir);
-      const summaryTurn = db.select().from(turns).where(eq(turns.id, existingBlock.summaryTurnId)).get();
+      const summaryTurn = db.select().from(turns).where(eq(turns.id, atEnd.summaryTurnId)).get();
+      const part = db
+        .select({ data: stepParts.data })
+        .from(stepParts)
+        .where(and(eq(stepParts.turnId, atEnd.summaryTurnId), eq(stepParts.type, "text")))
+        .orderBy(stepParts.seq)
+        .limit(1)
+        .get();
+      let summaryText = "";
+      try { summaryText = part?.data ? (JSON.parse(part.data).content ?? "") : ""; } catch { /* */ }
+      if (!summaryText) summaryText = summaryTurn?.userContent ?? "";
       return reply.code(200).send({
-        summaryTurnId: existingBlock.summaryTurnId,
-        blockId: existingBlock.id,
-        summary: summaryTurn?.userContent ?? "",
-        tokens: existingBlock.summaryTokens ?? 0,
+        summaryTurnId: atEnd.summaryTurnId,
+        rangeId: atEnd.id,
+        summary: summaryText,
+        tokens: atEnd.summaryTokens ?? 0,
+        created: false,
+        startTurn: atEnd.startTurn,
+        endTurn: atEnd.endTurn,
       });
     }
+
+    if (computedStartTurnNum > summarizedEndTurn) {
+      return reply.code(400).send({
+        error: `Nothing to summarize up to turn ${computedEndTurnNum} (range start ${computedStartTurnNum})`,
+      });
+    }
+
+    // Idempotency: exact range already exists
+    const existingRange = getSummaryRangeByRange(dataDir, sessionId, computedStartTurnNum, summarizedEndTurn);
+    if (existingRange) {
+      const db = getDbForDataDir(dataDir);
+      const summaryTurn = db.select().from(turns).where(eq(turns.id, existingRange.summaryTurnId)).get();
+      const part = db
+        .select({ data: stepParts.data })
+        .from(stepParts)
+        .where(and(eq(stepParts.turnId, existingRange.summaryTurnId), eq(stepParts.type, "text")))
+        .orderBy(stepParts.seq)
+        .limit(1)
+        .get();
+      let summaryText = "";
+      try { summaryText = part?.data ? (JSON.parse(part.data).content ?? "") : ""; } catch { /* */ }
+      if (!summaryText) summaryText = summaryTurn?.userContent ?? "";
+      return reply.code(200).send({
+        summaryTurnId: existingRange.summaryTurnId,
+        rangeId: existingRange.id,
+        summary: summaryText,
+        tokens: existingRange.summaryTokens ?? 0,
+        created: false,
+        startTurn: existingRange.startTurn,
+        endTurn: existingRange.endTurn,
+      });
+    }
+
+    const latestRange = priorRange; // prev link in chain for this segment
 
     // Build the summarizer input from the FULL conversation content of the
     // covered turns (user + assistant text, including tool output), not just
@@ -467,35 +501,35 @@ const sessionEnabled = session["enabled"] === true ||
 
     const rangeTurns: { role: "user" | "assistant"; content: string }[] = [];
     const seenTurn = new Set<number>();
-    for (const m of chatMessages) {
+for (const m of chatMessages) {
       if (m.isSummary) continue;
       const tn = m.turnId;
-      if (tn == null || tn < computedStartTurnNum || tn > computedEndTurnNum) continue;
+      if (tn == null || tn < computedStartTurnNum || tn > summarizedEndTurn) continue;
       if (m.role !== "user" && m.role !== "assistant") continue;
       const content = m.content ?? "";
       if (!content) continue;
       rangeTurns.push({ role: m.role, content });
-      seenTurn.add(tn);
     }
     // Fallback: if projection yielded nothing (e.g. tool-only turns), include
     // the user prompts at minimum so the summarizer isn't starved of context.
     if (rangeTurns.length === 0) {
-      const turnRows = dbFor(dataDir)
+      const turnRows = getDbForDataDir(dataDir)
         .select({ turnNumber: turns.turnNumber, userContent: turns.userContent })
         .from(turns)
         .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn")))
         .orderBy(turns.turnNumber)
         .all();
       for (const t of turnRows) {
-        if (t.turnNumber >= computedStartTurnNum && t.turnNumber <= computedEndTurnNum) {
+        if (t.turnNumber >= computedStartTurnNum && t.turnNumber <= summarizedEndTurn) {
           rangeTurns.push({ role: "user", content: t.userContent });
         }
       }
     }
 
     // Get prior summary text if chain non-empty (summary text lives in step_parts)
-    const priorSummary = latestBlock
-      ? (dbFor(dataDir).select({ data: stepParts.data }).from(stepParts).where(and(eq(stepParts.turnId, latestBlock.summaryTurnId), eq(stepParts.type, "text"))).orderBy(stepParts.seq).limit(1).get()?.data ?? null)
+    const includePrior = includePriorSummary ?? true;
+    const priorSummary = includePrior && latestRange
+      ? (getDbForDataDir(dataDir).select({ data: stepParts.data }).from(stepParts).where(and(eq(stepParts.turnId, latestRange.summaryTurnId), eq(stepParts.type, "text"))).orderBy(stepParts.seq).limit(1).get()?.data ?? null)
       : null;
 
     // Build messages for summarizer: prior summary + turns in range
@@ -524,17 +558,17 @@ const sessionEnabled = session["enabled"] === true ||
     // message of the summary turn, so a human can see what instructed it).
     let promptContent = promptRef ? await readSummarizationPrompt(promptRef) : null;
     if (!promptContent) {
-      promptContent = `Summarize conversation turns ${computedStartTurnNum}–${computedEndTurnNum}`;
+      promptContent = `Summarize conversation turns ${computedStartTurnNum}–${summarizedEndTurn}`;
     }
 
     // Compute original tokens (sum of covered turns' totalTokens)
-    const coveredTurnRows = dbFor(dataDir)
-      .select({ totalTokens: turns.totalTokens })
+    const coveredTurnRows = getDbForDataDir(dataDir)
+      .select({ turnNumber: turns.turnNumber, totalTokens: turns.totalTokens })
       .from(turns)
       .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn")))
       .all();
     const originalTokens = coveredTurnRows
-      .filter((t) => t.turnNumber >= computedStartTurnNum && t.turnNumber <= computedEndTurnNum)
+      .filter((t) => t.turnNumber >= computedStartTurnNum && t.turnNumber <= summarizedEndTurn)
       .reduce((sum, t) => sum + (t.totalTokens ?? 0), 0);
 
     // Create summary turn row (kind='summary'). Use a distinct turnNumber that
@@ -545,17 +579,17 @@ const sessionEnabled = session["enabled"] === true ||
       promptMd: promptRef ?? null,
       model: modelRef,
       provider: modelRef?.split("/")[0] ?? null,
-      range: { startTurn: computedStartTurnNum, endTurn: computedEndTurnNum },
-      prevBlockId: latestBlock?.id ?? null,
+      range: { startTurn: computedStartTurnNum, endTurn: summarizedEndTurn },
+      prevRangeId: latestRange?.id ?? null,
       originalTokens,
       summaryTokens: usage?.totalTokens ?? 0,
     };
-    const summaryTurnResult = dbFor(dataDir)
+    const summaryTurnResult = getDbForDataDir(dataDir)
       .insert(turns)
       .values({
         sessionId,
         turnNumber: getNextTurnNumber(sessionId, dataDir),
-        userContent: promptContent ?? `Summarize conversation turns ${computedStartTurnNum}–${computedEndTurnNum}`,
+        userContent: promptContent ?? `Summarize conversation turns ${computedStartTurnNum}–${summarizedEndTurn}`,
         userTimestamp: now,
         status: "success",
         success: true,
@@ -584,7 +618,7 @@ const sessionEnabled = session["enabled"] === true ||
     }
 
     // Create a step with the summary as assistant text part
-    const stepResult = dbFor(dataDir)
+    const stepResult = getDbForDataDir(dataDir)
       .insert(steps)
       .values({
         sessionId,
@@ -603,7 +637,7 @@ const sessionEnabled = session["enabled"] === true ||
 
     const stepId = stepResult?.id;
     if (stepId) {
-      dbFor(dataDir)
+      getDbForDataDir(dataDir)
         .insert(stepParts)
         .values({
           sessionId,
@@ -618,13 +652,13 @@ const sessionEnabled = session["enabled"] === true ||
         .run();
     }
 
-    // Create summary block
-    const blockId = insertSummaryBlock(dataDir, {
+    // Create summary range
+    const rangeId = insertSummaryRange(dataDir, {
       sessionId,
       summaryTurnId,
       startTurn: computedStartTurnNum,
-      endTurn: computedEndTurnNum,
-      prevBlockId: latestBlock?.id ?? null,
+      endTurn: summarizedEndTurn,
+      prevRangeId: latestRange?.id ?? null,
       originalTokens,
       summaryTokens: usage?.totalTokens ?? 0,
       createdAt: now,
@@ -636,26 +670,29 @@ const sessionEnabled = session["enabled"] === true ||
       const { sendSessionStateToSession } = await import("../sessions/view-tracker");
       sendSessionStateToSession(sessionId);
     } catch (err) {
-      console.warn("[summarize-block] could not push session state:", err);
+      console.warn("[summarize-range] could not push session state:", err);
     }
 
     return reply.code(201).send({
       summaryTurnId,
-      blockId,
+      rangeId,
       summary: summaryText,
       tokens: usage?.totalTokens ?? 0,
+      created: true,
+      startTurn: computedStartTurnNum,
+      endTurn: summarizedEndTurn,
     });
   });
 
-  // ── Get summary blocks for a session ────────────────────────────────────
+  // ── Get summary ranges for a session ────────────────────────────────────
 
-  app.get("/api/sessions/:id/summary-blocks", async (request, reply) => {
+  app.get("/api/sessions/:id/summary-ranges", async (request, reply) => {
     const { id } = request.params as { id: string };
     const session = await getSession(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
 
-    const blocks = getSummaryBlocksForSession(dataDir, id);
-    return { blocks };
+    const ranges = getSummaryRangesForSession(dataDir, id);
+    return { ranges };
   });
 
   app.delete("/api/sessions/:id", async (request) => {

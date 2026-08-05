@@ -247,21 +247,21 @@ function ensureSchema(sqlite: Database): void {
     );
   `);
 
-  // ── summary_blocks (in-context summarization sliding chain) ─────────────
+  // ── summary_ranges (in-context summarization sliding chain) ─────────────
   sqlite.run(`
-    CREATE TABLE IF NOT EXISTS summary_blocks (
+    CREATE TABLE IF NOT EXISTS summary_ranges (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id TEXT NOT NULL REFERENCES sessions(id),
       summary_turn_id INTEGER NOT NULL REFERENCES turns(id),
       start_turn INTEGER NOT NULL,
       end_turn INTEGER NOT NULL,
-      prev_block_id INTEGER REFERENCES summary_blocks(id),
+      prev_range_id INTEGER REFERENCES summary_ranges(id),
       original_tokens INTEGER,
       summary_tokens INTEGER,
       created_at TEXT NOT NULL
     );
   `);
-  sqlite.run(`CREATE INDEX IF NOT EXISTS idx_summary_blocks_session ON summary_blocks(session_id);`);
+  sqlite.run(`CREATE INDEX IF NOT EXISTS idx_summary_ranges_session ON summary_ranges(session_id);`);
 
   // Dedupe then unique-index tool_call_id (prod DBs may have pre-unique duplicates)
   ensureUniqueSubagentSpawnToolCallId(sqlite);

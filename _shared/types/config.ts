@@ -202,6 +202,8 @@ export interface ConfigFile {
   includeOtherPartsInHistory?: boolean;
   /** Maximum number of historical turns to include (context window) */
   contextMaxTurns?: number;
+  /** Include the previous summary in the summarizer input (default: true) */
+  summarizeIncludePriorSummary?: boolean;
   /** Error message substring (case-insensitive) that triggers a streaming retry. */
   streamRetryErrorName?: string;
   /** Maximum number of retries for the streamRetryErrorName error. */

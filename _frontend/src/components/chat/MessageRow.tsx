@@ -238,7 +238,12 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
                 onClick={() => {
                   const tn = turnId >= 2 ? turnId : null;
                   setCtxTn(tn);
-                  putSessionContextConfig(sessionId!, { firstTurnNumber: tn }).catch(() => {});
+                  putSessionContextConfig(sessionId!, {
+                    firstTurnNumber: tn,
+                    mode: "manual",
+                    manualMode: "pinned",
+                    enabled: true,
+                  }).catch(() => {});
                   setCtxMenuPos(null);
                 }}
               >

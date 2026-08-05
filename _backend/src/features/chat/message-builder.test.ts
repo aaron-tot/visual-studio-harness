@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { eq } from "drizzle-orm";
 import { getDbForDataDir } from "../../db/client";
-import { summaryBlocks } from "../../db/schema";
+import { summaryRanges } from "../../db/schema";
 import {
   getNextTurnNumber,
   createTurn,
@@ -144,14 +144,14 @@ describe("buildModelMessages tool parts", () => {
     const summaryStepId = createStep(summaryTurnId, SESSION_ID, 0, {}, dataDir);
     insertStepPart(SESSION_ID, summaryTurnId, summaryStepId, "text", { content: "SUMMARY_TEXT" }, 1, "completed", {}, dataDir);
 
-    // Insert a summary block covering turns 10–12.
+    // Insert a summary range covering turns 10–12.
     const db = getDbForDataDir(dataDir);
-    db.insert(summaryBlocks).values({
+    db.insert(summaryRanges).values({
       sessionId: SESSION_ID,
       summaryTurnId,
       startTurn: 10,
       endTurn: 12,
-      prevBlockId: null,
+      prevRangeId: null,
       originalTokens: 100,
       summaryTokens: 10,
       createdAt: new Date().toISOString(),
@@ -181,6 +181,6 @@ describe("buildModelMessages tool parts", () => {
     expect(textMessages).toContain("current");
 
     // Cleanup
-    db.delete(summaryBlocks).where(eq(summaryBlocks.sessionId, SESSION_ID)).run();
+    db.delete(summaryRanges).where(eq(summaryRanges.sessionId, SESSION_ID)).run();
   });
 });

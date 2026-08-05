@@ -206,6 +206,8 @@ export function MessageList() {
           return (
             <div
               key={`summary-${turnId}`}
+              data-summary-turn={turnId}
+              data-summary-end={summaryEndTurn ?? ""}
               className="animate-in fade-in slide-in-from-bottom-1 duration-200"
             >
               <SummaryTurnWrapper

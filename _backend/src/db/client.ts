@@ -96,12 +96,17 @@ function ensureSchema(sqlite: Database): void {
       step_count INTEGER,
       raw_request_json TEXT,
       raw_response_json TEXT,
-      config_snapshot_json TEXT
+      config_snapshot_json TEXT,
+      kind TEXT NOT NULL DEFAULT 'turn'
     );
   `);
   // Migration: add config_snapshot_json column for existing databases
   try {
     sqlite.run(`ALTER TABLE turns ADD COLUMN config_snapshot_json TEXT`);
+  } catch {}
+  // Migration: add kind column for existing databases
+  try {
+    sqlite.run(`ALTER TABLE turns ADD COLUMN kind TEXT NOT NULL DEFAULT 'turn'`);
   } catch {}
   sqlite.run(`CREATE UNIQUE INDEX IF NOT EXISTS uq_turns_session_number ON turns(session_id, turn_number);`);
   sqlite.run(`CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);`);
@@ -241,6 +246,22 @@ function ensureSchema(sqlite: Database): void {
       updated TEXT NOT NULL
     );
   `);
+
+  // ── summary_blocks (in-context summarization sliding chain) ─────────────
+  sqlite.run(`
+    CREATE TABLE IF NOT EXISTS summary_blocks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL REFERENCES sessions(id),
+      summary_turn_id INTEGER NOT NULL REFERENCES turns(id),
+      start_turn INTEGER NOT NULL,
+      end_turn INTEGER NOT NULL,
+      prev_block_id INTEGER REFERENCES summary_blocks(id),
+      original_tokens INTEGER,
+      summary_tokens INTEGER,
+      created_at TEXT NOT NULL
+    );
+  `);
+  sqlite.run(`CREATE INDEX IF NOT EXISTS idx_summary_blocks_session ON summary_blocks(session_id);`);
 
   // Dedupe then unique-index tool_call_id (prod DBs may have pre-unique duplicates)
   ensureUniqueSubagentSpawnToolCallId(sqlite);

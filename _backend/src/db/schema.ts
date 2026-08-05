@@ -116,6 +116,9 @@ export const turns = sqliteTable("turns", {
   rawResponseJson: text("raw_response_json"),
   /** Snapshot of config flags used to build this turn's messages */
   configSnapshotJson: text("config_snapshot_json"),
+
+  /** Turn kind: 'turn' (normal) or 'summary' (in-context summarization) */
+  kind: text("kind").notNull().default("turn"),
 }, (t) => ({
   sessionTurnUq: uniqueIndex("uq_turns_session_number").on(t.sessionId, t.turnNumber),
   sessionIdx: index("idx_turns_session_id").on(t.sessionId),
@@ -262,3 +265,19 @@ export const subagentSpawns = sqliteTable("subagent_spawns", {
 
 // ── Old tables removed in Phase 6 ─────────────────────────────────────
 // messages and parts tables were dropped; trace schema (turns/steps/step_parts) is the SoT.
+
+// ── Summary blocks (in-context summarization sliding chain) ──────────────
+
+export const summaryBlocks = sqliteTable("summary_blocks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: text("session_id").notNull().references(() => sessions.id),
+  summaryTurnId: integer("summary_turn_id").notNull().references(() => turns.id),
+  startTurn: integer("start_turn").notNull(),   // inclusive
+  endTurn: integer("end_turn").notNull(),        // inclusive (slider position)
+  prevBlockId: integer("prev_block_id"),          // NULL for first block
+  originalTokens: integer("original_tokens"),
+  summaryTokens: integer("summary_tokens"),
+  createdAt: text("created_at").notNull(),
+}, (t) => ({
+  sessionIdx: index("idx_summary_blocks_session").on(t.sessionId),
+}));

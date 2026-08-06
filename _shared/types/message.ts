@@ -25,7 +25,20 @@ export interface Message {
   modelName?: string;
   durationMs?: number;
   contextTokens?: { used: number; max: number };
+  /**
+   * Turn identifier for display/context anchoring.
+   * - Normal turns: equals the DB turn_number.
+   * - Summary turns: set to the summary's END turn (the circle anchor), NOT its
+   *   DB turn_number. Kept separate so the UI can anchor the summary between
+   *   covered turns while the backend still looks up rows by real turn_number.
+   */
   turnId?: number;
+  /**
+   * The row's REAL DB turn_number. Always set for summary turns so that
+   * inspection ({ }), tool-cache lookups etc. resolve to the summary's own DB
+   * row instead of misreading turnId (the end-turn anchor) as a turn_number.
+   */
+  turnNumber?: number;
   success?: boolean;
   status?: string;
   errorDetail?: { message: string; raw?: string; isCustom?: boolean };

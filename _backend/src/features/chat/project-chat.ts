@@ -131,6 +131,9 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
 
     // Summary turns: emit as a full turn pair (user + assistant) just like normal turns.
     // The user message contains the summarization prompt; the assistant contains the summary.
+    // NOTE on identifiers: turnId = the END turn (circle anchor) for display/context
+    // anchoring between covered turns; turnNumber = the summary's REAL DB turn_number,
+    // used by inspection ({ }) and any DB row lookups. The two intentionally differ.
     if (o.isSummary) {
       // User message (the summarization prompt)
       out.push({
@@ -139,6 +142,7 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
         content: t.userContent,
         timestamp: t.userTimestamp,
         turnId: o.turnId,
+        turnNumber: t.turnNumber,
         agentName: t.agentName ?? undefined,
         isSummary: true,
         summaryEndTurn: o.endTurn,
@@ -153,6 +157,7 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
         parts: msgParts.length > 0 ? msgParts : undefined,
         timestamp: t.completedAt ?? t.startedAt,
         turnId: o.turnId,
+        turnNumber: t.turnNumber,
         success: t.success ?? undefined,
         status: t.status,
         modelName: t.modelName ?? undefined,

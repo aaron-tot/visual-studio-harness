@@ -140,7 +140,11 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
   const inspectedTurnId = useChatStore((s) => s.inspectedTurnId);
   const setInspectedTurnId = useChatStore((s) => s.setInspectedTurnId);
 
-  const turnId = message.turnId ?? null;
+  // Preferred lookup number: real DB turn_number when present (summaries carry both
+  // turnId = end-turn anchor and turnNumber = DB number). Normal turns only set
+  // turnId == turn_number, so fall back to it. Using turnNumber here means { } and
+  // tool-cache lookups hit the summary's OWN DB row instead of the anchor turn.
+  const turnId = message.turnNumber ?? message.turnId ?? null;
 
   // Always declare hooks before any early return
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true);

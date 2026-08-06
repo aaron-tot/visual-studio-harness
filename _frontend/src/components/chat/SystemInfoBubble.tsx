@@ -9,12 +9,16 @@ const DEFAULT_VISIBILITY: SystemInfoVisibility = "collapsed";
  * Renders a persisted `additional_system_info` injection inside the agent
  * bubble. It is context (not a real tool execution), so it is shown as a
  * distinct muted, collapsed block with expand-on-click — never as a normal
- * tool-call card. Honors the config `additionalSystemInfo.visibility` setting:
- * hidden ⇒ renders nothing; expanded ⇒ pre-expanded; collapsed ⇒ header only.
+ * tool-call card. Honors the config `additionalSystemInfo.visibility` setting
+ * (per-agent when `agentName` resolves, else global): hidden ⇒ renders
+ * nothing; expanded ⇒ pre-expanded; collapsed ⇒ header only.
  */
-export function SystemInfoBubble({ content }: { content: string }) {
+export function SystemInfoBubble({ content, agentName }: { content: string; agentName?: string }) {
   const visibility = useConfigStore(
-    (s) => (s.config.additionalSystemInfo?.visibility as SystemInfoVisibility | undefined) ?? DEFAULT_VISIBILITY,
+    (s) =>
+      (agentName ? s.config.agents?.[agentName]?.additionalSystemInfo?.visibility : undefined) ??
+      s.config.additionalSystemInfo?.visibility ??
+      DEFAULT_VISIBILITY,
   );
   const [userOpen, setUserOpen] = useState(false);
   // Config "expanded" forces open; otherwise honor the user's toggle. Derived

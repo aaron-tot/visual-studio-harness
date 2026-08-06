@@ -3,9 +3,12 @@ import { FileText, Edit3, Plus, AlertTriangle, Undo2 } from "lucide-react";
 import type {
   AgentSettings,
   AgentMdConfig,
+  AdditionalSystemInfoSettings,
+  AdditionalSystemInfoVisibility,
   SkillMdConfig,
   ThinkingEffort,
 } from "../../../../_shared/types";
+import { DEFAULT_ADDITIONAL_SYSTEM_INFO } from "../../../../_shared/types";
 
 const ATTACHMENT_MODES: { value: "inject" | "hard" | "soft"; label: string; desc: string }[] = [
   { value: "inject", label: "Inject", desc: "Embed in system prompt" },
@@ -349,6 +352,98 @@ export function AgentRuntimeEditor({
           </select>
         </label>
 
+      </div>
+
+      {/* Additional System Info (per-agent override of the volatile tail) */}
+      <div className="space-y-3 border-t border-zinc-800 pt-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-medium text-zinc-300">Additional System Info</h4>
+          {value.additionalSystemInfo && (
+            <button
+              onClick={() => patch({ additionalSystemInfo: undefined })}
+              className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+              title="Inherit the global additionalSystemInfo default"
+            >
+              <Undo2 className="h-3 w-3" />
+              Inherit global
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-zinc-500">
+          Per-agent override of the trailing volatile context block. Left empty, the global setting
+          applies. When set, this agent's injections only include the selected sections and honor
+          this visibility.
+        </p>
+        {(() => {
+          const asi: AdditionalSystemInfoSettings = value.additionalSystemInfo ?? DEFAULT_ADDITIONAL_SYSTEM_INFO;
+          const patchAsi = (partial: Partial<AdditionalSystemInfoSettings>) =>
+            patch({ additionalSystemInfo: { ...asi, ...partial } });
+          const toggleSection = (key: "runtime" | "todoList" | "workspaceManifest") => {
+            const next = asi.sections.includes(key)
+              ? asi.sections.filter((s) => s !== key)
+              : [...asi.sections, key];
+            patchAsi({ sections: next });
+          };
+          return (
+            <>
+              <div>
+                <span className="text-xs text-zinc-400">Sections</span>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {(["runtime", "todoList", "workspaceManifest"] as const).map((key) => (
+                    <label key={key} className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={asi.sections.includes(key)}
+                        onChange={() => toggleSection(key)}
+                        className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                      />
+                      <span className="text-[11px] text-zinc-400">{key}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <label className="block space-y-1">
+                <span className="text-xs text-zinc-400">UI visibility</span>
+                <select
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+                  value={asi.visibility}
+                  onChange={(e) => patchAsi({ visibility: e.target.value as AdditionalSystemInfoVisibility })}
+                >
+                  <option value="hidden">Hidden</option>
+                  <option value="collapsed">Collapsed (default)</option>
+                  <option value="expanded">Expanded</option>
+                </select>
+              </label>
+
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={asi.persist}
+                  onChange={(e) => patchAsi({ persist: e.target.checked })}
+                  className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                />
+                <span className="text-[11px] text-zinc-400">Persist emitted injections (replay verbatim)</span>
+              </label>
+
+              <label className="flex items-start gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={asi.includeTime ?? false}
+                  onChange={(e) => patchAsi({ includeTime: e.target.checked })}
+                  className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                />
+                <div>
+                  <span className="text-[11px] text-zinc-400">includeTime</span>
+                  <div className="text-[10px] text-amber-500/90 mt-0.5">
+                    WARNING: includeTime embeds a timestamp, so additional_system_info is injected on
+                    every step. Off: only injected when the manifest/todo list actually changes.
+                  </div>
+                </div>
+              </label>
+            </>
+          );
+        })()}
       </div>
 
       {/* System Message Files */}

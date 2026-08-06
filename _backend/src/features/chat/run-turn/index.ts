@@ -342,7 +342,7 @@ export async function runTurn(
       turnStart: turnStartNow,
     });
 
-    const asiCfg = config.additionalSystemInfo ?? DEFAULT_ADDITIONAL_SYSTEM_INFO;
+    const asiCfg = runtime.settings.additionalSystemInfo ?? config.additionalSystemInfo ?? DEFAULT_ADDITIONAL_SYSTEM_INFO;
     const additionalSystemInfoSections = asiCfg?.sections ?? ["runtime", "todoList", "workspaceManifest"];
     const additionalSystemInfoIncludeTime = asiCfg?.includeTime === true;
 
@@ -468,9 +468,10 @@ export async function runTurn(
     let currentStepId: number | null = null;
     let stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
     let stepIdByIndex: Record<number, number> = {};
-    // Injections emitted by prepareStep are buffered and flushed in onStepStart
+    // Injections emitted by prepareStep are buffered and flushed in onStepFinish
     // (prepareStep runs BEFORE the step row exists, so it cannot write the part
-    // against the correct stepId yet).
+    // against the correct stepId yet; flushing at step end places the injection
+    // AFTER the step's actual tool parts — spec §5/§6.1).
     let pendingInjections: Array<{ toolCallId: string; toolName: string; content: string }> = [];
 
     // Per-step system prompt rebuild (prepareStep). Step 0 uses the turn-initial
@@ -548,22 +549,24 @@ export async function runTurn(
           }, dataDir);
           stepIdByIndex[info.stepIndex] = currentStepId;
           stepWriter.rebindStep(currentStepId);
-          // Flush injections emitted by prepareStep for THIS step (append-only).
-          if (pendingInjections.length > 0) {
-            for (const inj of pendingInjections) {
-              insertStepPart(
-                sessionId, traceTurnId, currentStepId, "tool",
-                { content: inj.content, kind: "system-info", additionalSystemInfo: true },
-                ++partSeq, "completed",
-                { toolCallId: inj.toolCallId, toolName: inj.toolName },
-                dataDir,
-              );
-            }
-            pendingInjections = [];
-          }
         },
         onStepFinish: (info) => {
           if (currentStepId != null) {
+            // Persist injections emitted by prepareStep for THIS step, AFTER its
+            // actual tool parts so the stored/replayed order is [step tools][ASI]
+            // (spec §5 / §6.1: injection at the end of the step's tools).
+            if (pendingInjections.length > 0) {
+              for (const inj of pendingInjections) {
+                insertStepPart(
+                  sessionId, traceTurnId, currentStepId, "tool",
+                  { content: inj.content, kind: "system-info", additionalSystemInfo: true },
+                  ++partSeq, "completed",
+                  { toolCallId: inj.toolCallId, toolName: inj.toolName },
+                  dataDir,
+                );
+              }
+              pendingInjections = [];
+            }
             stepWriter.closeOpen();
             // Persist full SDK finish-step meta (usage details, performance, provider metadata)
             finalizeStep(currentStepId, {

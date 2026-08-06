@@ -32,6 +32,8 @@ export function getAgentSettings(
     maxSteps: settings.maxSteps ?? 30,
     agentMd: settings.agentMd,
     skillMds: settings.skillMds ?? [],
+    // Per-agent additionalSystemInfo overrides the global default (spec §8.1).
+    additionalSystemInfo: settings.additionalSystemInfo ?? config.additionalSystemInfo,
   };
 }
 

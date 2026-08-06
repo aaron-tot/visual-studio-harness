@@ -54,6 +54,46 @@ describe("runtime-settings", () => {
     expect(s.skillMds).toHaveLength(1);
   });
 
+  test("getAgentSettings merges per-agent additionalSystemInfo over the global default", () => {
+    const cfg: ConfigFile = {
+      ...base,
+      additionalSystemInfo: {
+        sections: ["runtime"],
+        visibility: "hidden",
+        persist: true,
+        includeTime: false,
+      },
+    };
+    const s = getAgentSettings(
+      {
+        additionalSystemInfo: {
+          sections: ["todoList", "workspaceManifest"],
+          visibility: "expanded",
+          persist: true,
+          includeTime: true,
+        },
+      },
+      cfg,
+    );
+    expect(s.additionalSystemInfo?.sections).toEqual(["todoList", "workspaceManifest"]);
+    expect(s.additionalSystemInfo?.visibility).toBe("expanded");
+    expect(s.additionalSystemInfo?.includeTime).toBe(true);
+  });
+
+  test("getAgentSettings falls back to the global additionalSystemInfo", () => {
+    const cfg: ConfigFile = {
+      ...base,
+      additionalSystemInfo: {
+        sections: ["runtime"],
+        visibility: "hidden",
+        persist: true,
+        includeTime: false,
+      },
+    };
+    const s = getAgentSettings({}, cfg);
+    expect(s.additionalSystemInfo).toEqual(cfg.additionalSystemInfo);
+  });
+
   test("getCustomAgentSettings returns undefined for missing key", () => {
     expect(getCustomAgentSettings(base, "nonexistent")).toBeUndefined();
   });

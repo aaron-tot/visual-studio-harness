@@ -60,7 +60,7 @@ export function MessagePart({ part, allParts, toolCacheByCallId, isStreaming, ag
 
   // additional_system_info injections are context, not tools — render distinctly.
   if (isAdditionalSystemInfoPart(part)) {
-    return <MemoSystemInfoBubble content={extractSystemInfoContent(part)} />;
+    return <MemoSystemInfoBubble content={extractSystemInfoContent(part)} agentName={agentName} />;
   }
 
   switch (part.type) {

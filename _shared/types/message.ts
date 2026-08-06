@@ -25,6 +25,12 @@ export interface Message {
   modelName?: string;
   durationMs?: number;
   contextTokens?: { used: number; max: number };
+  /** True for summary-turn messages (summarization prompt user + result assistant). */
+  isSummary?: boolean;
+  /** For summaries: the covered range's last turn (also the circle anchor / turnId). */
+  summaryEndTurn?: number;
+  /** For summaries: the covered range's first turn. */
+  summaryStartTurn?: number;
   /**
    * Turn identifier for display/context anchoring.
    * - Normal turns: equals the DB turn_number.

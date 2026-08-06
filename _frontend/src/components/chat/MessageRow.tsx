@@ -23,13 +23,14 @@ import { ErrorPart } from "./parts/ErrorPart";
 import { ContextToolGroup, groupContextParts } from "./tools/ContextToolGroup";
 import { StepToolGroup } from "./tools/StepToolGroup";
 import { groupByStep } from "./tools/group-by-step";
+import { TurnContextMenu } from "./TurnContextMenu";
 import { useChatStore } from "../../stores/chat";
+import { summarizeRange } from "../../lib/api";
 import { TurnInspectorModal } from "./TurnInspectorModal";
 import { CopyButton } from "./CopyButton";
 import { extractPrimaryText, extractAllText } from "../../lib/extract-message-text";
 import { getTurn } from "../../lib/api";
 import { computeToolGroups } from "../../lib/turn-inspector/cache-hit";
-import { putSessionContextConfig } from "../../lib/api";
 
 interface MessageRowProps {
   message: Message;
@@ -137,6 +138,7 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
 
   // Find the turn ID for this user message from the turns store
   const sessionId = useChatStore((s) => s.sessionId);
+  const allMessages = useChatStore((s) => s.messages);
   const inspectedTurnId = useChatStore((s) => s.inspectedTurnId);
   const setInspectedTurnId = useChatStore((s) => s.setInspectedTurnId);
 
@@ -196,7 +198,6 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
 
   // User messages: simple right-aligned bubble
   const [ctxMenuPos, setCtxMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const setCtxTn = useChatStore((s) => s.setContextFirstTurnNumber);
 
   if (isUser) {
     return (
@@ -229,31 +230,17 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
             {formatTime(message.timestamp)}
           </span>
         </div>
-        {ctxMenuPos && turnId != null && (
+        {ctxMenuPos && turnId != null && sessionId && (
           <>
             <div className="fixed inset-0 z-50" onClick={() => setCtxMenuPos(null)} />
-            <div
-              className="fixed z-50 bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl py-1 min-w-[200px]"
-              style={{ left: ctxMenuPos.x, top: ctxMenuPos.y }}
-            >
-              <button
-                type="button"
-                className="w-full text-left px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700 transition-colors"
-                onClick={() => {
-                  const tn = turnId >= 2 ? turnId : null;
-                  setCtxTn(tn);
-                  putSessionContextConfig(sessionId!, {
-                    firstTurnNumber: tn,
-                    mode: "manual",
-                    manualMode: "pinned",
-                    enabled: true,
-                  }).catch(() => {});
-                  setCtxMenuPos(null);
-                }}
-              >
-                Set context start to turn #{turnId}
-              </button>
-            </div>
+            <TurnContextMenu
+              sessionId={sessionId}
+              turnId={turnId}
+              messages={allMessages}
+              x={ctxMenuPos.x}
+              y={ctxMenuPos.y}
+              onClose={() => setCtxMenuPos(null)}
+            />
           </>
         )}
         {inspectedTurnId !== null && sessionId && (
@@ -275,7 +262,14 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
   const isError = isFailedStatus || errors.length > 0;
 
   return (
-    <div data-assistant-msg className="flex items-end w-full group">
+    <>
+    <div data-assistant-msg className="flex items-end w-full group"
+      onContextMenu={(e) => {
+        if (turnId == null) return;
+        e.preventDefault();
+        setCtxMenuPos({ x: e.clientX, y: e.clientY });
+      }}
+    >
       <div className={`flex-1 min-w-0 ${isError ? "rounded-lg ring-1 ring-red-500/40 bg-red-950/20 p-1" : ""}`}>
         <AgentMessageCard
           agentName={agentName}
@@ -347,6 +341,20 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
         </button>
       )}
     </div>
+    {ctxMenuPos && turnId != null && sessionId && (
+      <>
+        <div className="fixed inset-0 z-50" onClick={() => setCtxMenuPos(null)} />
+        <TurnContextMenu
+          sessionId={sessionId}
+          turnId={turnId}
+          messages={allMessages}
+          x={ctxMenuPos.x}
+          y={ctxMenuPos.y}
+          onClose={() => setCtxMenuPos(null)}
+        />
+      </>
+    )}
+    </>
   );
 }
 

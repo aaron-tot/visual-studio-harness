@@ -208,6 +208,9 @@ export function MessageList() {
               key={`summary-${turnId}`}
               data-summary-turn={turnId}
               data-summary-end={summaryEndTurn ?? ""}
+              // Let the context circle snap to the summary's anchor position
+              // (its end turn). The handle reads [data-turn-number] elements.
+              data-turn-number={summaryEndTurn != null ? summaryEndTurn : undefined}
               className="animate-in fade-in slide-in-from-bottom-1 duration-200"
             >
               <SummaryTurnWrapper
@@ -217,6 +220,7 @@ export function MessageList() {
                 summaryStartTurn={summaryStartTurn}
                 isCollapsed={isCollapsed}
                 onToggle={() => toggleSummary(turnId)}
+                messages={messages}
               />
             </div>
           );
@@ -277,6 +281,7 @@ interface SummaryTurnWrapperProps {
   summaryStartTurn: number | undefined;
   isCollapsed: boolean;
   onToggle: () => void;
+  messages: Message[];
 }
 
 import type { Message } from "../../../_shared/types/message";
@@ -288,10 +293,26 @@ function SummaryTurnWrapper({
   summaryStartTurn,
   isCollapsed,
   onToggle,
+  messages,
 }: SummaryTurnWrapperProps) {
   const label = summaryEndTurn != null
     ? `Summary · turns ${summaryStartTurn}–${summaryEndTurn}`
     : "Summary";
+
+  // The summarizer's input was the covered turns PLUS the prior chain summary
+  // (if any). On hover, show the covered range and note whether a prior summary
+  // was included.
+  const priorSummary = messages.find(
+    (m) => m.isSummary && m.summaryEndTurn != null && summaryStartTurn != null && m.summaryEndTurn < summaryStartTurn && m.summaryStartTurn != null,
+  );
+
+  const tooltip = [
+    "This summary was generated from:",
+    `  • Turns ${summaryStartTurn ?? "?"}–${summaryEndTurn ?? "?"}`,
+    priorSummary
+      ? `  • Previous summary (turns ${priorSummary.summaryStartTurn}–${priorSummary.summaryEndTurn})`
+      : "  • (no prior summary)",
+  ].join("\n");
 
   return (
     <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 overflow-hidden">
@@ -299,6 +320,7 @@ function SummaryTurnWrapper({
         type="button"
         className="w-full flex items-center gap-2 px-3 py-2 text-left focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
         onClick={onToggle}
+        title={tooltip}
       >
         {isCollapsed ? <ChevronRight size={14} className="text-blue-400 flex-shrink-0" /> : <ChevronDown size={14} className="text-blue-400 flex-shrink-0" />}
         <span className="text-[10px] font-medium uppercase tracking-wider text-blue-400">{label}</span>

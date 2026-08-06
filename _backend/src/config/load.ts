@@ -8,7 +8,16 @@ import { migrateConfig } from "./migrate";
 import { listAgents, writeAgent } from "../rest/agents";
 import { loadSeedJoinersDefaults } from "../features/mds/paths";
 import { getSearchProviderRegistry } from "../features/tools/host/search-provider-registry";
+import { buildDefaultSearchProviders } from "./migrate";
 
+/**
+ * Configuration loader with live fs.watch reload.
+ *
+ * 🚫  FOR AI AGENTS: NEVER call initConfigWatcher with a production data directory
+ *     (/home/aaron/.config/visual-studio-harness/). This function writes to config.json.
+ *     Only the running application binary should invoke this at startup.
+ *     Tests must use a temporary directory.
+ */
 export interface ConfigWatcher {
   config: ConfigFile;
   unsubscribe: () => void;
@@ -33,6 +42,7 @@ export async function initConfigWatcher(
         models: d.defaultModels ?? [{ displayName: "Default Model", modelName: "default" }],
         ...(d.id === "test" ? { test: true } : {}),
       })),
+      searchProviders: buildDefaultSearchProviders(),
       defaultProvider: "OpenCode Zen",
       defaultModel: "Default Model",
       agents: {},
@@ -76,6 +86,9 @@ export async function initConfigWatcher(
   }
 
   let config = migrateConfig(await loadConfig(dataDir));
+
+  // Persist migrated config (e.g. searchProviders defaults) back to disk
+  await saveConfig(dataDir, config);
 
   // Initialize search provider registry
   if (config.searchProviders) {

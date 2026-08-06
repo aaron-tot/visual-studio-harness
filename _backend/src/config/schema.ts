@@ -150,8 +150,21 @@ export const KnowledgeBaseConfigSchema = z.object({
   search: KnowledgeBaseSearchConfigSchema.default({}),
 });
 
+export const SearchProviderConfigSchema = z.object({
+  id: z.string(),
+  type: z.enum(["exa", "parallel", "brave", "serper", "custom"]),
+  name: z.string(),
+  enabled: z.boolean().default(false),
+  priority: z.number().int().default(0),
+  apiKey: z.string().optional(),
+  rateLimit: z.object({ rpm: z.number().int().positive().optional(), rpd: z.number().int().positive().optional() }).optional(),
+  tags: z.array(z.string()).default([]),
+  customMcpUrl: z.string().optional(),
+});
+
 export const ConfigFileSchema = z.object({
   providers: z.array(ProviderConfigSchema),
+  searchProviders: z.array(SearchProviderConfigSchema).default([]),
   knowledge: KnowledgeBaseConfigSchema.optional(),
   agents: z.record(AgentSettingsSchema).default({}),
   subagent: SubagentToolSettingsSchema.optional(),

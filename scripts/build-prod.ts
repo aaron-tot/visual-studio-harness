@@ -6,6 +6,10 @@
  * Runtime data stays in:
  *   DATA_DIR env (if set) or ../data/prod/{config.json,sessions/,logs/}
  * Never writes into source/data.
+ *
+ * 🚫  FOR AI AGENTS: NEVER run this script. It compiles the standalone binary
+ *     and writes to /home/aaron/Desktop/Visual Studio Harness/data/package/.
+ *     Only the user should trigger production builds manually via `bun run build`.
  */
 
 import { readdir, readFile, writeFile, mkdir, rm } from "node:fs/promises";

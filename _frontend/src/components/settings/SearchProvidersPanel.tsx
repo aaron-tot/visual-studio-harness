@@ -64,7 +64,12 @@ export function SearchProvidersPanel() {
 
   const handleTestProvider = async (provider: SearchProviderConfig) => {
     setTestingId(provider.id);
-    setTestResults((prev) => ({ ...prev, [provider.id]: { success: false, provider: provider.name, error: "Testing..." } }));
+    // Clear previous result, don't show fake failure
+    setTestResults((prev) => {
+      const next = { ...prev };
+      delete next[provider.id];
+      return next;
+    });
 
     try {
       const res = await fetch("/api/search-providers/test", {
@@ -167,6 +172,7 @@ export function SearchProvidersPanel() {
 
   const isPrimary = (p: SearchProviderConfig) => p.priority === 0 && p.enabled;
   const isInBatchRotation = (p: SearchProviderConfig) => p.tags?.includes("batch-rotate") ?? false;
+  const isBuiltIn = (p: SearchProviderConfig) => BUILTIN_PROVIDER_IDS.has(p.id);
 
   return (
     <div className="space-y-6">
@@ -337,16 +343,30 @@ export function SearchProvidersPanel() {
                 </button>
 
                 {/* Test Result Indicator */}
-                {result && (
+                {(result || isTesting) && (
                   <span
                     className={`px-2 py-0.5 text-[10px] rounded ${
-                      result.success
+                      isTesting
+                        ? "bg-blue-500/20 text-blue-400"
+                        : result.success
                         ? "bg-green-500/20 text-green-400"
                         : "bg-red-500/20 text-red-400"
                     }`}
-                    title={result.result || result.error}
+                    title={isTesting ? "Testing..." : result.result || result.error}
                   >
-                    {result.success ? "✓ OK" : "✗ Failed"}
+                    {isTesting ? (
+                      <>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin inline-block mr-1">
+                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1" />
+                        </svg>
+                        Testing...
+                      </>
+                    ) : result.success ? (
+                      "✓ OK"
+                    ) : (
+                      "✗ Failed"
+                    )}
                   </span>
                 )}
 

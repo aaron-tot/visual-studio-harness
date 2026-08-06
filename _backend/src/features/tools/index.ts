@@ -7,6 +7,7 @@ import { bashTool } from "./builtins/bash";
 import { skillTool } from "./builtins/skill";
 import { makeTaskTool, taskTool } from "./builtins/task";
 import { agentChangeTool } from "./builtins/agent_change";
+import { customToolTool } from "./builtins/custom_tool";
 import { designTool } from "./consolidated/design";
 import { listTool } from "./builtins/list";
 import { notesTool } from "./consolidated/notes";
@@ -27,8 +28,10 @@ const ALL_TOOLS: ToolDef[] = [
   applyPatchTool,
   bashTool,
   skillTool,
+  makeTaskTool,
   taskTool,
   agentChangeTool,
+  customToolTool,
   designTool,
   listTool,
   notesTool,
@@ -87,4 +90,4 @@ export {
   resolveAllKnownTools,
 } from "./perms/resolve";
 export { setTodoDataDir } from "./builtins/todo";
-export { setSkillRoots } from "./builtins/skill";
+export { setSkillRoots, setCustomToolsSkillDir } from "./builtins/skill";

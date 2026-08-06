@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { ConfigFile, Message, MessagePartType, ThinkingEffort } from "../../../_shared/types";
+import { toJSONSchema } from "zod/v4";
 import {
   createSession,
   getSession,
@@ -16,6 +17,7 @@ import {
   toolsEnabled,
   setTodoDataDir,
   setSkillRoots,
+  setCustomToolsSkillDir,
   isStopTurnResult,
   type ResolveContext,
 } from "../../tools";
@@ -250,6 +252,7 @@ export async function runTurn(
 
   setTodoDataDir(dataDir);
   setSkillRoots([join(dataDir, "mds", "_skills")]);
+  setCustomToolsSkillDir(join(dataDir, "custom-tools"));
 
   const abortSignal = events.signal;
   let turnEnded = false;
@@ -319,6 +322,7 @@ export async function runTurn(
           onSlotWaitStart: events.onSlotWaitStart,
           onSlotWaitStatus: events.onSlotWaitStatus,
           onSlotWaitEnd: events.onSlotWaitEnd,
+          agentSettings: runtime.settings,
         }), resolveCtx, config.toolExecutionMode)
       : undefined;
 
@@ -370,7 +374,7 @@ export async function runTurn(
         .all();
       contextTurnNumbers = turnRows.map(r => r.turnNumber).sort((a, b) => a - b);
     }
-    
+
 // Get summary range ID if any
     let summaryRangeId: number | null = null;
     if (firstTurnNumber != null) {
@@ -386,8 +390,8 @@ export async function runTurn(
       summaryRangeId = range?.id ?? null;
     }
 
-    console.error("[context] session=" + sessionId + " turn=" + turnNumber + 
-      " firstTurnNumber=" + (firstTurnNumber ?? "null") + 
+    console.error("[context] session=" + sessionId + " turn=" + turnNumber +
+      " firstTurnNumber=" + (firstTurnNumber ?? "null") +
       " source=" + contextSource +
       " contextTurnNumbers=" + JSON.stringify(contextTurnNumbers) +
       " summaryRange=" + (summaryRangeId ?? "none") +
@@ -418,8 +422,7 @@ export async function runTurn(
       let parameters: unknown = { type: "object", properties: {} };
       if (tool.inputSchema != null) {
         try {
-          const schema = asSchema(tool.inputSchema as never);
-          parameters = typeof schema.jsonSchema === "function" ? await schema.jsonSchema() : schema.jsonSchema;
+          parameters = toJSONSchema(tool.inputSchema);
         } catch {
           parameters = { type: "object", properties: {} };
         }

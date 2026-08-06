@@ -356,7 +356,17 @@ export function getTurnDetail(
       .get();
     if (ts?.toolsJson) {
       try {
-        toolsList = JSON.parse(ts.toolsJson);
+        const parsed = JSON.parse(ts.toolsJson);
+        // Transform from OpenAI function calling format to simple format
+        // OpenAI format: [{ type: "function", function: { name, description, parameters } }]
+        // Simple format: [{ name, description, parameters }]
+        toolsList = Array.isArray(parsed)
+          ? parsed.map((t: any) => ({
+              name: t.name ?? t.function?.name ?? "",
+              description: t.description ?? t.function?.description ?? "",
+              parameters: t.parameters ?? t.function?.parameters ?? {},
+            }))
+          : [];
       } catch {}
     }
   }

@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ConfigFile, ProviderConfig } from "../../../_shared/types";
+import type { SearchProviderConfig, SearchProviderType } from "../../../../_shared/types/config";
 import { ConfigFileSchema } from "../config/schema";
 
 /** Known-good OpenAI-compatible base for OpenCode Zen template. */

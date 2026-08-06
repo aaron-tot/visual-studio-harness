@@ -17,6 +17,14 @@ const MODE = process.env.MODE || "dev";
  *
  * Never use import.meta.dir alone for runtime files in prod — under Bun
  * --compile it becomes /$bunfs/root, which is not the real data dir.
+ *
+ * ⚠️  NEVER create a "dev" subdirectory under the OS config dir (~/.config/visual-studio-harness/dev/).
+ *     That location is for PRODUCTION runtime data only. Dev mode uses projectRoot/data/dev/.
+ *
+ * 🚫  FOR AI AGENTS: NEVER write to /home/aaron/.config/visual-studio-harness/ or any OS config directory.
+ *     That is the USER'S PRODUCTION DATA. Only the compiled binary at runtime should touch it.
+ *     Dev/test data goes in: /home/aaron/Desktop/Visual Studio Harness/data/dev/
+ *     Prod binary data goes in: /home/aaron/Desktop/Visual Studio Harness/data/prod/
  */
 export type DataDirSource = "env" | "portable" | "installed" | "dev" | "cwd";
 

@@ -50,6 +50,8 @@ export interface SkillMdConfig {
   tag?: string;
   /** Scope to limit tag search. If omitted, all scopes are searched. */
   scope?: "global" | "project" | "session";
+  /** How the skill is attached to the agent. Default: "inject". */
+  attachmentMode?: "inject" | "hard" | "soft";
 }
 
 export interface AgentSettings {
@@ -61,6 +63,8 @@ export interface AgentSettings {
   color?: string;
   agentMd?: AgentMdConfig;
   skillMds?: SkillMdConfig[];
+  /** Controls which skills the agent can access via the skill tool. Default: "all". */
+  skillAccess?: "all" | "attached";
 }
 
 export interface SubagentToolSettings {

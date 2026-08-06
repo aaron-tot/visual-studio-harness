@@ -33,7 +33,7 @@ export function migrateConfig(config: ConfigFile): ConfigFile {
   }
 
   // Backfill Test provider if missing from providers list
-  let providers = config.providers;
+  let providers = config.providers ?? [];
   const hasTestProvider = providers.some((p) => p.test || p.displayName === "Test");
   if (!hasTestProvider) {
     const testDesc = PRECONFIGURED_PROVIDERS.find((d) => d.id === "test");
@@ -51,8 +51,8 @@ export function migrateConfig(config: ConfigFile): ConfigFile {
   }
 
   // Migrate searchProviders from env vars if not present
-  let searchProviders = config.searchProviders;
-  if (!searchProviders || searchProviders.length === 0) {
+  let searchProviders = config.searchProviders ?? [];
+  if (searchProviders.length === 0) {
     searchProviders = buildDefaultSearchProviders();
   }
 
@@ -67,56 +67,25 @@ export function migrateConfig(config: ConfigFile): ConfigFile {
   };
 }
 
-function buildDefaultSearchProviders(): SearchProviderConfig[] {
-  const providers: SearchProviderConfig[] = [];
-
-  // Exa from env
-  if (process.env.EXA_API_KEY || process.env.VISUAL_STUDIO_HARNESS_ENABLE_EXA) {
-    providers.push({
+export function buildDefaultSearchProviders(): SearchProviderConfig[] {
+  return [
+    {
       id: "exa-primary",
       type: "exa",
       name: "Exa Primary",
-      enabled: true,
+      enabled: !!process.env.EXA_API_KEY || !!process.env.VISUAL_STUDIO_HARNESS_ENABLE_EXA,
       priority: 0,
       apiKey: process.env.EXA_API_KEY,
       tags: ["primary", "batch-rotate"],
-    });
-  }
-
-  // Parallel from env
-  if (process.env.PARALLEL_API_KEY || process.env.VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL) {
-    providers.push({
+    },
+    {
       id: "parallel-backup",
       type: "parallel",
       name: "Parallel Backup",
-      enabled: true,
-      priority: providers.length > 0 ? 1 : 0,
+      enabled: !!process.env.PARALLEL_API_KEY || !!process.env.VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL,
+      priority: 1,
       apiKey: process.env.PARALLEL_API_KEY,
-      tags: providers.length > 0 ? ["fallback", "batch-rotate"] : ["primary", "batch-rotate"],
-    });
-  }
-
-  // If neither configured, create defaults (disabled) so UI shows them
-  if (providers.length === 0) {
-    providers.push(
-      {
-        id: "exa-primary",
-        type: "exa",
-        name: "Exa Primary",
-        enabled: false,
-        priority: 0,
-        tags: ["primary", "batch-rotate"],
-      },
-      {
-        id: "parallel-backup",
-        type: "parallel",
-        name: "Parallel Backup",
-        enabled: false,
-        priority: 1,
-        tags: ["fallback", "batch-rotate"],
-      }
-    );
-  }
-
-  return providers;
+      tags: ["fallback", "batch-rotate"],
+    },
+  ];
 }

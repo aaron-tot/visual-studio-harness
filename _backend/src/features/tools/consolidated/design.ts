@@ -40,9 +40,66 @@ const designSchema = z.object({
   goal: z.string().optional().describe("Goal or end-goal"),
   specReference: z.string().optional().describe("Spec name this plan implements"),
   scope: z.enum(["global", "project", "session"]).optional().describe("Scope"),
-  content: z.record(z.unknown()).optional().describe("Document body; see skill:design"),
-  document: z.record(z.unknown()).optional().describe("Full replacement document JSON"),
-  patch: z.record(z.unknown()).optional().describe("Partial doc to merge (RFC 7396)"),
+  content: z
+    .union([
+      z.record(z.unknown()),
+      z.string().transform((s, ctx) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(s);
+        } catch {
+          ctx.addIssue({ code: "custom", message: "content must be valid JSON" });
+          return z.NEVER;
+        }
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          ctx.addIssue({ code: "custom", message: "content must be a JSON object" });
+          return z.NEVER;
+        }
+        return parsed as Record<string, unknown>;
+      }),
+    ])
+    .optional()
+    .describe("Document body (JSON object or valid JSON object string); see skill:design"),
+  document: z
+    .union([
+      z.record(z.unknown()),
+      z.string().transform((s, ctx) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(s);
+        } catch {
+          ctx.addIssue({ code: "custom", message: "document must be valid JSON" });
+          return z.NEVER;
+        }
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          ctx.addIssue({ code: "custom", message: "document must be a JSON object" });
+          return z.NEVER;
+        }
+        return parsed as Record<string, unknown>;
+      }),
+    ])
+    .optional()
+    .describe("Full replacement document JSON (object or valid JSON object string)"),
+  patch: z
+    .union([
+      z.record(z.unknown()),
+      z.string().transform((s, ctx) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(s);
+        } catch {
+          ctx.addIssue({ code: "custom", message: "patch must be valid JSON" });
+          return z.NEVER;
+        }
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          ctx.addIssue({ code: "custom", message: "patch must be a JSON object" });
+          return z.NEVER;
+        }
+        return parsed as Record<string, unknown>;
+      }),
+    ])
+    .optional()
+    .describe("Partial doc to merge (RFC 7396) (object or valid JSON object string)"),
   reason: z.string().optional().describe("Abandon reason"),
   successor: z.string().optional().describe("Replacement design name"),
 });
@@ -51,6 +108,7 @@ export const designTool: ToolDef = {
   name: "design",
   description:
     "Create, read, edit, and abandon spec/plan design documents. Set 'action' to pick the operation. " +
+    "Parameters content, document, and patch accept JSON objects or valid JSON object strings. " +
     "See skill:design for the document structure and skill:design-edit for patch semantics.",
   permissionDefault: "allow",
   inputSchema: designSchema,

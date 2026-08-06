@@ -20,6 +20,12 @@ export interface SubagentConfigRequest {
   reason: string;
   suggestedProvider?: string;
   suggestedModel?: string;
+  suggestedProvider?: string;
+  suggestedModel?: string;
+  temperature?: number;
+  thinkingEffort?: ThinkingEffort;
+  maxSteps?: number;
+  maxSteps?: number;
 }
 
 export interface SubagentConfigReply {
@@ -28,6 +34,7 @@ export interface SubagentConfigReply {
   modelName?: string;
   temperature?: number;
   thinkingEffort?: ThinkingEffort;
+  maxSteps?: number;
   maxSteps?: number;
 }
 
@@ -72,6 +79,8 @@ export interface BaseToolContext {
   providerName?: string;
   /** Model name (modelName) of the LLM that invoked this tool */
   modelName?: string;
+  /** Agent settings for the current turn (includes skillAccess, skillMds, etc.) */
+  agentSettings?: import("../../../../../_shared/types").AgentSettings;
 }
 
 /** Extended context used only by the task tool — adds subagent/slot/agent callbacks. */
@@ -94,6 +103,7 @@ export interface ExtendedToolContext extends BaseToolContext {
   bridgeToolResult?: (e: {
     toolCallId: string;
     toolName: string;
+    args: unknown;
     output: unknown;
     isError?: boolean;
   }) => void;

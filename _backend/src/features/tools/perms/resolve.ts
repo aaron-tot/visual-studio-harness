@@ -6,12 +6,44 @@ export interface ResolveContext {
   dataDir: string;
   sessionId?: string;
   workspaceRoot?: string;
+  agentSettings?: import("../../../../../_shared/types").AgentSettings;
 }
 
 export interface ResolvedPermission {
   mode: PermissionMode;
   /** Which layer supplied the mode; "unknown" if missing from all three files */
   source: PermsLayer | "trusted" | "unknown";
+}
+
+/**
+ * Check if the agent has access to a specific skill.
+ * Returns true if allowed, false if denied.
+ */
+export function checkSkillAccess(
+  skillName: string,
+  agentSettings?: import("../../../../../_shared/types").AgentSettings
+): boolean {
+  if (!agentSettings) return true; // no agent settings = allow all
+  const access = agentSettings.skillAccess ?? "all";
+  if (access === "all") return true;
+
+  // "attached" mode — only allow skills listed in skillMds
+  if (access === "attached") {
+    if (!agentSettings.skillMds?.length) return false;
+    // Resolve skill names from skillMds (names or paths)
+    const attachedNames = new Set<string>();
+    for (const skill of agentSettings.skillMds ?? []) {
+      if (skill.name) attachedNames.add(skill.name);
+      if (skill.path) {
+        // Extract folder name from path
+        const parts = skill.path.split("/").filter(Boolean);
+        if (parts.length > 0) attachedNames.add(parts[parts.length - 1]);
+      }
+    }
+    return attachedNames.has(skillName);
+  }
+
+  return true;
 }
 
 /**
@@ -29,6 +61,21 @@ export async function resolveToolPermissionDetailed(
   toolName: string,
   ctx: ResolveContext
 ): Promise<ResolvedPermission> {
+  if (toolsTrusted()) {
+    return { mode: "allow", source: "trusted" };
+  }
+
+  // Special handling for skill tool access control
+  if (toolName === "skill" && ctx.agentSettings) {
+    const skillName = ""; // We don't know the skill name here, but we can check if skill tool is allowed at all
+    // For now, we just allow/deny the skill tool entirely based on skillAccess
+    // The actual skill name check happens in the tool itself
+    const access = ctx.agentSettings.skillAccess ?? "all";
+    if (access === "attached" && (!ctx.agentSettings.skillMds?.length)) {
+      return { mode: "deny", source: "unknown" };
+    }
+  }
+
   if (toolsTrusted()) {
     return { mode: "allow", source: "trusted" };
   }

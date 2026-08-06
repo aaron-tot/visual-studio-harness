@@ -38,6 +38,10 @@ export function registerCustomToolsRoutes(app: FastifyInstance, dataDir: string)
       code: body.code.trim(),
       enabled: body.enabled !== false,
       permissionDefault: body.permissionDefault ?? "ask",
+      skillGuide: body.skillGuide?.trim() ?? undefined,
+      skillPushMode: body.skillPushMode ?? undefined,
+      skillId: body.skillId?.trim() ?? undefined,
+      skillCustomPushText: body.skillCustomPushText?.trim() ?? undefined,
     };
     await writeCustomTool(dataDir, tool);
     return { ok: true, tool };
@@ -57,6 +61,10 @@ export function registerCustomToolsRoutes(app: FastifyInstance, dataDir: string)
       code: body.code?.trim() ?? existing.code,
       enabled: body.enabled ?? existing.enabled,
       permissionDefault: body.permissionDefault ?? existing.permissionDefault,
+      skillGuide: body.skillGuide !== undefined ? (body.skillGuide?.trim() ?? undefined) : existing.skillGuide,
+      skillPushMode: body.skillPushMode ?? existing.skillPushMode,
+      skillId: body.skillId !== undefined ? (body.skillId?.trim() ?? undefined) : existing.skillId,
+      skillCustomPushText: body.skillCustomPushText !== undefined ? (body.skillCustomPushText?.trim() ?? undefined) : existing.skillCustomPushText,
     };
     await writeCustomTool(dataDir, updated);
     return { ok: true, tool: updated };

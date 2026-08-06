@@ -13,6 +13,10 @@ function toolPath(dataDir: string, name: string): string {
   return join(toolsDir(dataDir), `${name}.json`);
 }
 
+function skillPath(dataDir: string, name: string): string {
+  return join(toolsDir(dataDir), `${name}.skill.md`);
+}
+
 export async function ensureCustomToolsDir(dataDir: string): Promise<void> {
   const dir = toolsDir(dataDir);
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
@@ -24,7 +28,7 @@ export async function listCustomTools(dataDir: string): Promise<CustomTool[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   const tools: CustomTool[] = [];
   for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith(".json")) continue;
+    if (!e.isFile() || !e.name.endsWith(".json") || e.name.endsWith(".prompt.json")) continue;
     try {
       const raw = await readFile(join(dir, e.name), "utf-8");
       const parsed = JSON.parse(raw) as CustomTool;
@@ -40,7 +44,22 @@ export async function readCustomTool(dataDir: string, name: string): Promise<Cus
   const fp = toolPath(dataDir, name);
   try {
     const raw = await readFile(fp, "utf-8");
-    return JSON.parse(raw) as CustomTool;
+    const tool = JSON.parse(raw) as CustomTool;
+    // Load skill guide from .skill.md file if exists and not already in JSON
+    if (!tool.skillGuide) {
+      const skillMd = await readSkillGuide(dataDir, name);
+      if (skillMd) tool.skillGuide = skillMd;
+    }
+    return tool;
+  } catch {
+    return null;
+  }
+}
+
+export async function readSkillGuide(dataDir: string, name: string): Promise<string | null> {
+  const fp = skillPath(dataDir, name);
+  try {
+    return await readFile(fp, "utf-8");
   } catch {
     return null;
   }
@@ -49,6 +68,17 @@ export async function readCustomTool(dataDir: string, name: string): Promise<Cus
 export async function writeCustomTool(dataDir: string, tool: CustomTool): Promise<void> {
   await ensureCustomToolsDir(dataDir);
   await writeFile(toolPath(dataDir, tool.name), JSON.stringify(tool, null, 2) + "\n", "utf-8");
+
+  // Write skill guide markdown file if present
+  if (tool.skillGuide) {
+    await writeFile(skillPath(dataDir, tool.name), tool.skillGuide, "utf-8");
+  }
+
+  // Write prompt.json if skill guide exists and tags provided
+  if (tool.skillGuide && tool.skillTags && tool.skillTags.length > 0) {
+    const promptPath = join(toolsDir(dataDir), `${tool.name}.prompt.json`);
+    await writeFile(promptPath, JSON.stringify({ tags: tool.skillTags }, null, 2) + "\n", "utf-8");
+  }
 }
 
 export async function deleteCustomTool(dataDir: string, name: string): Promise<void> {
@@ -57,6 +87,37 @@ export async function deleteCustomTool(dataDir: string, name: string): Promise<v
   } catch {
     // already gone
   }
+  try {
+    await unlink(skillPath(dataDir, name));
+  } catch {
+    // no skill file
+  }
+  try {
+    const promptPath = join(toolsDir(dataDir), `${name}.prompt.json`);
+    await unlink(promptPath);
+  } catch {
+    // no prompt.json file
+  }
+}
+
+/**
+ * Build the effective description with skill guide injection.
+ */
+function buildEffectiveDescription(tool: CustomTool): string {
+  let desc = tool.description;
+  if (tool.skillGuide) {
+    const skillId = tool.skillId ?? tool.name;
+    let pushText: string;
+    if (tool.skillPushMode === "hard") {
+      pushText = `MUST read the skill guide (skill ID: ${skillId}) before using this tool. Use the skill tool to read it.`;
+    } else if (tool.skillPushMode === "custom") {
+      pushText = tool.skillCustomPushText ?? `A skill guide exists for this tool (skill ID: ${skillId}). You may read it with the skill tool if needed.`;
+    } else {
+      pushText = `A skill guide exists for this tool (skill ID: ${skillId}). You may read it with the skill tool if needed.`;
+    }
+    desc = `${desc}\n\n${pushText}`;
+  }
+  return desc;
 }
 
 /**
@@ -110,7 +171,7 @@ export function customToolToToolDef(tool: CustomTool): ToolDef {
 
   return {
     name: tool.name,
-    description: tool.description,
+    description: buildEffectiveDescription(tool),
     inputSchema: schemaToZod(tool.inputSchema),
     permissionDefault: tool.permissionDefault ?? "ask",
     execute,

@@ -344,8 +344,8 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
           {turn.tools && turn.tools.length > 0 && (
             <Collapsible title={`Tools (${turn.tools.length})`}>
               <div className="space-y-2">
-                {turn.tools.map((tool) => (
-                  <div key={tool.name} className="rounded bg-zinc-950 border border-zinc-800 p-2">
+                {turn.tools.map((tool, index) => (
+                  <div key={`${tool.name}-${index}`} className="rounded bg-zinc-950 border border-zinc-800 p-2">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-mono text-blue-300">{tool.name}</span>
                     </div>

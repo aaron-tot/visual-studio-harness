@@ -468,6 +468,10 @@ export interface CustomTool {
   code: string;
   enabled: boolean;
   permissionDefault?: string;
+  skillGuide?: string;
+  skillPushMode?: "soft" | "hard" | "custom";
+  skillCustomPushText?: string;
+  skillId?: string;
 }
 
 export function getCustomTools() {

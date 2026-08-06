@@ -33,6 +33,7 @@ import { resolveDataDir, getMode, getPort } from "./paths";
 import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
 import { createHooksSystem, setHooksSystem } from "./features/hooks";
 import { ensureGlobal } from "./features/tools/perms/store";
+import { createDefaultRegistry } from "./features/tools";
 import { migrateToSqlite } from "./storage/migrate";
 import { abortOrphanedStreamingTurns } from "./features/chat/db-trace";
 
@@ -125,8 +126,18 @@ async function initLogging() {
 
 const LOG_REQUESTS = false;
 
+/**
+ * Application entry point.
+ *
+ * 🚫  FOR AI AGENTS: NEVER run this directly with a production data directory.
+ *     This initializes the database, loads production config, and starts the server.
+ *     Tests must use a temporary DATA_DIR.
+ */
 async function main() {
   await initLogging().catch(() => {});
+
+  // Initialize tools registry first so defaults are available for ensureGlobal
+  createDefaultRegistry();
 
   // Spec: if global perms missing, create from template on first access.
   try {

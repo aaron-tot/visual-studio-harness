@@ -35,6 +35,25 @@ function parsePartData(data: string): Record<string, unknown> {
   }
 }
 
+/**
+ * Reads a persisted `additional_system_info` injection (a `tool` stepPart with
+ * `toolName: "additional_system_info"` and `data.kind === "system-info"` /
+ * `data.additionalSystemInfo === true`). Returns the verbatim content and the
+ * deterministic toolCallId so the fabricated call + result stay balanced.
+ * `toolCallId` may come from the part column (persistence path) or `data`
+ * (audit-friendly form). Returns null for normal tool parts.
+ */
+export function readAdditionalSystemInfoData(
+  data: Record<string, unknown>,
+  toolCallId?: string | null,
+): { content: string; toolCallId: string } | null {
+  if (!(data.additionalSystemInfo === true) && data.kind !== "system-info") return null;
+  const content = typeof data.content === "string" ? data.content : "";
+  const callId = typeof data.toolCallId === "string" ? data.toolCallId : toolCallId ?? "";
+  if (!content || !callId) return null;
+  return { content, toolCallId: callId };
+}
+
 export async function buildModelMessages(
   sessionId: string,
   systemBlock: string,
@@ -151,6 +170,28 @@ export async function buildModelMessages(
             break;
           }
           case "tool": {
+            const asi = readAdditionalSystemInfoData(data, part.toolCallId);
+            if (asi) {
+              if (options.includeTools === false) break; // hide injection when tools hidden
+              contentParts.push({
+                type: "tool-call",
+                toolCallId: asi.toolCallId,
+                toolName: "additional_system_info",
+                input: {},
+              });
+              toolResultMessages.push({
+                role: "tool",
+                content: [
+                  {
+                    type: "tool-result",
+                    toolCallId: asi.toolCallId,
+                    toolName: "additional_system_info",
+                    output: { type: "text", value: asi.content },
+                  },
+                ],
+              });
+              break;
+            }
             if (options.includeTools && part.toolCallId) {
               const args = data.args ?? {};
               contentParts.push({

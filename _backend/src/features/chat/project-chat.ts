@@ -878,6 +878,11 @@ export async function getTurnStepRawCapture(
     const stepSystemPrompt = s.promptSnapshotId != null
       ? (snapMap.get(s.promptSnapshotId) ?? turnSystemPrompt)
       : turnSystemPrompt;
+    // NOTE: stepSystemPrompt is base (+ latest additional_system_info injection)
+    // as a display proxy for the Inspector; the actual per-step wire is
+    // instructions=base plus the injected pair, captured verbatim in
+    // rawRequestJson above. buildModelMessages replays stored
+    // additional_system_info tool parts verbatim (Task 3).
     const instructions = stepSystemPrompt ?? systemMsg ?? "";
     const messages: CoreMessage[] = [
       ...sdkBase,

@@ -183,3 +183,82 @@ describe("buildModelMessages tool parts", () => {
     db.delete(summaryRanges).where(eq(summaryRanges.sessionId, SESSION_ID)).run();
   });
 });
+
+describe("buildModelMessages additional_system_info replay", () => {
+  const stored = "<additional_system_info>\n<runtime>1.2.3</runtime>\n</additional_system_info>";
+
+  test("replays a stored injection verbatim as assistant tool_call + tool result", async () => {
+    const tId = await makeTurn(
+      20,
+      [
+        {
+          type: "tool",
+          data: { content: stored, kind: "system-info", additionalSystemInfo: true },
+          toolCallId: "asi-1",
+          toolName: "additional_system_info",
+        },
+        { type: "text", data: { content: "assistant twenty" } },
+      ],
+      true,
+    );
+    const { messages } = await buildModelMessages(
+      SESSION_ID,
+      "sys",
+      options({ contextTurnIds: [tId], currentTurnNumber: 21, currentUserMessage: "current" }),
+      dataDir,
+    );
+    const assistant = messages.find((m) => m.role === "assistant");
+    expect(assistant?.content).toContainEqual(
+      expect.objectContaining({ type: "tool-call", toolName: "additional_system_info", toolCallId: "asi-1" }),
+    );
+    const tool = messages.find((m) => m.role === "tool");
+    expect(tool?.content).toContainEqual(
+      expect.objectContaining({
+        type: "tool-result",
+        toolCallId: "asi-1",
+        output: { type: "text", value: stored },
+      }),
+    );
+  });
+
+  test("replays verbatim and never re-renders (byte-stable across calls)", async () => {
+    const tId = await makeTurn(
+      21,
+      [
+        {
+          type: "tool",
+          data: { content: stored, kind: "system-info", additionalSystemInfo: true },
+          toolCallId: "asi-2",
+          toolName: "additional_system_info",
+        },
+      ],
+      true,
+    );
+    const base = options({ contextTurnIds: [tId], currentTurnNumber: 22, currentUserMessage: "next" });
+    const a = await buildModelMessages(SESSION_ID, "sys", base, dataDir);
+    const b = await buildModelMessages(SESSION_ID, "sys", base, dataDir);
+    expect(b.messages).toEqual(a.messages);
+  });
+});
+
+describe("additionalSystemInfo replay byte-stability (R3 acceptance)", () => {
+  test("consecutive reassemblies replay stored additional_system_info byte-identically", async () => {
+    const stored = "<additional_system_info>\n<runtime>turn-5</runtime>\n</additional_system_info>";
+    const t5 = await makeTurn(
+      5,
+      [
+        { type: "tool", data: { content: stored, kind: "system-info", additionalSystemInfo: true },
+          toolCallId: "asi-5", toolName: "additional_system_info" },
+        { type: "text", data: { content: "five" } },
+      ],
+      true,
+    );
+    const base = options({ contextTurnIds: [t5], currentTurnNumber: 6, currentUserMessage: "next" });
+    const first = await buildModelMessages(SESSION_ID, "sys", base, dataDir);
+    const second = await buildModelMessages(SESSION_ID, "sys", base, dataDir);
+    expect(second.messages).toEqual(first.messages); // whole array byte-identical
+    const tool = first.messages.find((m) => m.role === "tool");
+    const output = (tool?.content as any[])?.[0]?.output;
+    expect(output?.value).toBe(stored); // verbatim string replayed, never re-rendered
+  });
+});

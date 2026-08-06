@@ -33,6 +33,13 @@ export const SkillMdConfigSchema = z.object({
   path: z.string().optional(),
 });
 
+export const AdditionalSystemInfoSchema = z.object({
+  sections: z.array(z.enum(["runtime", "todoList", "workspaceManifest"])).default(["runtime", "todoList", "workspaceManifest"]),
+  visibility: z.enum(["hidden", "collapsed", "expanded"]).default("collapsed"),
+  persist: z.boolean().default(true),
+  includeTime: z.boolean().default(false),
+});
+
 /** Per-agent settings (runtime + MD attachments) */
 export const AgentSettingsSchema = z.object({
   providerName: z.string().optional(),
@@ -47,6 +54,7 @@ export const AgentSettingsSchema = z.object({
   color: z.string().optional(),
   agentMd: AgentMdConfigSchema.optional(),
   skillMds: z.array(SkillMdConfigSchema).default([]),
+  additionalSystemInfo: AdditionalSystemInfoSchema.optional(),
 });
 
 /** Global subagent tool settings */
@@ -172,6 +180,7 @@ export const ConfigFileSchema = z.object({
   db: DbConfigSchema.optional(),
   mcpServers: z.array(McpServerConfigSchema).default([]).optional(),
   systemPromptJoiners: SystemPromptJoinersSchema.optional(),
+  additionalSystemInfo: AdditionalSystemInfoSchema.optional(),
   defaultAgent: z.string().optional(),
   defaultProvider: z.string().optional(),
   defaultModel: z.string().optional(),

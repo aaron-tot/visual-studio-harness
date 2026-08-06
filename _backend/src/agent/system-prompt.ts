@@ -6,5 +6,5 @@ export { ensureGlobalSystemPromptFile } from "../features/mds/seeder";
 export { listAgentsMdAtRoot, listAgentsMdAtScopedRoot } from "../features/mds/reader";
 export { formatRuntimeInfo } from "../features/mds/runtime-format";
 export { resolveAgentMd, resolveSkillMds } from "../features/mds/reader";
-export { buildSystemBlock } from "../features/system-prompt/builder";
+export { buildSystemBlock, buildSystemBlockBase, buildAdditionalSystemInfoBlock } from "../features/system-prompt/builder";
 export { messagesForModel, assertExactlyOneSystemMessage } from "../features/mds/messages";

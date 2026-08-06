@@ -15,6 +15,7 @@ import { ToolCallPart } from "./parts/ToolCallPart";
 import { QuestionPart } from "./parts/QuestionPart";
 import { AgentPart } from "./parts/AgentPart";
 import { SubtaskPart } from "./parts/SubtaskPart";
+import { MemoSystemInfoBubble } from "./SystemInfoBubble";
 
 interface MessagePartProps {
   part: MessagePartType;
@@ -30,12 +31,36 @@ interface MessagePartProps {
   durationMs?: number;
 }
 
+/** True for a persisted `additional_system_info` injection (context, not a tool). */
+export function isAdditionalSystemInfoPart(part: MessagePartType): boolean {
+  if (part.type !== "tool") return false;
+  const p = part as any;
+  return p.toolName === "additional_system_info" || p.additionalSystemInfo === true || p.kind === "system-info";
+}
+
+/** Extracts the verbatim volatile content from an additional_system_info part. */
+export function extractSystemInfoContent(part: MessagePartType): string {
+  const p = part as any;
+  if (typeof p.content === "string") return p.content;
+  if (typeof p.result === "string") return p.result;
+  if (p.result && typeof p.result === "object") {
+    const v = (p.result as any).value;
+    if (typeof v === "string") return v;
+  }
+  return "";
+}
+
 export function MessagePart({ part, allParts, toolCacheByCallId, isStreaming, agentName, modelName, durationMs }: MessagePartProps) {
   const sessionId = useChatStore((s) => s.sessionId);
 
   // Skip sub-agent child tool calls at the top level — they render nested inside the task card
   if (part.type === "tool" && part.parentToolCallId) {
     return null;
+  }
+
+  // additional_system_info injections are context, not tools — render distinctly.
+  if (isAdditionalSystemInfoPart(part)) {
+    return <MemoSystemInfoBubble content={extractSystemInfoContent(part)} />;
   }
 
   switch (part.type) {

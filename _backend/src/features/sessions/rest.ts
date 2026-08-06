@@ -911,6 +911,10 @@ for (const m of chatMessages) {
 
     // Build SDK request object (exact object passed to streamText)
     // SDK v7 requires system as instructions param, not in messages array
+    // NOTE: reconstructedMessages = base system (+ replayed additional_system_info
+    // injections from prior turns, verbatim) as a display proxy; the true per-step
+    // wire (including the current turn's injected pair) is captured verbatim in
+    // rawRequestJson.
     const systemMsg = reconstructedMessages[0]?.role === "system" ? reconstructedMessages[0].content : undefined;
     const sdkMessages = systemMsg ? reconstructedMessages.slice(1) : reconstructedMessages;
     const sdkRequest: Record<string, unknown> = {

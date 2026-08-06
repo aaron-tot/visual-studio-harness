@@ -33,20 +33,10 @@ async function* wrapWithStepEvents(
   signal?: AbortSignal,
 ): AsyncGenerator<any> {
   const DEBUG_STREAM_EVENTS = false; // Set true for per-event verbose logging
-  yield { type: "start-step", stepNumber: 0, request: {}, warnings: [] };
-  let eventCount = 0;
-  for await (const event of inner) {
-    eventCount++;
-    if (DEBUG_STREAM_EVENTS) {
-      console.log(`[wrapWithStepEvents] Event #${eventCount}:`, event.type, event.toolCallId || event.toolName || "");
-    }
-    if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
-    yield event;
-  }
-  console.log(`[wrapWithStepEvents] Inner generator finished, total events: ${eventCount}`);
   // Shape matches AI SDK TextStreamFinishStepPart (nested usage details + performance)
-  yield {
+  const finishStepFor = (stepNumber: number) => ({
     type: "finish-step",
+    stepNumber,
     finishReason: "stop",
     rawFinishReason: "stop",
     usage: {
@@ -77,7 +67,39 @@ async function* wrapWithStepEvents(
     response: { id: "mock-response-id", modelId: "mock-model", timestamp: new Date() },
     providerMetadata: { mock: { provider: "Test" } },
     warnings: [],
-  };
+  });
+
+  yield { type: "start-step", stepNumber: 0, request: {}, warnings: [] };
+  let stepNumber = 0;
+  let inStep = true;
+  let eventCount = 0;
+  for await (const event of inner) {
+    eventCount++;
+    if (DEBUG_STREAM_EVENTS) {
+      console.log(`[wrapWithStepEvents] Event #${eventCount}:`, event.type, event.toolCallId || event.toolName || "");
+    }
+    if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+    // Each tool call is its own step (one model response per sequential call),
+    // matching how real providers interleave start/finish-step between calls.
+    if (event.type === "tool-call") {
+      if (!inStep) {
+        yield { type: "start-step", stepNumber, request: {}, warnings: [] };
+        inStep = true;
+      }
+      yield event;
+    } else if (event.type === "tool-result") {
+      yield event;
+      if (inStep) {
+        yield finishStepFor(stepNumber);
+        stepNumber++;
+        inStep = false;
+      }
+    } else {
+      yield event;
+    }
+  }
+  console.log(`[wrapWithStepEvents] Inner generator finished, total events: ${eventCount}`);
+  if (inStep) yield finishStepFor(stepNumber);
   yield {
     type: "finish",
     finishReason: "stop",

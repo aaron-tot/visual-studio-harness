@@ -10,6 +10,22 @@ fi
 
 BUN="${BUN:-${BUN_PATH:-bun}}"
 
+# If BUN isn't resolvable on PATH (e.g. launched from a desktop launcher with a
+# minimal environment), fall back to common bun install locations.
+if ! command -v "$BUN" >/dev/null 2>&1; then
+  for candidate in "$HOME/.bun/bin/bun" /usr/local/bin/bun /opt/homebrew/bin/bun; do
+    if [ -x "$candidate" ]; then
+      BUN="$candidate"
+      break
+    fi
+  done
+fi
+
+if ! command -v "$BUN" >/dev/null 2>&1; then
+  echo "Error: bun not found. Install it (curl -fsSL https://bun.sh/install | bash) or set BUN_PATH in $SCRIPT_DIR/.env" >&2
+  exit 1
+fi
+
 if [ ! -t 0 ]; then
   gnome-terminal -- bash "$0" 2>/dev/null || x-terminal-emulator -e bash "$0" 2>/dev/null || xterm -e bash "$0" 2>/dev/null || konsole -e bash "$0" 2>/dev/null || exec bash "$0"
   exit 0

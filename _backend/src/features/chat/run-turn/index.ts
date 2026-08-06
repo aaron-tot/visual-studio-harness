@@ -33,7 +33,6 @@ import {
 } from "../../hooks";
 import { resolveRuntimeFromSettings, getAgentSettings, resolveSessionRuntime, type ResolvedRuntime } from "../../agents/runtime-settings";
 import { readAgent } from "../../agents/rest";
-import { buildSystemBlock } from "../../system-prompt/builder";
 import { createPerStepPrepareStep } from "../per-step-system-prompt";
 import { getMode } from "../../../paths";
 import { getWorkspaceGraphManager } from "../../../core/workspaceGraph/service-singleton";
@@ -49,6 +48,7 @@ import {
   updateTurnSnapshots,
   createStep,
   finalizeStep,
+  insertStepPart,
   clearTurnSteps,
   finalizeTurnTrace,
   abortTurnTrace,
@@ -58,6 +58,8 @@ import {
 } from "../db-trace";
 import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
+import { buildSystemBlockBase } from "../../system-prompt/builder";
+import { DEFAULT_ADDITIONAL_SYSTEM_INFO } from "../../../../../_shared/types/config";
 import { getSessionModelConfigJson } from "../../sessions/db";
 import {
   resolveRuntimeFirstTurnNumber,
@@ -328,7 +330,9 @@ export async function runTurn(
 
     const noSystemPrompt = input.noSystemPrompt ?? false;
     const turnStartNow = new Date();
-    const systemBlock = await buildSystemBlock({
+    // Base is the real `system` message, rebuilt ONCE per turn (never per sub-step).
+    // It includes `skills` (skill-attachment-modes) — per-turn freshness, stable within the turn.
+    const systemBlock = await buildSystemBlockBase({
       dataDir, workspaceRoot, mode: getMode(), sessionId,
       agentSettings: runtime.settings, noSystemPrompt,
       systemPromptJoiners: config.systemPromptJoiners,
@@ -337,6 +341,10 @@ export async function runTurn(
       now: turnStartNow,
       turnStart: turnStartNow,
     });
+
+    const asiCfg = config.additionalSystemInfo ?? DEFAULT_ADDITIONAL_SYSTEM_INFO;
+    const additionalSystemInfoSections = asiCfg?.sections ?? ["runtime", "todoList", "workspaceManifest"];
+    const additionalSystemInfoIncludeTime = asiCfg?.includeTime === true;
 
     // Build model messages (UNIFIED - includes system, history, current user)
     const { messages, contextTurnIds: usedTurnIds } = await buildModelMessages(
@@ -460,6 +468,10 @@ export async function runTurn(
     let currentStepId: number | null = null;
     let stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
     let stepIdByIndex: Record<number, number> = {};
+    // Injections emitted by prepareStep are buffered and flushed in onStepStart
+    // (prepareStep runs BEFORE the step row exists, so it cannot write the part
+    // against the correct stepId yet).
+    let pendingInjections: Array<{ toolCallId: string; toolName: string; content: string }> = [];
 
     // Per-step system prompt rebuild (prepareStep). Step 0 uses the turn-initial
     // timestamp so it matches the turn-level snapshot; later steps get fresh state.
@@ -472,10 +484,16 @@ export async function runTurn(
       systemPromptJoiners: config.systemPromptJoiners,
       workspaceManifest: config.workspaceGraph !== false ? config.workspaceManifest : undefined,
       graphService,
+      additionalSystemInfoSections,
+      additionalSystemInfoIncludeTime,
       turnStartNow,
       onBlockBuilt: (stepNumber, block) => {
         lastPreparedStepNumber = stepNumber;
-        lastPreparedBlock = block;
+        // Per-step snapshot = base (+ injection) as a display proxy for the Inspector.
+        lastPreparedBlock = systemBlock && block ? `${systemBlock}\n\n${block}` : (systemBlock || block);
+      },
+      persist: ({ toolCallId, toolName, content }) => {
+        pendingInjections.push({ toolCallId, toolName, content });
       },
     });
 
@@ -499,6 +517,7 @@ export async function runTurn(
             partSeq = 0;
             stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
             stepIdByIndex = {};
+            pendingInjections = [];
             lastPreparedStepNumber = -1;
             lastPreparedBlock = systemBlock;
           }
@@ -529,6 +548,19 @@ export async function runTurn(
           }, dataDir);
           stepIdByIndex[info.stepIndex] = currentStepId;
           stepWriter.rebindStep(currentStepId);
+          // Flush injections emitted by prepareStep for THIS step (append-only).
+          if (pendingInjections.length > 0) {
+            for (const inj of pendingInjections) {
+              insertStepPart(
+                sessionId, traceTurnId, currentStepId, "tool",
+                { content: inj.content, kind: "system-info", additionalSystemInfo: true },
+                ++partSeq, "completed",
+                { toolCallId: inj.toolCallId, toolName: inj.toolName },
+                dataDir,
+              );
+            }
+            pendingInjections = [];
+          }
         },
         onStepFinish: (info) => {
           if (currentStepId != null) {

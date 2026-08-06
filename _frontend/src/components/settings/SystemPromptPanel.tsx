@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Edit3, RefreshCw, X } from "lucide-react";
 import { useConfigStore } from "../../stores/config";
 import type { SystemPromptJoiners, WorkspaceManifestSettings } from "../../../../_shared/types";
+import { AdditionalSystemInfoPanel } from "./AdditionalSystemInfoPanel";
 
 const DEFAULT_JOINERS: SystemPromptJoiners = {
   start: "",
@@ -24,7 +25,8 @@ const DEFAULT_JOINERS: SystemPromptJoiners = {
   end: "",
 };
 
-const SECTIONS: Array<{
+/** Base (stable) system sections — the real `system` / `instructions` message. */
+const BASE_SECTIONS: Array<{
   label: string;
   preKey: keyof SystemPromptJoiners;
   postKey: keyof SystemPromptJoiners;
@@ -33,10 +35,18 @@ const SECTIONS: Array<{
   { label: "2. Agent MD attachment (agent definition)", preKey: "preAgent", postKey: "postAgent" },
   { label: "3. Skill MD attachments", preKey: "preSkills", postKey: "postSkills" },
   { label: "4. Project AGENTS.md", preKey: "preProject", postKey: "postProject" },
-  { label: "5. Runtime info", preKey: "preRuntime", postKey: "postRuntime" },
-  { label: "6. TODO List", preKey: "preTodoList", postKey: "postTodoList" },
-  { label: "7. Workspace Manifest", preKey: "preWorkspaceManifest", postKey: "postWorkspaceManifest" },
-  { label: "8. Extras", preKey: "preExtras", postKey: "postExtras" },
+  { label: "5. Extras", preKey: "preExtras", postKey: "postExtras" },
+];
+
+/** Volatile sections — the trailing `additional_system_info` block (not the real system message). */
+const VOLATILE_SECTIONS: Array<{
+  label: string;
+  preKey: keyof SystemPromptJoiners;
+  postKey: keyof SystemPromptJoiners;
+}> = [
+  { label: "Runtime info", preKey: "preRuntime", postKey: "postRuntime" },
+  { label: "TODO List", preKey: "preTodoList", postKey: "postTodoList" },
+  { label: "Workspace Manifest", preKey: "preWorkspaceManifest", postKey: "postWorkspaceManifest" },
 ];
 
 export function SystemPromptPanel() {
@@ -118,7 +128,8 @@ export function SystemPromptPanel() {
         <div className="min-w-0">
           <h2 className="text-sm font-medium text-zinc-100">System Prompt Assembly</h2>
           <p className="text-xs text-zinc-500 mt-1">
-            Each section is wrapped with a customizable prefix and postfix.
+            Base sections go in the real <code className="text-zinc-400">system</code> message; volatile sections go
+            in the trailing <code className="text-zinc-400">additional_system_info</code> block.
           </p>
         </div>
         <button
@@ -132,7 +143,19 @@ export function SystemPromptPanel() {
       </div>
 
         <div className="flex-1 space-y-2 overflow-y-auto">
-        {SECTIONS.map((section, i) => (
+        <div className="text-xs text-zinc-400 font-medium px-1 py-1">Base System Prompt (stable)</div>
+        {BASE_SECTIONS.map((section) => (
+          <div key={section.preKey} className="border border-zinc-800 rounded-lg p-3 space-y-1">
+            <div className="text-xs text-zinc-300 font-medium mb-2">{section.label}</div>
+            {renderField(section.preKey, "Prefix")}
+            {renderField(section.postKey, "Postfix")}
+          </div>
+        ))}
+
+        <div className="text-xs text-zinc-400 font-medium px-1 pt-3 pb-1">
+          Additional System Info (volatile tail)
+        </div>
+        {VOLATILE_SECTIONS.map((section) => (
           <div key={section.preKey} className="border border-zinc-800 rounded-lg p-3 space-y-1">
             <div className="text-xs text-zinc-300 font-medium mb-2">{section.label}</div>
             {renderField(section.preKey, "Prefix")}
@@ -145,6 +168,8 @@ export function SystemPromptPanel() {
             )}
           </div>
         ))}
+
+        <AdditionalSystemInfoPanel />
       </div>
 
       {editingKey && (

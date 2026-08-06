@@ -265,7 +265,7 @@ async function cloneSettings(
     "autoContinueOnToolEndPrompt", "autoContinueOnThinkingEnd",
     "autoContinueOnThinkingEndMaxAttempts", "autoContinueOnThinkingEndWindowValue",
     "autoContinueOnThinkingEndWindowUnit", "autoContinueOnThinkingEndPrompt",
-    "systemPromptJoiners", "snippets", "defaultProvider", "defaultModel",
+    "systemPromptJoiners", "additionalSystemInfo", "snippets", "defaultProvider", "defaultModel",
   ] as const;
 
   if (mode === "override") {

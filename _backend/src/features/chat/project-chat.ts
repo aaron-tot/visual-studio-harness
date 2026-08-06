@@ -6,6 +6,7 @@ import type { Message, MessagePartType } from "../../../../_shared/types";
 import type { TurnSummary, StepSummary, TurnDetail, SessionUsage, TurnStatus, StepPart, TurnRawCapture, TurnStepRawDetail } from "../../../../_shared/types/trace";
 import { listContextTurnIds } from "./db-trace";
 import { buildModelMessages } from "./message-builder";
+import { buildSummarizationMessages } from "../sessions/summarizer";
 
 function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
@@ -521,7 +522,7 @@ export function getStepWithParts(
 ): TurnDetail["steps"][number] & { parts: unknown[] } | null {
   const db = dbFor(dataDir);
   const t = db
-    .select({ id: turns.id })
+    .select()
     .from(turns)
     .where(and(eq(turns.sessionId, sessionId), eq(turns.turnNumber, turnNumber)))
     .get();
@@ -712,6 +713,7 @@ export async function getTurnStepRawCapture(
     .where(and(eq(turns.sessionId, sessionId), eq(turns.turnNumber, turnNumber)))
     .get();
   if (!t) return null;
+  const isSummaryTurn = (t.kind ?? "turn") === "summary";
 
   // Turn-level raw fallback
   let turnRawRequest: unknown = null;
@@ -783,7 +785,59 @@ export async function getTurnStepRawCapture(
   const ctxIds = listContextTurnIds(t.id, dataDir);
   let baseMessages: CoreMessage[] = [];
   let systemBlock = turnSystemPrompt ?? "";
-  if (configSnap) {
+  if (isSummaryTurn) {
+    // Summary turns: reconstruct the ACTUAL summarizer input — the covered turns
+    // (and prior chain summary), NOT the normal-chat context. Re-running
+    // buildModelMessages here would apply live-summary logic against the current
+    // range state (prepending "[Summary of turns X-Y]" and dropping the covered
+    // turns), misrepresenting what was actually sent to the provider.
+    const range = db
+      .select()
+      .from(summaryRanges)
+      .where(eq(summaryRanges.summaryTurnId, t.id))
+      .get();
+
+    const chatMessages = projectSessionChat(sessionId, dataDir) as Message[];
+    const rangeTurns: { role: "user" | "assistant"; content: string }[] = [];
+    if (range) {
+      for (const m of chatMessages) {
+        if (m.isSummary) continue;
+        const tn = m.turnId;
+        if (tn == null || tn < range.startTurn || tn > range.endTurn) continue;
+        if (m.role !== "user" && m.role !== "assistant") continue;
+        if (!m.content) continue;
+        rangeTurns.push({ role: m.role as "user" | "assistant", content: m.content });
+      }
+
+      // Prior chain summary (if any) — text lives in the prior range's step_parts.
+      let priorSummary: string | null = null;
+      if (range.prevRangeId != null) {
+        const prior = db
+          .select()
+          .from(summaryRanges)
+          .where(eq(summaryRanges.id, range.prevRangeId))
+          .get();
+        if (prior) {
+          const part = db
+            .select({ data: stepParts.data })
+            .from(stepParts)
+            .where(and(eq(stepParts.turnId, prior.summaryTurnId), eq(stepParts.type, "text")))
+            .orderBy(stepParts.seq)
+            .limit(1)
+            .get();
+          if (part?.data) {
+            try {
+              const parsed = JSON.parse(part.data);
+              if (typeof parsed.content === "string") priorSummary = parsed.content;
+            } catch { /* ignore */ }
+          }
+        }
+      }
+      baseMessages = buildSummarizationMessages(priorSummary, rangeTurns);
+    } else {
+      baseMessages = [{ role: "user", content: t.userContent }];
+    }
+  } else if (configSnap) {
     const built = await buildModelMessages(sessionId, systemBlock, {
       contextTurnIds: ctxIds,
       includeIncompleteTurns: configSnap.includeFailedTurnsInHistory,

@@ -16,6 +16,7 @@ import {
   getSessionLayout,
   setSessionLayout,
 } from "./store";
+import { getActiveSessions } from "../../session/runtime";
 import {
   listTurnSummaries,
   getTurnDetail,
@@ -28,6 +29,7 @@ import { buildUsageTree } from "../chat/usage-tree";
 import { sessionHasTurns, getTurnByNumber, getNextTurnNumber, listContextTurnIds } from "../chat/db-trace";
 import { cancelSession } from "../chat/session-abort";
 import { buildModelMessages } from "../chat/message-builder";
+import type { CoreMessage } from "ai";
 import { promptSnapshots, turns, toolsSnapshots, summaryRanges, steps, stepParts } from "../../db/schema";
 import { getDbForDataDir } from "../../db/client";
 import { eq, and, desc, lt } from "drizzle-orm";
@@ -52,6 +54,11 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const includeSubagents =
       q.include === "subagents" || q.include === "all";
     return listSessions(dataDir, { includeSubagents });
+  });
+
+  /** Active (streaming) session IDs — for frontend rehydration on refresh. */
+  app.get("/api/sessions/active", async () => {
+    return { sessionIds: getActiveSessions() };
   });
 
   app.get("/api/sessions/:id", async (request) => {
@@ -817,11 +824,71 @@ for (const m of chatMessages) {
       if (sp) systemBlock = sp.content;
     }
 
-    // Load context turn IDs from turn_context table
-    const ctxIds = listContextTurnIds(turnRow.id, dataDir);
+    // Summary turns: reconstruct the ACTUAL summarizer input (the covered turns
+    // plus the prior chain summary), NOT the normal-chat context. Re-running
+    // buildModelMessages here would apply live-summary logic against the current
+    // range state — prepending "[Summary of turns X-Y]" and dropping the covered
+    // turns — which misrepresents what was truly sent to the provider.
+    let reconstructedMessages: CoreMessage[];
+    if ((turnRow.kind ?? "turn") === "summary") {
+      const { projectSessionChat } = await import("../chat/project-chat");
+      const range = db
+        .select()
+        .from(summaryRanges)
+        .where(eq(summaryRanges.summaryTurnId, turnRow.id))
+        .get();
 
-    // Reconstruct SDK messages by re-running buildModelMessages
-    const { messages: reconstructedMessages, contextTurnIds: usedTurnIds } = await buildModelMessages(
+      interface ChatMsgLike {
+        turnId: number | null;
+        isSummary?: boolean;
+        role: string;
+        content: string;
+      }
+      const chatMessages = projectSessionChat(id, dataDir) as unknown as ChatMsgLike[];
+
+      const rangeTurns: { role: "user" | "assistant"; content: string }[] = [];
+      if (range) {
+        for (const m of chatMessages) {
+          if (m.isSummary) continue;
+          const tn = m.turnId;
+          if (tn == null || tn < range.startTurn || tn > range.endTurn) continue;
+          if (m.role !== "user" && m.role !== "assistant") continue;
+          if (!m.content) continue;
+          rangeTurns.push({ role: m.role as "user" | "assistant", content: m.content });
+        }
+
+        // Prior chain summary (if any) — text lives in the prior range's step_parts.
+        let priorSummary: string | null = null;
+        if (range.prevRangeId != null) {
+          const prior = db
+            .select()
+            .from(summaryRanges)
+            .where(eq(summaryRanges.id, range.prevRangeId))
+            .get();
+          if (prior) {
+            const part = db
+              .select({ data: stepParts.data })
+              .from(stepParts)
+              .where(and(eq(stepParts.turnId, prior.summaryTurnId), eq(stepParts.type, "text")))
+              .orderBy(stepParts.seq)
+              .limit(1)
+              .get();
+            if (part?.data) {
+              try {
+                const parsed = JSON.parse(part.data);
+                if (typeof parsed.content === "string") priorSummary = parsed.content;
+              } catch { /* ignore */ }
+            }
+          }
+        }
+        reconstructedMessages = buildSummarizationMessages(priorSummary, rangeTurns);
+      } else {
+        reconstructedMessages = buildSummarizationMessages(null, rangeTurns);
+      }
+    } else {
+      // Reconstruct SDK messages by re-running buildModelMessages
+      const ctxIds = listContextTurnIds(turnRow.id, dataDir);
+      const built = await buildModelMessages(
       id,
       systemBlock,
       {
@@ -839,6 +906,8 @@ for (const m of chatMessages) {
       },
       dataDir,
     );
+      reconstructedMessages = built.messages;
+    }
 
     // Build SDK request object (exact object passed to streamText)
     // SDK v7 requires system as instructions param, not in messages array

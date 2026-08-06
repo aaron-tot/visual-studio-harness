@@ -15,6 +15,7 @@ import {
   type PermissionMode,
 } from "../../lib/api";
 import { PermModeSelect } from "./PermModeSelect";
+import { SearchProvidersPanel } from "./SearchProvidersPanel";
 import { SubagentSettingsCard } from "./SubagentSettingsCard";
 import { BashToolSettingsCard } from "./BashToolSettingsCard";
 
@@ -354,6 +355,15 @@ export function ToolsPanel({ sessionId }: Props) {
                       label="Timeout Settings"
                     >
                       <BashToolSettingsCard />
+                    </Collapsible>
+                  )}
+                  {tool.name === "searchOnline" && (
+                    <Collapsible
+                      open={openSettings[tool.name]}
+                      onToggle={() => toggleSettings(tool.name)}
+                      label="Search Providers"
+                    >
+                      <SearchProvidersPanel />
                     </Collapsible>
                   )}
                 </div>

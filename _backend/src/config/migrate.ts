@@ -1,4 +1,4 @@
-import type { AgentSettings, AgentRuntimeSettings, ConfigFile } from "../../../_shared/types";
+import type { AgentSettings, AgentRuntimeSettings, ConfigFile, SearchProviderConfig } from "../../../_shared/types";
 import { PRECONFIGURED_PROVIDERS } from "../../../_shared/provider-registry";
 
 /** Migrate legacy agent fields to new structure */
@@ -50,6 +50,12 @@ export function migrateConfig(config: ConfigFile): ConfigFile {
     }
   }
 
+  // Migrate searchProviders from env vars if not present
+  let searchProviders = config.searchProviders;
+  if (!searchProviders || searchProviders.length === 0) {
+    searchProviders = buildDefaultSearchProviders();
+  }
+
   return {
     ...config,
     workspaceManifest: config.workspaceManifest ?? { enabled: true },
@@ -57,5 +63,60 @@ export function migrateConfig(config: ConfigFile): ConfigFile {
     agents: migrated,
     headless: config.headless ?? false,
     testModels,
+    searchProviders,
   };
+}
+
+function buildDefaultSearchProviders(): SearchProviderConfig[] {
+  const providers: SearchProviderConfig[] = [];
+
+  // Exa from env
+  if (process.env.EXA_API_KEY || process.env.VISUAL_STUDIO_HARNESS_ENABLE_EXA) {
+    providers.push({
+      id: "exa-primary",
+      type: "exa",
+      name: "Exa Primary",
+      enabled: true,
+      priority: 0,
+      apiKey: process.env.EXA_API_KEY,
+      tags: ["primary", "batch-rotate"],
+    });
+  }
+
+  // Parallel from env
+  if (process.env.PARALLEL_API_KEY || process.env.VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL) {
+    providers.push({
+      id: "parallel-backup",
+      type: "parallel",
+      name: "Parallel Backup",
+      enabled: true,
+      priority: providers.length > 0 ? 1 : 0,
+      apiKey: process.env.PARALLEL_API_KEY,
+      tags: providers.length > 0 ? ["fallback", "batch-rotate"] : ["primary", "batch-rotate"],
+    });
+  }
+
+  // If neither configured, create defaults (disabled) so UI shows them
+  if (providers.length === 0) {
+    providers.push(
+      {
+        id: "exa-primary",
+        type: "exa",
+        name: "Exa Primary",
+        enabled: false,
+        priority: 0,
+        tags: ["primary", "batch-rotate"],
+      },
+      {
+        id: "parallel-backup",
+        type: "parallel",
+        name: "Parallel Backup",
+        enabled: false,
+        priority: 1,
+        tags: ["fallback", "batch-rotate"],
+      }
+    );
+  }
+
+  return providers;
 }

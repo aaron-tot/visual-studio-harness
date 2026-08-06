@@ -52,6 +52,10 @@ export function listSessions() {
   return fetchJson<SessionMeta[]>(`${BASE}/sessions`);
 }
 
+export function getActiveSessions() {
+  return fetchJson<{ sessionIds: string[] }>(`${BASE}/sessions/active`);
+}
+
 export function getSession(id: string) {
   return fetchJson<Session>(`${BASE}/sessions/${id}`);
 }

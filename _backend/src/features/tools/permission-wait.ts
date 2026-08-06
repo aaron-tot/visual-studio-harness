@@ -1,6 +1,6 @@
 type Pending = {
   resolve: (approved: boolean) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | null;
   /** SessionId that owns this permission request, for scoped cancellation. */
   owningSessionId: string;
 };
@@ -8,11 +8,9 @@ type Pending = {
 /** toolCallId -> waiter */
 const pending = new Map<string, Pending>();
 
-const DEFAULT_TIMEOUT_MS = 120_000;
-
 export function waitForPermission(
   toolCallId: string,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
+  timeoutMs: number | undefined,
   /** Optional sessionId for scoped cancellation. Defaults to "" (global scope). */
   owningSessionId?: string
 ): Promise<boolean> {
@@ -22,11 +20,14 @@ export function waitForPermission(
       clearTimeout(existing.timer);
       existing.resolve(false);
     }
-    const timer = setTimeout(() => {
-      pending.delete(toolCallId);
-      resolve(false);
-    }, timeoutMs);
-    pending.set(toolCallId, { resolve, timer, owningSessionId: owningSessionId ?? "" });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (timeoutMs !== undefined && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        pending.delete(toolCallId);
+        resolve(false);
+      }, timeoutMs);
+    }
+    pending.set(toolCallId, { resolve, timer: timer!, owningSessionId: owningSessionId ?? "" });
   });
 }
 
@@ -47,7 +48,7 @@ export function cancelPermissionsForSession(sessionId: string): void {
     if (!p) continue;
     // Only cancel permissions owned by this session
     if (p.owningSessionId && p.owningSessionId !== sessionId) continue;
-    clearTimeout(p.timer);
+    if (p.timer) clearTimeout(p.timer);
     p.resolve(false);
     pending.delete(id);
   }

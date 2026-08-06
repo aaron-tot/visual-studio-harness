@@ -140,6 +140,20 @@ export interface WorkspaceManifestSettings {
   postfix?: string;
 }
 
+export type SearchProviderType = "exa" | "parallel" | "brave" | "serper" | "custom";
+
+export interface SearchProviderConfig {
+  id: string;
+  type: SearchProviderType;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  apiKey?: string;
+  rateLimit?: { rpm?: number; rpd?: number };
+  tags?: string[];
+  customMcpUrl?: string;
+}
+
 export interface KnowledgeBaseConfig {
   enabled: boolean;
   sourcesPath: string;
@@ -160,6 +174,7 @@ export interface KnowledgeBaseConfig {
 
 export interface ConfigFile {
   providers: ProviderConfig[];
+  searchProviders?: SearchProviderConfig[];
   knowledge?: KnowledgeBaseConfig;
   agents?: Record<string, AgentSettings>;
   subagent?: SubagentToolSettings;
@@ -208,4 +223,8 @@ export interface ConfigFile {
   streamRetryErrorName?: string;
   /** Maximum number of retries for the streamRetryErrorName error. */
   streamRetryMaxAttempts?: number;
+
+  /** Permission request timeout configuration */
+  permissionRequestTimeoutEnabled?: boolean;
+  permissionRequestTimeoutMs?: number;
 }

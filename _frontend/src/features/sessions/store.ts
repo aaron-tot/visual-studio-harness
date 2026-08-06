@@ -7,6 +7,7 @@ import {
   starSession as apiStar,
   getSessionLayout,
   putSessionLayout,
+  getActiveSessions,
 } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
 import { useSessionViewStore } from "../../stores/sessionView";
@@ -48,8 +49,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   fetch: async () => {
     set({ loading: true });
     try {
-      const sessions = await listSessions();
-      set({ sessions, loading: false });
+      const [sessions, activeRes] = await Promise.all([listSessions(), getActiveSessions()]);
+      const streamingSessions: Record<string, true> = {};
+      for (const id of activeRes.sessionIds) {
+        streamingSessions[id] = true;
+      }
+      set({ sessions, streamingSessions, loading: false });
       const workspaces = Array.from(new Set(sessions.map((s) => s.workspaceRoot ?? "")));
       await Promise.all(workspaces.map((ws) => get().loadLayout(ws)));
     } catch {

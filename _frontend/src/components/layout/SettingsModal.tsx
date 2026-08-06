@@ -14,6 +14,7 @@ import { SystemPromptPanel } from "../settings/SystemPromptPanel";
 import { McpServersPanel } from "../settings/McpServersPanel";
 import { McpServerEditor } from "../settings/McpServerEditor";
 import { CustomToolsPanel } from "../settings/CustomToolsPanel";
+import { SearchProvidersPanel } from "../settings/SearchProvidersPanel";
 import { ContextPanel } from "../settings/ContextPanel";
 import { useConfigStore } from "../../stores/config";
 import { PRECONFIGURED_PROVIDERS } from "../../../../_shared/provider-registry";
@@ -234,6 +235,12 @@ export function SettingsModal({
           {tab === "knowledge" && (
             <div key={`knowledge-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
               <KnowledgeSettingsPanel />
+            </div>
+          )}
+
+          {tab === "search-providers" && (
+            <div key={`search-providers-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
+              <SearchProvidersPanel />
             </div>
           )}
         </div>

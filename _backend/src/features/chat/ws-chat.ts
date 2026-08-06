@@ -133,7 +133,8 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       askPermission: async (toolName, args, callId) => {
         sendToSession(sessionId, { type: "permission_request", sessionId, toolCallId: callId, toolName, args });
         sendToSession(sessionId, { type: "tool_update", sessionId, toolCallId: callId, status: "awaiting_permission" });
-        const ok = await waitForPermission(callId, undefined, sessionId);
+        const timeoutMs = config.permissionRequestTimeoutEnabled ? config.permissionRequestTimeoutMs : undefined;
+        const ok = await waitForPermission(callId, timeoutMs, sessionId);
         sendToSession(sessionId, { type: "tool_update", sessionId, toolCallId: callId, status: ok ? "running" : "error" });
         return ok;
       },

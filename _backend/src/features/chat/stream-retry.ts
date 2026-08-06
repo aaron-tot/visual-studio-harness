@@ -14,10 +14,31 @@ export const DEFAULT_STREAM_RETRY_CONFIG: StreamRetryConfig = {
 };
 
 export function getRetryableLabel(err: unknown, errorName?: string): string | null {
-  const e = err as { statusCode?: number; code?: string; message?: string; lastError?: { statusCode?: number; message?: string } };
-  const last = e.lastError;
-  const code = last?.statusCode ?? e.statusCode;
-  const msg = last?.message ?? e.message ?? "";
+  if (!err) return null;
+
+  // Normalize various error shapes to extract code and message
+  const e = err as Record<string, unknown>;
+  const last = (e.lastError as Record<string, unknown>) ?? (e.cause as Record<string, unknown>) ?? null;
+
+  // Try multiple locations for status code
+  const code =
+    (typeof last?.statusCode === "number" ? last.statusCode : null) ??
+    (typeof e.statusCode === "number" ? e.statusCode : null) ??
+    (typeof e.status === "number" ? e.status : null) ??
+    (typeof last?.status === "number" ? last.status : null) ??
+    null;
+
+  // Try multiple locations for message - use helper that skips empty strings
+  const getMsg = (val: unknown): string | null =>
+    typeof val === "string" && val.length > 0 ? val : null;
+
+  const msg =
+    getMsg(last?.message) ??
+    getMsg(e.message) ??
+    getMsg(last?.error) ??
+    getMsg(e.error) ??
+    (err instanceof Error ? getMsg(err.message) : null) ??
+    String(err);
 
   if (code === 429 || (code && code >= 500) || code === 408 || code === 409) return `${msg}`;
 

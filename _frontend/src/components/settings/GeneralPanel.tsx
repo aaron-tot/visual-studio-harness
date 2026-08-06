@@ -337,6 +337,41 @@ export function GeneralPanel() {
               </div>
             </div>
           </label>
+
+          {/* Permission request timeout */}
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={(config.permissionRequestTimeoutEnabled as boolean) ?? false}
+              onChange={(e) => patch({ permissionRequestTimeoutEnabled: e.target.checked })}
+              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+            />
+            <div>
+              <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+                Permission request timeout
+              </div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                When enabled, permission prompts will auto-deny after the specified
+                time. When disabled, prompts wait indefinitely for user response.
+              </div>
+            </div>
+          </label>
+
+          <div className="ml-7 space-y-2" style={{ opacity: (config.permissionRequestTimeoutEnabled as boolean) ?? false ? 1 : 0.5 }}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-400">Timeout (ms)</span>
+              <input
+                type="number"
+                min={100}
+                max={3600000}
+                step={100}
+                value={(config.permissionRequestTimeoutMs as number) ?? 120000}
+                onChange={(e) => patch({ permissionRequestTimeoutMs: Math.max(100, Number(e.target.value)) })}
+                disabled={!(config.permissionRequestTimeoutEnabled as boolean)}
+                className="w-24 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Coming Soon section */}

@@ -7,6 +7,7 @@ import { loadConfig, saveConfig } from "../storage/config";
 import { migrateConfig } from "./migrate";
 import { listAgents, writeAgent } from "../rest/agents";
 import { loadSeedJoinersDefaults } from "../features/mds/paths";
+import { getSearchProviderRegistry } from "../features/tools/host/search-provider-registry";
 
 export interface ConfigWatcher {
   config: ConfigFile;
@@ -76,6 +77,12 @@ export async function initConfigWatcher(
 
   let config = migrateConfig(await loadConfig(dataDir));
 
+  // Initialize search provider registry
+  if (config.searchProviders) {
+    const registry = getSearchProviderRegistry();
+    registry.setAll(config.searchProviders);
+  }
+
   if (config.agents) {
     const existingFiles = await listAgents(dataDir);
     const fileKeys = new Set(existingFiles.map((a) => a.key));
@@ -102,6 +109,11 @@ export async function initConfigWatcher(
       if (raw === lastRaw) return;
       lastRaw = raw;
       config = migrateConfig(await loadConfig(dataDir));
+      // Update search provider registry on config change
+      if (config.searchProviders) {
+        const registry = getSearchProviderRegistry();
+        registry.setAll(config.searchProviders);
+      }
       onChange(config);
     } catch {
       // Keep last valid config on parse error

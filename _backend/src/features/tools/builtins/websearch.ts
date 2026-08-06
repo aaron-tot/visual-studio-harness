@@ -1,97 +1,58 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { ToolDef, ToolFieldDef } from "../types";
+import type { ToolDef, BaseToolContext } from "../types";
+import { getSearchProviderRegistry, SearchProviderRegistry } from "../host/search-provider-registry";
 
 /**
- * Web search via Exa or Parallel (OpenCode-style).
+ * Web search via configurable providers with fallback chain and batch rotation.
  *
- * Provider selection (first match wins):
- *   1. per-call `provider` arg
- *   2. env WEBSEARCH_PROVIDER / VISUAL_STUDIO_HARNESS_WEBSEARCH_PROVIDER = exa|parallel
- *   3. VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL=1 or OPENCODE_ENABLE_PARALLEL=1 → parallel
- *   4. VISUAL_STUDIO_HARNESS_ENABLE_EXA=1 or OPENCODE_ENABLE_EXA=1 → exa
- *   5. stable A/B from session id
+ * Provider selection:
+ *   1. per-call `provider` arg (explicit provider id)
+ *   2. batch rotation (if multiple calls in same turn)
+ *   3. primary provider from registry
  *
- * Optional keys: EXA_API_KEY, PARALLEL_API_KEY
+ * Fallback chain: on rate limit (429) or configured retryable error,
+ * iterates through fallback providers until success or exhausted.
  */
-
-export type WebSearchProvider = "exa" | "parallel";
 
 const LivecrawlSchema = z.enum(["fallback", "preferred"]);
 const SearchTypeSchema = z.enum(["auto", "fast", "deep"]);
-const ProviderSchema = z.enum(["exa", "parallel"]);
 
-const EXA_MCP =
-  process.env.EXA_API_KEY != null && process.env.EXA_API_KEY !== ""
-    ? `https://mcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(process.env.EXA_API_KEY)}`
-    : "https://mcp.exa.ai/mcp";
-const PARALLEL_MCP = "https://search.parallel.ai/mcp";
+// Provider id is now dynamic from registry, but we validate it's a known id at runtime
+const ProviderIdSchema = z.string().optional().describe("Force specific provider by id");
 
-export function readWebSearchFlags(env: NodeJS.ProcessEnv = process.env): {
-  exa: boolean;
-  parallel: boolean;
-} {
-  const truthy = (v: string | undefined) =>
-    v === "1" || v === "true" || v === "yes";
-  return {
-    exa:
-      truthy(env.VISUAL_STUDIO_HARNESS_ENABLE_EXA) ||
-      truthy(env.OPENCODE_ENABLE_EXA),
-    parallel:
-      truthy(env.VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL) ||
-      truthy(env.OPENCODE_ENABLE_PARALLEL),
-  };
+interface SearchCallOptions {
+  query: string;
+  type?: string;
+  numResults?: number;
+  livecrawl?: string;
+  contextMaxCharacters?: number;
+  providerId?: string;
+  batchRotation?: boolean;
 }
 
-/**
- * Pick Exa or Parallel for this session / call.
- */
-export function selectWebSearchProvider(
-  sessionId: string,
-  opts?: {
-    override?: WebSearchProvider;
-    flags?: { exa: boolean; parallel: boolean };
-    env?: NodeJS.ProcessEnv;
-  }
-): WebSearchProvider {
-  if (opts?.override === "exa" || opts?.override === "parallel") {
-    return opts.override;
-  }
-  const env = opts?.env ?? process.env;
-  const fromEnv = (
-    env.WEBSEARCH_PROVIDER ||
-    env.VISUAL_STUDIO_HARNESS_WEBSEARCH_PROVIDER ||
-    env.OPENCODE_WEBSEARCH_PROVIDER ||
-    ""
-  )
-    .trim()
-    .toLowerCase();
-  if (fromEnv === "exa" || fromEnv === "parallel") return fromEnv;
-
-  const flags = opts?.flags ?? readWebSearchFlags(env);
-  if (flags.parallel && !flags.exa) return "parallel";
-  if (flags.exa && !flags.parallel) return "exa";
-  if (flags.parallel) return "parallel";
-  if (flags.exa) return "exa";
-
-  // Stable A/B per session (like OpenCode checksum)
-  const hash = createHash("sha256").update(sessionId || "default").digest();
-  return hash[0]! % 2 === 0 ? "exa" : "parallel";
+interface SearchAttemptResult {
+  providerId: string;
+  providerName: string;
+  success: boolean;
+  text?: string;
+  error?: string;
+  rateLimited: boolean;
 }
 
-export function webSearchProviderLabel(provider: WebSearchProvider): string {
-  return provider === "parallel" ? "Parallel Web Search" : "Exa Web Search";
-}
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 500;
 
 export const websearchTool: ToolDef = {
   name: "websearch",
   description:
-    "Search the web by query when you have no URL. See skill:websearch.",
+    "Search the web by query when you have no URL. Supports multiple providers with automatic fallback on rate limits. See skill:websearch.",
   permissionDefault: "allow",
   outputFields: [
     { name: "query", type: "string", description: "The search query", required: true },
     { name: "count", type: "integer", description: "Number of results returned", required: true },
-    { name: "provider", type: "enum(exa | parallel)", description: "Search backend used", required: false },
+    { name: "provider", type: "string", description: "Search backend used", required: false },
+    { name: "fallback", type: "boolean", description: "Whether fallback was used", required: false },
+    { name: "attempted", type: "array", description: "List of provider ids attempted", required: false },
   ],
   inputSchema: z.object({
     query: z.string().describe("Search query"),
@@ -115,9 +76,7 @@ export const websearchTool: ToolDef = {
       .max(50_000)
       .optional()
       .describe("Max context chars for LLM"),
-    provider: ProviderSchema.optional().describe(
-      "Force backend: exa or parallel"
-    ),
+    provider: ProviderIdSchema,
   }),
   execute: async (args, ctx) => {
     const query = (args.query || "").trim();
@@ -129,103 +88,201 @@ export const websearchTool: ToolDef = {
       };
     }
 
-    const provider = selectWebSearchProvider(ctx.sessionId, {
-      override: args.provider,
-    });
-    const label = webSearchProviderLabel(provider);
+    const registry = getSearchProviderRegistry();
+    const options: SearchCallOptions = {
+      query,
+      type: args.type ?? "auto",
+      numResults: args.numResults ?? 8,
+      livecrawl: args.livecrawl ?? "fallback",
+      contextMaxCharacters: args.contextMaxCharacters,
+      providerId: args.provider,
+      batchRotation: !args.provider, // Use batch rotation if no explicit provider
+    };
+
+    const attempts: SearchAttemptResult[] = [];
+    let finalResult: { text: string; providerId: string; providerName: string } | null = null;
+
+    // Determine provider sequence
+    const providerSequence = buildProviderSequence(registry, options, ctx.sessionId);
+
+    for (const provider of providerSequence) {
+      // Check rate limit before attempting
+      if (registry.isRateLimited(provider.id)) {
+        attempts.push({
+          providerId: provider.id,
+          providerName: provider.name,
+          success: false,
+          error: "Rate limited (local)",
+          rateLimited: true,
+        });
+        continue;
+      }
+
+      const attempt = await attemptSearch(provider, options, ctx, registry);
+      attempts.push(attempt);
+
+      if (attempt.success && attempt.text) {
+        finalResult = {
+          text: attempt.text,
+          providerId: provider.id,
+          providerName: provider.name,
+        };
+        break;
+      }
+
+      // If rate limited, mark and continue to next fallback
+      if (attempt.rateLimited) {
+        registry.markRateLimited(provider.id);
+        // Small delay before trying next provider
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        continue;
+      }
+
+      // For other errors, don't fallback (could be query error, network, etc.)
+      break;
+    }
+
     const year = new Date().getFullYear();
+    const usedFallback = attempts.length > 1 && finalResult !== null;
+    const attemptedIds = attempts.map((a) => a.providerId);
 
-    try {
-      const text =
-        provider === "parallel"
-          ? await callParallelSearch(query, ctx)
-          : await callExaSearch(
-              {
-                query,
-                type: args.type ?? "auto",
-                numResults: args.numResults ?? 8,
-                livecrawl: args.livecrawl ?? "fallback",
-                contextMaxCharacters: args.contextMaxCharacters,
-              },
-              ctx
-            );
-
-      const body =
-        text?.trim() ||
-        "No search results found. Try a different query or provider.";
-
+    if (!finalResult) {
+      const lastError = attempts[attempts.length - 1]?.error ?? "Unknown error";
+      const lastProvider = attempts[attempts.length - 1]?.providerName ?? "unknown";
       return {
-        title: `${label}: ${query}`,
-        output:
-          body +
-          `\n\n(provider=${provider}; tip: use webfetch on promising URLs; current year ${year})`,
+        title: `websearch: ${query}`,
+        output: `ERROR websearch (${lastProvider}): ${lastError}`,
+        isError: true,
         metadata: {
-          provider,
+          provider: attempts[0]?.providerId,
           query,
-          type: args.type ?? "auto",
-          livecrawl: args.livecrawl ?? "fallback",
-          numResults: args.numResults ?? 8,
+          attempted: attemptedIds,
+          fallback: usedFallback,
         },
       };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return {
-        title: `${label}: ${query}`,
-        output: `ERROR websearch (${provider}): ${msg}`,
-        isError: true,
-        metadata: { provider, query },
-      };
     }
+
+    const body = finalResult.text.trim() || "No search results found. Try a different query or provider.";
+
+    return {
+      title: `${finalResult.providerName}: ${query}`,
+      output:
+        body +
+        `\n\n(provider=${finalResult.providerId}${usedFallback ? "; fallback used" : ""}; tip: use webfetch on promising URLs; current year ${year})`,
+      metadata: {
+        provider: finalResult.providerId,
+        providerName: finalResult.providerName,
+        query,
+        type: args.type ?? "auto",
+        livecrawl: args.livecrawl ?? "fallback",
+        numResults: args.numResults ?? 8,
+        attempted: attemptedIds,
+        fallback: usedFallback,
+      },
+    };
   },
 };
 
-async function callExaSearch(
-  params: {
-    query: string;
-    type: string;
-    numResults: number;
-    livecrawl: string;
-    contextMaxCharacters?: number;
-  },
-  ctx: { abortSignal: AbortSignal }
-): Promise<string | undefined> {
-  return mcpToolsCall(
-    EXA_MCP,
-    "web_search_exa",
-    {
-      query: params.query,
-      type: params.type,
-      numResults: params.numResults,
-      livecrawl: params.livecrawl,
-      ...(params.contextMaxCharacters != null
-        ? { contextMaxCharacters: params.contextMaxCharacters }
-        : {}),
-    },
-    {},
-    ctx.abortSignal
-  );
+/** Build the sequence of providers to try for this call. */
+function buildProviderSequence(
+  registry: SearchProviderRegistry,
+  options: SearchCallOptions,
+  sessionId: string
+): SearchProviderRegistry["prototype"]["getAll"] {
+  // Explicit provider requested
+  if (options.providerId) {
+    const p = registry.getById(options.providerId);
+    return p ? [p] : [];
+  }
+
+  // Batch rotation
+  if (options.batchRotation) {
+    const rotation = registry.getBatchRotation();
+    if (rotation.length > 0) {
+      // Return in rotation order starting from current index
+      const startIdx = registry["batchRotationIndex"] % rotation.length;
+      return [
+        ...rotation.slice(startIdx),
+        ...rotation.slice(0, startIdx),
+      ];
+    }
+  }
+
+  // Default: primary then fallbacks
+  const primary = registry.getPrimary();
+  const fallbacks = registry.getFallbacks();
+  return primary ? [primary, ...fallbacks] : fallbacks;
 }
 
-async function callParallelSearch(
-  query: string,
-  ctx: { sessionId: string; abortSignal: AbortSignal }
-): Promise<string | undefined> {
+/** Attempt search with a specific provider. */
+async function attemptSearch(
+  provider: SearchProviderRegistry["prototype"]["getAll"][0],
+  options: SearchCallOptions,
+  ctx: BaseToolContext,
+  registry: SearchProviderRegistry
+): Promise<SearchAttemptResult> {
+  try {
+    const url = registry.buildMcpUrl(provider);
+    const toolName = registry.getMcpToolName(provider.type);
+    const toolArgs = registry.buildMcpArgs(provider.type, options.query, {
+      type: options.type,
+      numResults: options.numResults,
+      livecrawl: options.livecrawl,
+      contextMaxCharacters: options.contextMaxCharacters,
+    });
+
+    const headers = buildHeaders(provider);
+    const text = await mcpToolsCall(url, toolName, toolArgs, headers, ctx.abortSignal);
+
+    return {
+      providerId: provider.id,
+      providerName: provider.name,
+      success: true,
+      text,
+      rateLimited: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const rateLimited = isRateLimitError(msg);
+    return {
+      providerId: provider.id,
+      providerName: provider.name,
+      success: false,
+      error: msg,
+      rateLimited,
+    };
+  }
+}
+
+function buildHeaders(provider: SearchProviderRegistry["prototype"]["getAll"][0]): Record<string, string> {
   const headers: Record<string, string> = {
     "User-Agent": "VisualStudioHarness/websearch",
   };
-  if (process.env.PARALLEL_API_KEY) {
-    headers.Authorization = `Bearer ${process.env.PARALLEL_API_KEY}`;
+
+  // Add auth headers based on provider type
+  if (provider.type === "parallel" && provider.apiKey) {
+    headers.Authorization = `Bearer ${provider.apiKey}`;
+  } else if (provider.type === "exa" && provider.apiKey) {
+    // Exa uses query param in URL, not header
+  } else if (provider.type === "brave" && provider.apiKey) {
+    headers["X-Subscription-Token"] = provider.apiKey;
+  } else if (provider.type === "serper" && provider.apiKey) {
+    headers["X-API-KEY"] = provider.apiKey;
+  } else if (provider.type === "custom" && provider.apiKey) {
+    headers.Authorization = `Bearer ${provider.apiKey}`;
   }
-  return mcpToolsCall(
-    PARALLEL_MCP,
-    "web_search",
-    {
-      objective: query,
-      search_queries: [query],
-      session_id: ctx.sessionId,
-    },
-    headers,
-    ctx.abortSignal
+
+  return headers;
+}
+
+function isRateLimitError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("429") ||
+    lower.includes("rate limit") ||
+    lower.includes("rate limited") ||
+    lower.includes("too many requests") ||
+    lower.includes("quota exceeded")
   );
 }
 
@@ -310,4 +367,60 @@ export function parseMcpToolText(body: string): string | undefined {
     if (hit) return hit;
   }
   return undefined;
+}
+
+// Keep exports for backward compatibility with tests
+export type WebSearchProvider = "exa" | "parallel";
+
+export function readWebSearchFlags(env: NodeJS.ProcessEnv = process.env): {
+  exa: boolean;
+  parallel: boolean;
+} {
+  const truthy = (v: string | undefined) =>
+    v === "1" || v === "true" || v === "yes";
+  return {
+    exa:
+      truthy(env.VISUAL_STUDIO_HARNESS_ENABLE_EXA) ||
+      truthy(env.OPENCODE_ENABLE_EXA),
+    parallel:
+      truthy(env.VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL) ||
+      truthy(env.OPENCODE_ENABLE_PARALLEL),
+  };
+}
+
+export function selectWebSearchProvider(
+  sessionId: string,
+  opts?: {
+    override?: WebSearchProvider;
+    flags?: { exa: boolean; parallel: boolean };
+    env?: NodeJS.ProcessEnv;
+  }
+): WebSearchProvider {
+  if (opts?.override === "exa" || opts?.override === "parallel") {
+    return opts.override;
+  }
+  const env = opts?.env ?? process.env;
+  const fromEnv = (
+    env.WEBSEARCH_PROVIDER ||
+    env.VISUAL_STUDIO_HARNESS_WEBSEARCH_PROVIDER ||
+    env.OPENCODE_WEBSEARCH_PROVIDER ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  if (fromEnv === "exa" || fromEnv === "parallel") return fromEnv;
+
+  const flags = opts?.flags ?? readWebSearchFlags(env);
+  if (flags.parallel && !flags.exa) return "parallel";
+  if (flags.exa && !flags.parallel) return "exa";
+  if (flags.parallel) return "parallel";
+  if (flags.exa) return "exa";
+
+  // Stable A/B per session (like OpenCode checksum)
+  const hash = require("node:crypto").createHash("sha256").update(sessionId || "default").digest();
+  return hash[0]! % 2 === 0 ? "exa" : "parallel";
+}
+
+export function webSearchProviderLabel(provider: WebSearchProvider): string {
+  return provider === "parallel" ? "Parallel Web Search" : "Exa Web Search";
 }

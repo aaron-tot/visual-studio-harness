@@ -21,6 +21,7 @@ export interface ChatState {
   workspaceRoot: string;
   turns: TurnsFile;
   inspectedTurnId: number | null;
+  streamingStartTime: number | null;
   setWorkspaceRoot: (path: string) => void;
   updateSessionMeta: (patch: Partial<SessionMeta>) => void;
   loadSession: (id: string) => Promise<void>;
@@ -135,6 +136,7 @@ export interface ChatState {
     statusMessage?: string;
   } | null;
   abortSlotWait: (requestId: string) => void;
+  setStreamingStartTime: (time: number | null) => void;
 }
 
 export type BufferedDelta =

@@ -28,7 +28,7 @@ export function MdsEditModal({ scope, relPath, ext, sessionId, workspaceRoot, al
     readMdsScopeFile({ scope, path: relPath, sessionId, workspaceRoot })
       .then((r) => {
         if (!cancelled) {
-          setContent(r.content);
+          setContent(r);
           setLoading(false);
         }
       })

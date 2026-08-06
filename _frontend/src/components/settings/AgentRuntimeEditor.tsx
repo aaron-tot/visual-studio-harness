@@ -6,6 +6,12 @@ import type {
   SkillMdConfig,
   ThinkingEffort,
 } from "../../../../_shared/types";
+
+const ATTACHMENT_MODES: { value: "inject" | "hard" | "soft"; label: string; desc: string }[] = [
+  { value: "inject", label: "Inject", desc: "Embed in system prompt" },
+  { value: "hard", label: "Hard", desc: "Must read before tasks" },
+  { value: "soft", label: "Soft", desc: "Reference — use skill tool" },
+];
 import { useConfigStore } from "../../stores/config";
 import { readMd, getMdsScopePaths, getMdsAgentsPaths, type ScopeItem, type ScopePathEntry } from "../../lib/api";
 import type { PlanScope } from "../../features/info-panel/types";
@@ -34,6 +40,7 @@ export function AgentRuntimeEditor({
   const { config } = useConfigStore();
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [skillPickerTab, setSkillPickerTab] = useState<"discover" | "custom">("discover");
+  const [skillPickerAttachmentMode, setSkillPickerAttachmentMode] = useState<"inject" | "hard" | "soft">("inject");
   const [customSkillPath, setCustomSkillPath] = useState("");
   const [showAgentMdPicker, setShowAgentMdPicker] = useState(false);
   const [agentMdPickerTab, setAgentMdPickerTab] = useState<"discover" | "custom">("discover");
@@ -330,6 +337,18 @@ export function AgentRuntimeEditor({
           />
         </label>
 
+        <label className="block space-y-1">
+          <span className="text-xs text-zinc-400">Skill Access</span>
+          <select
+            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+            value={value.skillAccess ?? "all"}
+            onChange={(e) => patch({ skillAccess: e.target.value as "all" | "attached" })}
+          >
+            <option value="all">All skills in roots</option>
+            <option value="attached">Only attached skills</option>
+          </select>
+        </label>
+
       </div>
 
       {/* System Message Files */}
@@ -343,13 +362,13 @@ export function AgentRuntimeEditor({
           tokens, old system messages are stripped as stale and redundant.
         </p>
 
-        {/* Global system prompt base (systemPromptBase.md) — per-agent editable */}
+        {/* Base System Prompt (systemPromptBase.md) — per-agent editable */}
         <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
               <div className="min-w-0">
-                <p className="text-xs font-medium text-zinc-300">Global system prompt base</p>
+                <p className="text-xs font-medium text-zinc-300">Base System Prompt</p>
                 <p className="truncate text-[11px] text-zinc-500">
                   {(() => {
                     const effective = value.systemPromptBase?.path ?? config.systemPromptBase?.path ?? globalSystemPromptBasePath;
@@ -721,6 +740,7 @@ export function AgentRuntimeEditor({
             {value.skillMds.map((skill, i) => {
               const skillPath = skill.mode === "custom" ? skill.path : undefined;
               const hasError = skillPath ? fileErrors.has(skillPath) : false;
+              const attachmentMode = skill.attachmentMode ?? "inject";
               return (
                 <span
                   key={i}
@@ -729,6 +749,20 @@ export function AgentRuntimeEditor({
                 >
                   {hasError && <AlertTriangle className="h-3 w-3 shrink-0 text-red-400" />}
                   {skill.mode === "existing" ? skill.name ?? "Unnamed" : skill.path ?? "Custom"}
+                  <select
+                    value={attachmentMode}
+                    onChange={(e) => {
+                      const newSkillMds = [...(value.skillMds ?? [])];
+                      newSkillMds[i] = { ...newSkillMds[i], attachmentMode: e.target.value as "inject" | "hard" | "soft" };
+                      onChange({ ...value, skillMds: newSkillMds });
+                    }}
+                    className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-200"
+                    title="Attachment mode"
+                  >
+                    {ATTACHMENT_MODES.map((m) => (
+                      <option key={m.value} value={m.value} title={m.desc}>{m.label}</option>
+                    ))}
+                  </select>
                   {skillPath && scopeIndex[skillPath] && (
                     <button
                       onClick={() => {
@@ -804,6 +838,18 @@ export function AgentRuntimeEditor({
                     ))}
                   </select>
                 </div>
+                <div className="flex gap-1.5">
+                  <span className="text-xs text-zinc-500">Attachment:</span>
+                  <select
+                    value={skillPickerAttachmentMode}
+                    onChange={(e) => setSkillPickerAttachmentMode(e.target.value as "inject" | "hard" | "soft")}
+                    className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200"
+                  >
+                    {ATTACHMENT_MODES.map((m) => (
+                      <option key={m.value} value={m.value} title={m.desc}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="max-h-40 overflow-y-auto space-y-1">
                   {(() => {
                     const q = skillSearch.trim().toLowerCase();
@@ -823,7 +869,7 @@ export function AgentRuntimeEditor({
                               ...value,
                               skillMds: [
                                 ...(value.skillMds ?? []),
-                                { mode: "custom", path: i.promptPath },
+                                { mode: "custom", path: i.promptPath, attachmentMode: skillPickerAttachmentMode },
                               ],
                             });
                             setShowSkillPicker(false);
@@ -840,32 +886,44 @@ export function AgentRuntimeEditor({
             )}
 
             {skillPickerTab === "custom" && (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="/path/to/skill.md"
-                  value={customSkillPath}
-                  onChange={(e) => setCustomSkillPath(e.target.value)}
-                  className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-100"
-                />
-                <button
-                  onClick={() => {
-                    if (customSkillPath.trim()) {
-                      onChange({
-                        ...value,
-                        skillMds: [
-                          ...(value.skillMds ?? []),
-                          { mode: "custom", path: customSkillPath.trim() },
-                        ],
-                      });
-                      setCustomSkillPath("");
-                      setShowSkillPicker(false);
-                    }
-                  }}
-                  className="rounded bg-zinc-700 px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-600"
-                >
-                  Add
-                </button>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="/path/to/skill.md"
+                    value={customSkillPath}
+                    onChange={(e) => setCustomSkillPath(e.target.value)}
+                    className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-100"
+                  />
+                  <select
+                    value={skillPickerAttachmentMode}
+                    onChange={(e) => setSkillPickerAttachmentMode(e.target.value as "inject" | "hard" | "soft")}
+                    className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200"
+                    title="Attachment mode"
+                  >
+                    {ATTACHMENT_MODES.map((m) => (
+                      <option key={m.value} value={m.value} title={m.desc}>{m.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => {
+                      if (customSkillPath.trim()) {
+                        onChange({
+                          ...value,
+                          skillMds: [
+                            ...(value.skillMds ?? []),
+                            { mode: "custom", path: customSkillPath.trim(), attachmentMode: skillPickerAttachmentMode },
+                          ],
+                        });
+                        setCustomSkillPath("");
+                        setShowSkillPicker(false);
+                      }
+                    }}
+                    className="rounded bg-zinc-700 px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-600"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
             )}
           </div>

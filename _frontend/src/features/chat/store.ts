@@ -92,6 +92,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const sid = get().sessionId || "";
     wsClient.send({ type: "slot_wait_abort", sessionId: sid, requestId });
   },
+  streamingStartTime: null,
+  setStreamingStartTime: (time) => set({ streamingStartTime: time }),
 
   setWorkspaceRoot: (path) => {
     localStorage.setItem("VISUAL STUDIO HARNESS.workspaceRoot", path);
@@ -134,6 +136,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       _partSeq: 0,
       _textSeq: 0,
       _reasonIdx: 0,
+      streamingStartTime: null,
     });
 
     wsClient.send({ type: "request_session_state", sessionId: id, requestId });
@@ -171,6 +174,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // applied directly and not stranded in the pending-delta buffer.
     resetHydrateState();
     const userMsg = { role: "user" as const, content, timestamp: new Date().toISOString() };
+    const startTime = Date.now();
     set({
       messages: [...messages, userMsg],
       streaming: true,
@@ -185,6 +189,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       _pendingAgentName: config.agentName || "Default (no system prompt)",
       _pendingModelName: config.modelName,
       _pendingProviderName: config.providerName,
+      streamingStartTime: startTime,
     });
     chatDebug("store", "sendMessage -> streaming=true", { sessionId, agentName: config.agentName });
     touchStreamTimeout();
@@ -222,6 +227,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sessionMeta: null,
       turns: {},
       inspectedTurnId: null,
+      streamingStartTime: null,
     });
   },
 
@@ -233,7 +239,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (sessionId) {
       wsClient.send({ type: "cancel", sessionId });
     }
-    set({ stopping: true });
+    set({ stopping: true, streamingStartTime: null });
   },
 
   appendToken: (token, seq) => {
@@ -306,7 +312,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         updatedMessages = [...msgs, { role: "user" as const, content: hasContinue.content, timestamp: new Date().toISOString() }];
         nextAgentName = hasContinue.agentName;
       }
-      return { messages: updatedMessages, streaming: !!hasContinue, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null };
+      return { messages: updatedMessages, streaming: !!hasContinue, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null, streamingStartTime: hasContinue ? Date.now() : null };
     });
   },
 
@@ -340,7 +346,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (userIdx >= 0 && msgs[userIdx].role === "user") msgs[userIdx] = { ...msgs[userIdx], turnId: meta.turnId };
       }
       if (state.sessionId) void get().loadTurns(state.sessionId);
-      return { messages: msgs, streaming: false, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null };
+      return { messages: msgs, streaming: false, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null, streamingStartTime: null };
     });
   },
 

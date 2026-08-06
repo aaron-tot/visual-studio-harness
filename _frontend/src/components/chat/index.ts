@@ -41,6 +41,8 @@ export { SessionTodoDisplay } from "./tasks/SessionTodoDisplay";
 export { TodoItem } from "./tasks/TodoItem";
 export type { TodoItemData, TodoStatus, TodoPriority } from "./tasks/TodoItem";
 
+export { StreamingTimer } from "./StreamingTimer";
+
 export { ChatInput } from "./ChatInput";
 export { SessionHeader } from "./SessionHeader";
 export { ModelDropdown } from "./ModelDropdown";

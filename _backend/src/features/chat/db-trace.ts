@@ -469,10 +469,10 @@ export function finalizeTurnTrace(
     recomputeTurnUsage(turnId, dataDir);
   }
 
-  // Close open step_parts
+  // Close open step_parts (both NULL and "streaming" status)
   db.update(stepParts)
     .set({ status: "completed", updatedAt: new Date().toISOString() })
-    .where(and(eq(stepParts.turnId, turnId), isNull(stepParts.status)))
+    .where(and(eq(stepParts.turnId, turnId), or(isNull(stepParts.status), eq(stepParts.status, "streaming"))))
     .run();
 
   // Finalize turn
@@ -508,7 +508,11 @@ export function finalizeTurnTrace(
   }
 }
 
-export function abortTurnTrace(turnId: number, dataDir?: string): void {
+export function abortTurnTrace(
+  turnId: number,
+  dataDir?: string,
+  errorInfo?: { errorMessage?: string; errorRaw?: string; errorIsCustom?: boolean }
+): void {
   const db = dbFor(dataDir);
 
   // Complete any streaming step_parts (preserves partial content)
@@ -543,6 +547,9 @@ export function abortTurnTrace(turnId: number, dataDir?: string): void {
       status: "aborted",
       success: false,
       finishReason: "aborted",
+      errorMessage: errorInfo?.errorMessage ?? null,
+      errorRaw: errorInfo?.errorRaw ?? null,
+      errorIsCustom: errorInfo?.errorIsCustom ?? null,
       durationMs,
       completedAt: now,
     })

@@ -280,7 +280,7 @@ export async function runTurn(
 
   try {
     let partSeq = 0;
-    const resolveCtx: ResolveContext = { dataDir, sessionId, workspaceRoot };
+    const resolveCtx: ResolveContext = { dataDir, sessionId, workspaceRoot, agentSettings: runtime.settings };
     const providerName = provider?.displayName;
     const modelName = model?.modelName;
     const tools = registry
@@ -672,7 +672,11 @@ export async function runTurn(
     // Trace finalize — prefer stream finish reason, else last step
     const lastStepFr = streamResult.steps?.[streamResult.steps.length - 1]?.finishReason;
     if (streamResult.finishReason === "aborted") {
-      abortTurnTrace(traceTurnId, dataDir);
+      abortTurnTrace(traceTurnId, dataDir, {
+        errorMessage: streamResult.error,
+        errorRaw: streamResult.rawError,
+        errorIsCustom: streamResult.errorIsCustom,
+      });
     } else {
       finalizeTurnTrace(traceTurnId, {
         success: true,
@@ -703,8 +707,11 @@ export async function runTurn(
     };
   } catch (err: unknown) {
     console.log("[runTurn] streamChat:exception", { sessionId, error: err instanceof Error ? err.message : String(err) });
-    // Abort trace on exception
-    abortTurnTrace(traceTurnId, dataDir);
+    // Abort trace on exception - preserve error context for "aborted" turns
+    const abortErrInfo = isAbortError(err)
+      ? classifyLlmError(err, { provider: provider.displayName, model: model.displayName })
+      : undefined;
+    abortTurnTrace(traceTurnId, dataDir, abortErrInfo ? { errorMessage: abortErrInfo.message, errorRaw: abortErrInfo.raw, errorIsCustom: abortErrInfo.isCustom } : undefined);
     unregisterSession(sessionId);
     if (!isAbortError(err)) {
       const errInfo: LlmErrorInfo = err instanceof LlmError ? err.toInfo() : classifyLlmError(err, { provider: provider.displayName, model: model.displayName });

@@ -29,7 +29,7 @@ const SECTIONS: Array<{
   preKey: keyof SystemPromptJoiners;
   postKey: keyof SystemPromptJoiners;
 }> = [
-  { label: "1. Global system prompt base (systemPromptBase.md)", preKey: "preGlobal", postKey: "postGlobal" },
+  { label: "1. Base System Prompt (systemPromptBase.md)", preKey: "preGlobal", postKey: "postGlobal" },
   { label: "2. Agent MD attachment (agent definition)", preKey: "preAgent", postKey: "postAgent" },
   { label: "3. Skill MD attachments", preKey: "preSkills", postKey: "postSkills" },
   { label: "4. Project AGENTS.md", preKey: "preProject", postKey: "postProject" },

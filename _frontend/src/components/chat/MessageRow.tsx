@@ -25,6 +25,7 @@ import { StepToolGroup } from "./tools/StepToolGroup";
 import { groupByStep } from "./tools/group-by-step";
 import { TurnContextMenu } from "./TurnContextMenu";
 import { useChatStore } from "../../stores/chat";
+import { StreamingTimer } from "./StreamingTimer";
 import { summarizeRange } from "../../lib/api";
 import { TurnInspectorModal } from "./TurnInspectorModal";
 import { CopyButton } from "./CopyButton";
@@ -135,6 +136,7 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
   const sessionMeta = useChatStore((s) => s.sessionMeta);
   const displayModelName = message.modelName || sessionMeta?.modelName;
   const displayProviderName = message.providerName || sessionMeta?.providerName;
+  const streamingStartTime = useChatStore((s) => s.streamingStartTime);
 
   // Find the turn ID for this user message from the turns store
   const sessionId = useChatStore((s) => s.sessionId);
@@ -229,8 +231,14 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
             />
             {formatTime(message.timestamp)}
           </span>
+</div>
+      {/* Streaming timer - under the bubble */}
+      {!isUser && isStreaming && streamingStartTime && (
+        <div className="w-full flex justify-end px-1 mt-0.5">
+          <StreamingTimer startTime={streamingStartTime} isStreaming={isStreaming} />
         </div>
-        {ctxMenuPos && turnId != null && sessionId && (
+      )}
+      {ctxMenuPos && turnId != null && sessionId && (
           <>
             <div className="fixed inset-0 z-50" onClick={() => setCtxMenuPos(null)} />
             <TurnContextMenu
@@ -315,9 +323,6 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
               ? "<1s"
               : `${(message.durationMs / 1000).toFixed(1)}s`}
           </span>
-        )}
-        {isStreaming && (
-          <span className="inline-block w-1.5 h-3 bg-zinc-400 ml-0.5 animate-pulse" />
         )}
       </span>
       {isError && turnStatus && (

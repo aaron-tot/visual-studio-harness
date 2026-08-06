@@ -138,13 +138,14 @@ describe("buildModelMessages tool parts", () => {
     expect(tool).toBeUndefined();
   });
 
-  test("live summary block is prepended and covered turns are skipped", async () => {
-    // Build a summary turn with a text part (the produced summary).
+  test("summaries do not control normal-message context (all turns included)", async () => {
+    // A summary range exists, but it must NOT be prepended into live turn
+    // context, nor cause covered turns to be skipped. Summaries are a separate
+    // display layer; regular turn context follows the circle only.
     const summaryTurnId = createTurn(SESSION_ID, 200, "Summarize conversation turns 10–12", new Date().toISOString(), {}, dataDir);
     const summaryStepId = createStep(summaryTurnId, SESSION_ID, 0, {}, dataDir);
     insertStepPart(SESSION_ID, summaryTurnId, summaryStepId, "text", { content: "SUMMARY_TEXT" }, 1, "completed", {}, dataDir);
 
-    // Insert a summary range covering turns 10–12.
     const db = getDbForDataDir(dataDir);
     db.insert(summaryRanges).values({
       sessionId: SESSION_ID,
@@ -157,12 +158,10 @@ describe("buildModelMessages tool parts", () => {
       createdAt: new Date().toISOString(),
     }).run();
 
-    // Real turns: 10 (covered), 12 (covered), 13 (not covered).
     const t10 = await makeTurn(10, [{ type: "text", data: { content: "ten" } }], true);
     const t12 = await makeTurn(12, [{ type: "text", data: { content: "twelve" } }], true);
     const t13 = await makeTurn(13, [{ type: "text", data: { content: "thirteen" } }], true);
 
-    // Slider at turn 14: summary block (endTurn=12 <= 14) is live.
     const { messages } = await buildModelMessages(SESSION_ID, "sys", options({
       contextTurnIds: [t10, t12, t13],
       currentTurnNumber: 14,
@@ -173,10 +172,10 @@ describe("buildModelMessages tool parts", () => {
       Array.isArray(m.content) ? (m.content as any[]).map((p) => p.text).join("") : (m.content as string),
     );
 
-    // Summary prepended, covered turns (10,12) skipped, turn 13 included, current appended.
-    expect(textMessages.some((t) => t.includes("SUMMARY_TEXT"))).toBe(true);
-    expect(textMessages).not.toContain("ten");
-    expect(textMessages).not.toContain("twelve");
+    // Summary is NOT injected, and covered turns are NOT skipped.
+    expect(textMessages.some((t) => t.includes("SUMMARY_TEXT"))).toBe(false);
+    expect(textMessages).toContain("ten");
+    expect(textMessages).toContain("twelve");
     expect(textMessages).toContain("thirteen");
     expect(textMessages).toContain("current");
 

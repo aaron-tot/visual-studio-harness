@@ -394,7 +394,7 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
       return reply.code(500).send({ error: "seeds directory not available" });
     }
 
-    const seedSkillsDir = join(sDir, seedSubdirForMode(mode), "mds", "_skills");
+    const seedToolsDir = join(sDir, seedSubdirForMode(mode), "mds", "_tools");
 
     const seeded: string[] = [];
     const overwritten: string[] = [];
@@ -404,18 +404,18 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
       const base = resolveMdsScopeDir(scope, resolvedDataDir, wsRoot || undefined, q.sessionId);
       if (!base) continue;
 
-      const skillsDir = join(base, "_skills");
-      await mkdir(skillsDir, { recursive: true });
+      const toolsDir = join(base, "_tools");
+      await mkdir(toolsDir, { recursive: true });
 
       for (const skillName of TOOL_SKILL_NAMES) {
-        const seedSkillDir = join(seedSkillsDir, skillName);
-        const seedMd = join(seedSkillDir, "prompt.md");
-        const seedJson = join(seedSkillDir, "prompt.json");
+        const seedSkillDir = join(seedToolsDir, skillName);
+        const seedMd = join(seedSkillDir, `${skillName}.skill.md`);
+        const seedJson = join(seedSkillDir, `${skillName}.prompt.json`);
         if (!existsSync(seedMd)) continue;
 
-        const targetSkillDir = join(skillsDir, skillName);
-        const targetMd = join(targetSkillDir, "prompt.md");
-        const targetJson = join(targetSkillDir, "prompt.json");
+        const targetSkillDir = join(toolsDir, skillName);
+        const targetMd = join(targetSkillDir, `${skillName}.skill.md`);
+        const targetJson = join(targetSkillDir, `${skillName}.prompt.json`);
         const existed = existsSync(targetMd);
 
         try {

@@ -65,21 +65,6 @@ export async function resolveToolPermissionDetailed(
     return { mode: "allow", source: "trusted" };
   }
 
-  // Special handling for skill tool access control
-  if (toolName === "skill" && ctx.agentSettings) {
-    const skillName = ""; // We don't know the skill name here, but we can check if skill tool is allowed at all
-    // For now, we just allow/deny the skill tool entirely based on skillAccess
-    // The actual skill name check happens in the tool itself
-    const access = ctx.agentSettings.skillAccess ?? "all";
-    if (access === "attached" && (!ctx.agentSettings.skillMds?.length)) {
-      return { mode: "deny", source: "unknown" };
-    }
-  }
-
-  if (toolsTrusted()) {
-    return { mode: "allow", source: "trusted" };
-  }
-
   // 1) Session — key present → stop
   if (ctx.sessionId) {
     const session = await readSession(ctx.dataDir, ctx.sessionId);

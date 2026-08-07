@@ -3,7 +3,7 @@ import { FolderOpen, File, ChevronRight, ChevronDown, Pencil, Trash2, BookOpenTe
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { ScopeDirNode } from "../../lib/api";
 
-const RESERVED_MDS_DIRS = new Set(["_skills", "_SystemBase"]);
+const RESERVED_MDS_DIRS = new Set(["_skills", "_tools", "_SystemBase"]);
 
 interface TreeNodeProps {
   node: ScopeDirNode;

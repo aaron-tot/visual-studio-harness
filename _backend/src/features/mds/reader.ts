@@ -1,6 +1,6 @@
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import { constants, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, basename } from "node:path";
 import type { SkillMdConfig, AgentMdConfig } from "../../../_shared/types";
 import { resolveMdsScopeDir } from "./paths";
 
@@ -57,13 +57,21 @@ export async function readProjectAgentsMd(rootDir: string): Promise<string> {
 }
 
 /**
- * Read an MDS prompt: if `path` is a directory (item folder), read prompt.md inside;
- * if it's a file (prompt.md or legacy .md), read it directly.
+ * Read an MDS prompt: if `path` is a directory (item folder), read prompt.md inside
+ * (or <dirname>.skill.md for tool-skill folders); if it's a file, read it directly.
  */
 async function readPromptPath(path: string): Promise<string | null> {
   try {
     const info = await stat(path);
-    const target = info.isDirectory() ? join(path, "prompt.md") : path;
+    let target: string;
+    if (info.isDirectory()) {
+      const name = basename(path);
+      target = existsSync(join(path, "prompt.md"))
+        ? join(path, "prompt.md")
+        : join(path, `${name}.skill.md`);
+    } else {
+      target = path;
+    }
     const raw = await readFile(target, "utf-8");
     return raw.trim() || null;
   } catch (err) {
@@ -110,17 +118,21 @@ async function findItemInScopeByTag(scopeDir: string, tag: string): Promise<{ pa
   for (const e of entries) {
     if (!e.isDirectory()) continue;
     const full = join(scopeDir, e.name);
-    // Check if this dir is an item folder (has prompt.md)
+    // An item folder has prompt.md OR <dirname>.skill.md (tool-skill folders).
     const mdPath = join(full, "prompt.md");
+    const toolMdPath = join(full, `${e.name}.skill.md`);
     const jsonPath = join(full, "prompt.json");
-    if (existsSync(mdPath)) {
-      // Item folder — check tags
+    const toolJsonPath = join(full, `${e.name}.prompt.json`);
+    const hasMd = existsSync(mdPath) || existsSync(toolMdPath);
+    if (hasMd) {
+      // Item folder — check tags (from prompt.json or <dirname>.prompt.json)
+      const tagsJson = existsSync(jsonPath) ? jsonPath : toolJsonPath;
       try {
-        const raw = await readFile(jsonPath, "utf-8");
+        const raw = await readFile(tagsJson, "utf-8");
         const parsed = JSON.parse(raw) as { tags?: unknown };
         const tags = Array.isArray(parsed.tags) ? parsed.tags.filter((t): t is string => typeof t === "string") : [];
         if (tags.includes(tag)) {
-          return { path: full, promptPath: mdPath };
+          return { path: full, promptPath: existsSync(mdPath) ? mdPath : toolMdPath };
         }
       } catch {
         // unreadable prompt.json — skip

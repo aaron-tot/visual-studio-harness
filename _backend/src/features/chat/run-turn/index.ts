@@ -253,7 +253,7 @@ export async function runTurn(
     : null;
 
   setTodoDataDir(dataDir);
-  setSkillRoots([join(dataDir, "mds", "_skills")]);
+  setSkillRoots([join(dataDir, "mds", "_tools"), join(dataDir, "mds", "_skills")]);
   setCustomToolsSkillDir(join(dataDir, "custom-tools"));
 
   const abortSignal = events.signal;

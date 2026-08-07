@@ -29,7 +29,7 @@ interface SkillInfo {
   path: string;           // Absolute path to the skill folder
   depth: number;          // Depth from root (0 = direct child)
   root: string;           // Root it was found under
-  marker: "SKILL.md" | "prompt.md" | "loose-md" | "custom-tool-skill";
+  marker: "SKILL.md" | "prompt.md" | "loose-md" | "custom-tool-skill" | "tool-skill";
   hasPromptJson: boolean;
   tags: string[];
 }
@@ -45,6 +45,19 @@ function makeCacheKey(roots: string[], maxDepth: number): string {
 async function readPromptJsonTags(skillPath: string): Promise<string[]> {
   try {
     const raw = await readFile(join(skillPath, "prompt.json"), "utf-8");
+    const parsed = JSON.parse(raw) as { tags?: unknown };
+    return Array.isArray(parsed.tags)
+      ? parsed.tags.filter((t): t is string => typeof t === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Read tags from a sibling `<name>.prompt.json` next to a `.skill.md` tool-skill file. */
+async function readSiblingTags(dir: string, name: string): Promise<string[]> {
+  try {
+    const raw = await readFile(join(dir, `${name}.prompt.json`), "utf-8");
     const parsed = JSON.parse(raw) as { tags?: unknown };
     return Array.isArray(parsed.tags)
       ? parsed.tags.filter((t): t is string => typeof t === "string")
@@ -86,6 +99,20 @@ const walkDir = async (
         }
         // Always recurse into subdirectories
         await walkDir(fullPath, currentDepth + 1, maxDepth, root, skills);
+      } else if (e.isFile() && e.name.endsWith(".skill.md")) {
+        // Tool skill guide — builtin (_tools/<name>/) or custom (custom-tools/). The
+        // .skill.md file IS the guide (like the custom-tool-skill path).
+        const fullPath = join(dir, e.name);
+        const name = basename(e.name, ".skill.md");
+        skills.push({
+          name,
+          path: fullPath,
+          depth: currentDepth,
+          root,
+          marker: "tool-skill",
+          hasPromptJson: existsSync(join(dir, `${name}.prompt.json`)),
+          tags: await readSiblingTags(dir, name),
+        });
       } else if (e.isFile() && e.name.endsWith(".md") && currentDepth === 0) {
         // Loose .md files only at root level (legacy)
         const fullPath = join(dir, e.name);
@@ -179,33 +206,30 @@ export const skillTool: ToolDef = {
     root: z.string().optional().describe("Override skillRoots — search only this root"),
   }),
   execute: async (args, ctx: import("../types").BaseToolContext) => {
-    // Check skill access if agent has restricted skill access
-    if (ctx.agentSettings) {
-      const access = ctx.agentSettings.skillAccess ?? "all";
-      if (access === "attached" && args.name) {
-        // Build set of allowed skill names from attached skillMds
-        const attachedNames = new Set<string>();
-        for (const skill of ctx.agentSettings.skillMds ?? []) {
-          if (skill.name) attachedNames.add(skill.name);
-          if (skill.path) {
-            const parts = skill.path.split("/").filter(Boolean);
-            if (parts.length > 0) attachedNames.add(parts[parts.length - 1]);
-          }
-        }
-        if (!attachedNames.has(args.name)) {
-          const allowed = Array.from(attachedNames).join(", ") || "(none)";
-          throw new SandboxError(
-            `ERROR skill: '${args.name}' not in allowed skills for this agent. Allowed: ${allowed || "(none)"}`
-          );
-        }
-      }
-    }
-
-    const roots = args.root ? [args.root] : skillRoots;
+    const roots = args.root ? [args.root] : [...skillRoots, ...(customToolsSkillDir ? [customToolsSkillDir] : [])];
     const maxDepth = args.maxDepth ?? DEFAULT_MAX_DEPTH;
     const allSkills = await discoverSkills(roots, maxDepth);
 
-    // List mode — return all skills with optional filtering
+    // Access control (skillAccess). "attached" = the agent's skillMds names PLUS all
+    // tool skills (builtin + custom) — tool skills are always loadable. Generic
+    // (non-tool) skills are only loadable when named in skillMds.
+    const access = ctx.agentSettings?.skillAccess ?? "all";
+    let allowed: Set<string> | null = null;
+    if (access === "attached") {
+      allowed = new Set<string>();
+      for (const skill of ctx.agentSettings?.skillMds ?? []) {
+        if (skill.name) allowed.add(skill.name);
+        if (skill.path) {
+          const parts = skill.path.split("/").filter(Boolean);
+          if (parts.length > 0) allowed.add(parts[parts.length - 1]);
+        }
+      }
+      for (const s of allSkills) {
+        if (s.marker === "tool-skill") allowed.add(s.name);
+      }
+    }
+
+    // List mode — return all skills with optional filtering (respects access control)
     if (args.mode === "list") {
       let filtered = allSkills;
       if (args.filter) {
@@ -214,6 +238,9 @@ export const skillTool: ToolDef = {
       }
       if (args.tags && args.tags.length > 0) {
         filtered = filtered.filter(s => args.tags!.some(t => s.tags.includes(t)));
+      }
+      if (allowed) {
+        filtered = filtered.filter(s => allowed!.has(s.name));
       }
       return {
         title: "Skills List",
@@ -235,6 +262,12 @@ export const skillTool: ToolDef = {
     // Other modes require a name
     if (!args.name) {
       throw new SandboxError("ERROR skill: 'name' is required for mode 'content', 'path', or 'meta'");
+    }
+    if (allowed && !allowed.has(args.name)) {
+      const allowedList = Array.from(allowed).join(", ") || "(none)";
+      throw new SandboxError(
+        `ERROR skill: '${args.name}' not in allowed skills for this agent. Allowed: ${allowedList || "(none)"}`
+      );
     }
 
     const skill = resolveSkillName(args.name, roots, maxDepth, allSkills);
@@ -278,8 +311,8 @@ export const skillTool: ToolDef = {
 
     // Content mode (default) — read the markdown file
     let filePath: string;
-    if (skill.marker === "custom-tool-skill") {
-      // For custom tool skills, the path IS the markdown file
+    if (skill.marker === "custom-tool-skill" || skill.marker === "tool-skill") {
+      // For tool skills, the path IS the markdown file
       filePath = skill.path;
     } else {
       const markerFile = skill.marker === "SKILL.md" ? "SKILL.md" : "prompt.md";

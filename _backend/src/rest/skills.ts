@@ -6,16 +6,25 @@ import { existsSync } from "node:fs";
 export function registerSkillsRoutes(app: FastifyInstance, dataDir: string) {
   app.get("/api/skills", async () => {
     const names = new Set<string>();
-    const skillsDir = join(dataDir, "mds", "_skills");
-    if (existsSync(skillsDir)) {
+    // All three locations the skill tool discovers: generic skills (_skills),
+    // builtin tool skills (_tools/<name>/<name>.skill.md), custom tool skills
+    // (custom-tools/<name>.skill.md).
+    const roots = [join(dataDir, "mds", "_skills"), join(dataDir, "mds", "_tools"), join(dataDir, "custom-tools")];
+    for (const dir of roots) {
+      if (!existsSync(dir)) continue;
       try {
-        const entries = await readdir(skillsDir, { withFileTypes: true });
+        const entries = await readdir(dir, { withFileTypes: true });
         for (const e of entries) {
           if (e.isDirectory()) {
-            const skillMd = join(skillsDir, e.name, "prompt.md");
-            const legacyMd = join(skillsDir, e.name, "SKILL.md");
-            if (existsSync(skillMd) || existsSync(legacyMd)) names.add(e.name);
-          } else if (e.isFile() && e.name.endsWith(".md")) {
+            const inFolder = [
+              join(dir, e.name, `${e.name}.skill.md`),
+              join(dir, e.name, "prompt.md"),
+              join(dir, e.name, "SKILL.md"),
+            ];
+            if (inFolder.some((p) => existsSync(p))) names.add(e.name);
+          } else if (e.isFile() && e.name.endsWith(".skill.md")) {
+            names.add(e.name.replace(/\.skill\.md$/, ""));
+          } else if (e.isFile() && e.name.endsWith(".md") && dir !== join(dataDir, "custom-tools")) {
             names.add(e.name.replace(/\.md$/, ""));
           }
         }

@@ -5,7 +5,7 @@ import type { CoreMessage } from "ai";
 import type { Message, MessagePartType } from "../../../../_shared/types";
 import type { TurnSummary, StepSummary, TurnDetail, SessionUsage, TurnStatus, StepPart, TurnRawCapture, TurnStepRawDetail } from "../../../../_shared/types/trace";
 import { listContextTurnIds } from "./db-trace";
-import { buildModelMessages } from "./message-builder";
+import { buildModelMessages, readAdditionalSystemInfoData } from "./message-builder";
 import { buildSummarizationMessages } from "../sessions/summarizer";
 
 function dbFor(dataDir?: string) {
@@ -655,6 +655,29 @@ function replayStepPartsToMessages(
         break;
       }
       case "tool": {
+        // Replay a persisted additional_system_info injection verbatim (balanced
+        // assistant tool-call + tool result), NOT as a normal tool call — its data
+        // has no `result`, so the generic path would render it empty.
+        const asi = readAdditionalSystemInfoData(data, part.toolCallId);
+        if (asi) {
+          if (!opts.includeTools) break;
+          contentParts.push({
+            type: "tool-call",
+            toolCallId: asi.toolCallId,
+            toolName: "additional_system_info",
+            input: {},
+          });
+          toolResultMessages.push({
+            role: "tool",
+            content: [{
+              type: "tool-result",
+              toolCallId: asi.toolCallId,
+              toolName: "additional_system_info",
+              output: { type: "text", value: asi.content },
+            }],
+          });
+          break;
+        }
         if (opts.includeTools && part.toolCallId) {
           const args = data.args ?? {};
           contentParts.push({
@@ -878,12 +901,10 @@ export async function getTurnStepRawCapture(
     const stepSystemPrompt = s.promptSnapshotId != null
       ? (snapMap.get(s.promptSnapshotId) ?? turnSystemPrompt)
       : turnSystemPrompt;
-    // NOTE: stepSystemPrompt is base (+ latest additional_system_info injection)
-    // as a display proxy for the Inspector; the actual per-step wire is
-    // instructions=base plus the injected pair, captured verbatim in
-    // rawRequestJson above. buildModelMessages replays stored
-    // additional_system_info tool parts verbatim (Task 3).
-    const instructions = stepSystemPrompt ?? systemMsg ?? "";
+    // instructions is the base system only (what the wire actually sent); the
+    // volatile block is replayed as additional_system_info message pairs below.
+    // stepSystemPrompt (base + latest injection) is kept as a display snapshot.
+    const instructions = systemMsg ?? "";
     const messages: CoreMessage[] = [
       ...sdkBase,
       ...accumulated,

@@ -557,13 +557,19 @@ export async function runTurn(
             // (spec §5 / §6.1: injection at the end of the step's tools).
             if (pendingInjections.length > 0) {
               for (const inj of pendingInjections) {
+                const seq = ++partSeq;
                 insertStepPart(
                   sessionId, traceTurnId, currentStepId, "tool",
                   { content: inj.content, kind: "system-info", additionalSystemInfo: true },
-                  ++partSeq, "completed",
+                  seq, "completed",
                   { toolCallId: inj.toolCallId, toolName: inj.toolName },
                   dataDir,
                 );
+                // Surface the injection live (it is never streamed back by the
+                // model) so the UI renders it as a distinct bubble after the
+                // step's tools.
+                events.onToolCall?.({ toolCallId: inj.toolCallId, toolName: inj.toolName, args: {}, stepIndex: info.stepIndex, seq });
+                events.onToolResult?.({ toolCallId: inj.toolCallId, toolName: inj.toolName, output: inj.content, isError: false, seq });
               }
               pendingInjections = [];
             }

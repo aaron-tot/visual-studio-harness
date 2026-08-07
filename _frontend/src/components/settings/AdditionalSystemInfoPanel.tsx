@@ -10,7 +10,7 @@ const DEFAULT_ASI: AdditionalSystemInfoSettings = {
 };
 
 const SECTION_LABELS: Record<string, { label: string; hint?: string }> = {
-  runtime: { label: "Runtime (dynamic)", hint: "datetime + time spent on the turn" },
+  runtime: { label: "Runtime", hint: "workspace, mode, data_dir, os, datetime, elapsed" },
   todoList: { label: "TODO List" },
   workspaceManifest: { label: "Workspace Manifest" },
 };

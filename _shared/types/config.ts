@@ -94,14 +94,14 @@ export const DEFAULT_ADDITIONAL_SYSTEM_INFO: AdditionalSystemInfoSettings = {
 
 /**
  * Which dynamic sections are ALSO baked into the static base system prompt.
- * The base is rebuilt once per turn and is byte-identical within the turn, so
- * content included here is NOT refreshed per step — see the settings note.
+ * Per-agent only. The base is rebuilt once per turn and is byte-identical within
+ * the turn, so content included here is NOT refreshed per step — see the settings
+ * note. Each section renders the SAME canonical format as in the trailing
+ * additional_system_info block.
  */
 export interface SystemPromptSections {
-  /** Static runtime facts (workspace_root, mode, data_dir, os, session_id). */
+  /** Runtime facts (workspace, mode, data_dir, os, session_id, datetime, elapsed). */
   runtime: boolean;
-  /** Dynamic runtime (datetime + turn elapsed). WARNING: changes per turn → cache miss on change. */
-  datetime: boolean;
   /** TODO list snapshot (static per turn). */
   todoList: boolean;
   /** Workspace manifest snapshot (static per turn). */
@@ -110,7 +110,6 @@ export interface SystemPromptSections {
 
 export const DEFAULT_SYSTEM_PROMPT_SECTIONS: SystemPromptSections = {
   runtime: true,
-  datetime: false,
   todoList: false,
   workspaceManifest: false,
 };
@@ -233,7 +232,6 @@ export interface ConfigFile {
   toolSettings?: ToolSettings;
   systemPromptJoiners?: SystemPromptJoiners;
   additionalSystemInfo?: AdditionalSystemInfoSettings;
-  systemPromptSections?: SystemPromptSections;
   defaultAgent?: string;
   defaultProvider?: string;
   defaultModel?: string;

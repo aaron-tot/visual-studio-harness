@@ -13,6 +13,7 @@ import type { AsyncGenerator } from "../../../../_shared/types";
 import { execSync } from "child_process";
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "fs";
 import { resolve, join, dirname, extname } from "path";
+import { platform } from "node:os";
 import { formatToolCard, formatToolCardWithAsi, formatToolGroup } from "./tool-returns/index";
 
 export const TEST_RESPONSE = "Hello this is a test. not from a llm";
@@ -230,7 +231,12 @@ function sourceDirTree(workspaceRoot?: string): string {
 /** Synchronously reproduce the trailing additional_system_info block the backend injects. */
 function buildAsiContentSync(workspaceRoot?: string): string {
   const dayIso = new Date().toISOString().slice(0, 10) + "T00:00:00.000Z";
-  const runtime = `<runtime>\n## Runtime\n- datetime: ${dayIso}\n</runtime>`;
+  const mode = process.env.MODE ?? "dev";
+  // data_dir lives at <workspaceParent>/data/<mode> (same layout the backend uses).
+  const dataDir = resolve(workspaceRoot ?? "", "..", "..", "data", mode);
+  const runtime =
+    `<runtime>\n## Runtime\n- workspace_root: ${resolve(workspaceRoot ?? "")}\n- mode: ${mode}\n` +
+    `- data_dir: ${dataDir}\n- os: ${platform()}\n- datetime: ${dayIso}\n</runtime>`;
   const tree = sourceDirTree(workspaceRoot);
   if (!tree) return `<additional_system_info>\n${runtime}\n</additional_system_info>`;
   const manifest =

@@ -95,17 +95,20 @@ export async function buildSystemBlockSections(
 
 /** Stable system sections only — the real `system` message / `instructions`.
  *  Rebuilt once per turn; additionally includes the dynamic sections enabled in
- *  `systemPromptSections` (static runtime / datetime / todoList / workspaceManifest),
- *  baked statically for the turn. */
+ *  `systemPromptSections` (runtime / todoList / workspaceManifest), baked
+ *  statically for the turn. Each section renders the same canonical format as
+ *  the trailing additional_system_info block (day-granular datetime, no elapsed)
+ *  so emit-on-change can compare fresh tail content against the system. */
 export async function buildSystemBlockBase(input: BuildSystemBlockInput): Promise<string> {
   if (input.noSystemPrompt) return "";
   const sysSec = input.systemPromptSections ?? DEFAULT_SYSTEM_PROMPT_SECTIONS;
   const tags: string[] = [...BASE_SECTION_TAGS];
   if (sysSec.todoList) tags.push("todoList");
   if (sysSec.workspaceManifest) tags.push("workspaceManifest");
-  if (sysSec.runtime || sysSec.datetime) tags.push("runtime");
+  if (sysSec.runtime) tags.push("runtime");
   const block = await buildSystemBlockSections(input, tags, {
-    runtimeInclude: { static: sysSec.runtime, dynamic: sysSec.datetime },
+    now: truncateToDay(input.now ?? new Date()),
+    turnStart: undefined,
   });
   // Stable guidance line (spec §9 R1) so the model treats the trailing
   // `additional_system_info` injection as context, not a command.
@@ -145,9 +148,8 @@ export async function buildAdditionalSystemInfoBlock(
         now: truncateToDay(input.now ?? new Date()),
         turnStart: undefined,
       };
-  // The volatile runtime section is the DYNAMIC part only (datetime + elapsed);
-  // static runtime facts live in the base system prompt.
-  const partial = await buildSystemBlockSections(volInput, sections, { runtimeInclude: { static: false, dynamic: true } });
+  // The volatile runtime section renders the same canonical format as the base.
+  const partial = await buildSystemBlockSections(volInput, sections);
   if (!partial) return null;
   const ts = includeTime ? `\n<timestamp>${new Date().toISOString()}</timestamp>` : "";
   return `<${ADDITIONAL_SYSTEM_INFO_TAG}>\n${partial}${ts}\n</${ADDITIONAL_SYSTEM_INFO_TAG}>`;

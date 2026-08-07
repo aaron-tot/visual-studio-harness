@@ -12,11 +12,4 @@ export interface SectionContext {
   workspaceManifest?: WorkspaceManifestSettings;
   graphService?: WorkspaceGraphService;
   extras?: string[];
-  /**
-   * Which runtime parts to render (spec runtime split):
-   * - `static` = workspace_root, mode, data_dir, os, session_id (base system prompt)
-   * - `dynamic` = datetime, turn_elapsed (volatile tail)
-   * Default (unset) = both, for backward compatibility.
-   */
-  runtimeInclude?: { static?: boolean; dynamic?: boolean };
 }

@@ -399,7 +399,7 @@ export function AgentRuntimeEditor({
                         className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
                       />
                       <span className="text-[11px] text-zinc-400">
-                        {key === "runtime" ? "Runtime (dynamic)" : key}
+                        {key === "runtime" ? "Runtime" : key}
                       </span>
                     </label>
                   ))}
@@ -474,7 +474,7 @@ export function AgentRuntimeEditor({
             patch({ systemPromptSections: { ...sysSec, ...partial } });
           return (
             <div className="space-y-1.5">
-              {(["runtime", "datetime", "todoList", "workspaceManifest"] as const).map((key) => (
+              {(["runtime", "todoList", "workspaceManifest"] as const).map((key) => (
                 <label key={key} className="flex items-center gap-1.5 cursor-pointer">
                   <input
                     type="checkbox"
@@ -483,7 +483,7 @@ export function AgentRuntimeEditor({
                     className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
                   />
                   <span className="text-[11px] text-zinc-400">
-                    {key === "runtime" ? "Runtime (static)" : key === "datetime" ? "Runtime (dynamic) — WARNING: timestamp changes per turn" : key}
+                    {key === "runtime" ? "Runtime (workspace, mode, data_dir, os, datetime)" : key}
                   </span>
                 </label>
               ))}

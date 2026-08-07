@@ -42,7 +42,6 @@ export const AdditionalSystemInfoSchema = z.object({
 
 export const SystemPromptSectionsSchema = z.object({
   runtime: z.boolean().default(true),
-  datetime: z.boolean().default(false),
   todoList: z.boolean().default(false),
   workspaceManifest: z.boolean().default(false),
 });
@@ -189,7 +188,6 @@ export const ConfigFileSchema = z.object({
   mcpServers: z.array(McpServerConfigSchema).default([]).optional(),
   systemPromptJoiners: SystemPromptJoinersSchema.optional(),
   additionalSystemInfo: AdditionalSystemInfoSchema.optional(),
-  systemPromptSections: SystemPromptSectionsSchema.optional(),
   defaultAgent: z.string().optional(),
   defaultProvider: z.string().optional(),
   defaultModel: z.string().optional(),

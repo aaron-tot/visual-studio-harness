@@ -29,6 +29,14 @@ export interface PerStepRebuildContext {
   additionalSystemInfoIncludeTime?: boolean;
   /** Timestamp used for the very first step so it matches the turn-initial block. */
   turnStartNow: Date;
+  /**
+   * Canonical wrapped additional_system_info block for the sections baked into
+   * the base system prompt (systemPromptSections). Used as the emit-on-change
+   * baseline when no prior injection part exists in the transcript: if the
+   * fresh volatile content equals what the system already carries, no injection
+   * is emitted (avoiding a redundant tail copy).
+   */
+  systemAsiBaseline?: string | null;
   /** Called after each emission so callers can snapshot base(+injection) per step. */
   onBlockBuilt?: (stepNumber: number, block: string) => void;
   /** Persist an emitted injection (see run-turn wiring). */
@@ -78,7 +86,10 @@ export function createPerStepPrepareStep(ctx: PerStepRebuildContext): PrepareSte
       }
       return null; // none present
     })();
-    if (last === content) return {}; // unchanged ⇒ do nothing (stays cached)
+    // Baseline: the most recent place this content already exists — the last
+    // injection part, else what the base system prompt bakes (same sections).
+    const baseline = last ?? ctx.systemAsiBaseline ?? null;
+    if (baseline != null && baseline === content) return {}; // unchanged ⇒ do nothing (stays cached)
 
     // CHANGED ⇒ append a fresh fabricated pair at the tail (append-only, never remove).
     const callId = `asi-${ctx.turnStartNow.getTime()}-${stepNumber}-${messages.length}`;

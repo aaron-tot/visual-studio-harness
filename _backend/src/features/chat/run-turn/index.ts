@@ -58,8 +58,8 @@ import {
 } from "../db-trace";
 import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
-import { buildSystemBlockBase } from "../../system-prompt/builder";
-import { DEFAULT_ADDITIONAL_SYSTEM_INFO } from "../../../../../_shared/types/config";
+import { buildSystemBlockBase, buildAdditionalSystemInfoBlock } from "../../system-prompt/builder";
+import { DEFAULT_ADDITIONAL_SYSTEM_INFO, DEFAULT_SYSTEM_PROMPT_SECTIONS } from "../../../../../_shared/types/config";
 import { getSessionModelConfigJson } from "../../sessions/db";
 import {
   resolveRuntimeFirstTurnNumber,
@@ -336,7 +336,7 @@ export async function runTurn(
       dataDir, workspaceRoot, mode: getMode(), sessionId,
       agentSettings: runtime.settings, noSystemPrompt,
       systemPromptJoiners: config.systemPromptJoiners,
-      systemPromptSections: runtime.settings.systemPromptSections ?? config.systemPromptSections,
+      systemPromptSections: runtime.settings.systemPromptSections,
       workspaceManifest: config.workspaceGraph !== false ? config.workspaceManifest : undefined,
       graphService,
       now: turnStartNow,
@@ -346,6 +346,24 @@ export async function runTurn(
     const asiCfg = runtime.settings.additionalSystemInfo ?? config.additionalSystemInfo ?? DEFAULT_ADDITIONAL_SYSTEM_INFO;
     const additionalSystemInfoSections = asiCfg?.sections ?? ["runtime", "todoList", "workspaceManifest"];
     const additionalSystemInfoIncludeTime = asiCfg?.includeTime === true;
+
+    // Canonical ASI block for the sections baked into the base system prompt —
+    // the emit-on-change baseline when no prior injection part exists yet.
+    const sysSec = runtime.settings.systemPromptSections ?? DEFAULT_SYSTEM_PROMPT_SECTIONS;
+    const sysSections: string[] = [];
+    if (sysSec.runtime) sysSections.push("runtime");
+    if (sysSec.todoList) sysSections.push("todoList");
+    if (sysSec.workspaceManifest) sysSections.push("workspaceManifest");
+    const systemAsiBaseline = await buildAdditionalSystemInfoBlock({
+      dataDir, workspaceRoot, mode: getMode(), sessionId,
+      noSystemPrompt,
+      agentSettings: runtime.settings,
+      systemPromptJoiners: config.systemPromptJoiners,
+      workspaceManifest: config.workspaceGraph !== false ? config.workspaceManifest : undefined,
+      graphService,
+      now: turnStartNow,
+      turnStart: turnStartNow,
+    }, sysSections, false);
 
     // Build model messages (UNIFIED - includes system, history, current user)
     const { messages, contextTurnIds: usedTurnIds } = await buildModelMessages(
@@ -488,6 +506,7 @@ export async function runTurn(
       graphService,
       additionalSystemInfoSections,
       additionalSystemInfoIncludeTime,
+      systemAsiBaseline,
       turnStartNow,
       onBlockBuilt: (stepNumber, block) => {
         lastPreparedStepNumber = stepNumber;

@@ -34,8 +34,8 @@ export function getAgentSettings(
     skillMds: settings.skillMds ?? [],
     // Per-agent additionalSystemInfo overrides the global default (spec §8.1).
     additionalSystemInfo: settings.additionalSystemInfo ?? config.additionalSystemInfo,
-    // Per-agent system-prompt section overrides fall back to the global default.
-    systemPromptSections: settings.systemPromptSections ?? config.systemPromptSections,
+    // systemPromptSections is per-agent only (no global default).
+    systemPromptSections: settings.systemPromptSections,
   };
 }
 

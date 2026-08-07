@@ -28,29 +28,24 @@ describe("additional system info config", () => {
 });
 
 describe("additional system info builder split", () => {
-  test("base block includes static runtime but omits dynamic runtime, todo and manifest by default", async () => {
+  test("base block includes runtime but omits todo and manifest by default", async () => {
     const base = await buildSystemBlockBase(baseInput as any);
-    // Static runtime facts (os/workspace/session) are baked into the base by default.
+    // Runtime is baked into the base by default (canonical full block).
     expect(base).toContain("<runtime>");
     expect(base).toContain("workspace_root");
-    // Dynamic runtime (datetime / elapsed), todo and manifest are off by default.
-    expect(base).not.toContain("datetime:");
-    expect(base).not.toContain("turn_elapsed");
+    expect(base).toContain("datetime:");
+    expect(base).not.toContain("turn_elapsed"); // day-granular, no elapsed by default
     expect(base).not.toContain("<todoList>");
     expect(base).not.toContain("<workspaceManifest>");
   });
 
-  test("base block honors systemPromptSections runtime toggles", async () => {
-    // static runtime off + dynamic runtime on ⇒ only datetime (no static facts).
+  test("base block honors systemPromptSections runtime toggle", async () => {
     const base = await buildSystemBlockBase({
       ...baseInput,
-      systemPromptSections: { runtime: false, datetime: true, todoList: false, workspaceManifest: false },
+      systemPromptSections: { runtime: false, todoList: false, workspaceManifest: false },
     } as any);
     expect(base).not.toContain("workspace_root");
-    expect(base).not.toContain("- mode:");
-    expect(base).toContain("datetime:");
-    expect(base).not.toContain("<todoList>");
-    expect(base).not.toContain("<workspaceManifest>");
+    expect(base).not.toContain("datetime:");
   });
 
   test("base block includes the stable additional_system_info guidance line (R1)", async () => {
@@ -73,14 +68,13 @@ describe("additional system info builder split", () => {
     expect(vol).not.toContain("<extras>");
   });
 
-  test("volatile runtime section is dynamic-only (no static runtime facts)", async () => {
+  test("volatile runtime section is the canonical full runtime (same as base)", async () => {
     const vol = await buildAdditionalSystemInfoBlock(baseInput as any, ["runtime"] as any, false);
     expect(vol).toBeTruthy();
     expect(vol).toContain("<runtime>");
+    expect(vol).toContain("workspace_root");
     expect(vol).toContain("datetime:");
-    expect(vol).not.toContain("workspace_root");
-    expect(vol).not.toContain("- mode:");
-    expect(vol).not.toContain("- os:");
+    expect(vol).not.toContain("turn_elapsed"); // includeTime=false ⇒ no elapsed
   });
 
   test("buildAdditionalSystemInfoBlock respects a sections filter", async () => {

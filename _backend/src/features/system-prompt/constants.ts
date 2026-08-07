@@ -1,4 +1,4 @@
-import type { AgentSettings, SystemPromptJoiners, WorkspaceManifestSettings } from "../../../_shared/types";
+import type { AgentSettings, SystemPromptJoiners, SystemPromptSections, WorkspaceManifestSettings } from "../../../_shared/types";
 import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
 
 export const DEFAULT_SYSTEM_PROMPT_JOINERS: SystemPromptJoiners = {
@@ -53,6 +53,8 @@ export interface BuildSystemBlockInput {
   systemPromptJoiners?: SystemPromptJoiners;
   workspaceManifest?: WorkspaceManifestSettings;
   graphService?: WorkspaceGraphService;
+  /** Which dynamic sections are ALSO baked into the static base system prompt (per turn). */
+  systemPromptSections?: SystemPromptSections;
   /** When true, skip ensureGlobalSystemPromptFile seeding (caller already seeded once per turn). */
   skipSeed?: boolean;
 }

@@ -9,7 +9,7 @@ import { listAgents, writeAgent } from "../rest/agents";
 import { loadSeedJoinersDefaults } from "../features/mds/paths";
 import { getSearchProviderRegistry } from "../features/tools/host/search-provider-registry";
 import { buildDefaultSearchProviders } from "./migrate";
-import { DEFAULT_ADDITIONAL_SYSTEM_INFO } from "../../../_shared/types/config";
+import { DEFAULT_ADDITIONAL_SYSTEM_INFO, DEFAULT_SYSTEM_PROMPT_SECTIONS } from "../../../_shared/types/config";
 
 /**
  * Configuration loader with live fs.watch reload.
@@ -56,6 +56,7 @@ export async function initConfigWatcher(
       headless: false,
       workspaceManifest: { enabled: true },
       additionalSystemInfo: DEFAULT_ADDITIONAL_SYSTEM_INFO,
+      systemPromptSections: DEFAULT_SYSTEM_PROMPT_SECTIONS,
       testModels: {
         model1000: { tokensPerSecond: 250 },
         "model-mixed": { tokensPerSecond: 250 },

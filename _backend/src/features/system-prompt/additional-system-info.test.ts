@@ -28,9 +28,27 @@ describe("additional system info config", () => {
 });
 
 describe("additional system info builder split", () => {
-  test("base block omits volatile sections runtime/todo/manifest", async () => {
+  test("base block includes static runtime but omits dynamic runtime, todo and manifest by default", async () => {
     const base = await buildSystemBlockBase(baseInput as any);
-    expect(base).not.toContain("<runtime>");
+    // Static runtime facts (os/workspace/session) are baked into the base by default.
+    expect(base).toContain("<runtime>");
+    expect(base).toContain("workspace_root");
+    // Dynamic runtime (datetime / elapsed), todo and manifest are off by default.
+    expect(base).not.toContain("datetime:");
+    expect(base).not.toContain("turn_elapsed");
+    expect(base).not.toContain("<todoList>");
+    expect(base).not.toContain("<workspaceManifest>");
+  });
+
+  test("base block honors systemPromptSections runtime toggles", async () => {
+    // static runtime off + dynamic runtime on ⇒ only datetime (no static facts).
+    const base = await buildSystemBlockBase({
+      ...baseInput,
+      systemPromptSections: { runtime: false, datetime: true, todoList: false, workspaceManifest: false },
+    } as any);
+    expect(base).not.toContain("workspace_root");
+    expect(base).not.toContain("- mode:");
+    expect(base).toContain("datetime:");
     expect(base).not.toContain("<todoList>");
     expect(base).not.toContain("<workspaceManifest>");
   });
@@ -53,6 +71,16 @@ describe("additional system info builder split", () => {
     expect(vol).not.toContain("<project>");
     expect(vol).not.toContain("<skills>");
     expect(vol).not.toContain("<extras>");
+  });
+
+  test("volatile runtime section is dynamic-only (no static runtime facts)", async () => {
+    const vol = await buildAdditionalSystemInfoBlock(baseInput as any, ["runtime"] as any, false);
+    expect(vol).toBeTruthy();
+    expect(vol).toContain("<runtime>");
+    expect(vol).toContain("datetime:");
+    expect(vol).not.toContain("workspace_root");
+    expect(vol).not.toContain("- mode:");
+    expect(vol).not.toContain("- os:");
   });
 
   test("buildAdditionalSystemInfoBlock respects a sections filter", async () => {

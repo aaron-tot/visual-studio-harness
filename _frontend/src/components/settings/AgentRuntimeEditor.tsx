@@ -6,9 +6,10 @@ import type {
   AdditionalSystemInfoSettings,
   AdditionalSystemInfoVisibility,
   SkillMdConfig,
+  SystemPromptSections,
   ThinkingEffort,
 } from "../../../../_shared/types";
-import { DEFAULT_ADDITIONAL_SYSTEM_INFO } from "../../../../_shared/types";
+import { DEFAULT_ADDITIONAL_SYSTEM_INFO, DEFAULT_SYSTEM_PROMPT_SECTIONS } from "../../../../_shared/types";
 
 const ATTACHMENT_MODES: { value: "inject" | "hard" | "soft"; label: string; desc: string }[] = [
   { value: "inject", label: "Inject", desc: "Embed in system prompt" },
@@ -397,7 +398,9 @@ export function AgentRuntimeEditor({
                         onChange={() => toggleSection(key)}
                         className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
                       />
-                      <span className="text-[11px] text-zinc-400">{key}</span>
+                      <span className="text-[11px] text-zinc-400">
+                        {key === "runtime" ? "Runtime (dynamic)" : key}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -442,6 +445,49 @@ export function AgentRuntimeEditor({
                 </div>
               </label>
             </>
+          );
+        })()}
+      </div>
+
+      {/* System Prompt Sections (per-agent override of the static bake) */}
+      <div className="space-y-3 border-t border-zinc-800 pt-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-medium text-zinc-300">System Prompt Sections</h4>
+          {value.systemPromptSections && (
+            <button
+              onClick={() => patch({ systemPromptSections: undefined })}
+              className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+              title="Inherit the global systemPromptSections default"
+            >
+              <Undo2 className="h-3 w-3" />
+              Inherit global
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-zinc-500">
+          Per-agent override of which sections are ALSO baked into the static base system prompt
+          (rebuilt once per turn — not refreshed per step). Left empty, the global setting applies.
+        </p>
+        {(() => {
+          const sysSec: SystemPromptSections = value.systemPromptSections ?? DEFAULT_SYSTEM_PROMPT_SECTIONS;
+          const patchSec = (partial: Partial<SystemPromptSections>) =>
+            patch({ systemPromptSections: { ...sysSec, ...partial } });
+          return (
+            <div className="space-y-1.5">
+              {(["runtime", "datetime", "todoList", "workspaceManifest"] as const).map((key) => (
+                <label key={key} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sysSec[key]}
+                    onChange={(e) => patchSec({ [key]: e.target.checked })}
+                    className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                  />
+                  <span className="text-[11px] text-zinc-400">
+                    {key === "runtime" ? "Runtime (static)" : key === "datetime" ? "Runtime (dynamic) — WARNING: timestamp changes per turn" : key}
+                  </span>
+                </label>
+              ))}
+            </div>
           );
         })()}
       </div>

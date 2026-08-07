@@ -1,4 +1,5 @@
 import type { SystemPromptJoiners } from "../../../_shared/types";
+import { DEFAULT_SYSTEM_PROMPT_SECTIONS } from "../../../../_shared/types/config";
 import { ensureGlobalSystemPromptFile } from "../mds";
 import {
   DEFAULT_SYSTEM_PROMPT_JOINERS,
@@ -52,10 +53,12 @@ export async function buildSystemBlock(input: BuildSystemBlockInput): Promise<st
  * Rebuilds the system block WITHOUT seeding the global prompt file.
  * Used by per-step prepareStep rebuilds (seeding happens once per turn).
  * `tags` filters which sections are built (default: all sections — backward compatible).
+ * `ctxExtras` is merged into the SectionContext (e.g. runtimeInclude for the runtime split).
  */
 export async function buildSystemBlockSections(
   input: BuildSystemBlockInput,
   tags: readonly string[] = SECTION_BUILDERS.map((s) => s.tag),
+  ctxExtras?: Partial<SectionContext>,
 ): Promise<string> {
   if (input.noSystemPrompt) return "";
 
@@ -71,6 +74,7 @@ export async function buildSystemBlockSections(
     workspaceManifest: input.workspaceManifest,
     graphService: input.graphService,
     extras: input.extras,
+    ...ctxExtras,
   };
 
   const blocks: string[] = [];
@@ -89,10 +93,20 @@ export async function buildSystemBlockSections(
   return blocks.join("\n\n");
 }
 
-/** Stable system sections only — the real `system` message / `instructions`. */
+/** Stable system sections only — the real `system` message / `instructions`.
+ *  Rebuilt once per turn; additionally includes the dynamic sections enabled in
+ *  `systemPromptSections` (static runtime / datetime / todoList / workspaceManifest),
+ *  baked statically for the turn. */
 export async function buildSystemBlockBase(input: BuildSystemBlockInput): Promise<string> {
   if (input.noSystemPrompt) return "";
-  const block = await buildSystemBlockSections(input, BASE_SECTION_TAGS);
+  const sysSec = input.systemPromptSections ?? DEFAULT_SYSTEM_PROMPT_SECTIONS;
+  const tags: string[] = [...BASE_SECTION_TAGS];
+  if (sysSec.todoList) tags.push("todoList");
+  if (sysSec.workspaceManifest) tags.push("workspaceManifest");
+  if (sysSec.runtime || sysSec.datetime) tags.push("runtime");
+  const block = await buildSystemBlockSections(input, tags, {
+    runtimeInclude: { static: sysSec.runtime, dynamic: sysSec.datetime },
+  });
   // Stable guidance line (spec §9 R1) so the model treats the trailing
   // `additional_system_info` injection as context, not a command.
   return block ? `${block}\n\n${ADDITIONAL_SYSTEM_INFO_GUIDANCE}` : ADDITIONAL_SYSTEM_INFO_GUIDANCE;
@@ -131,7 +145,9 @@ export async function buildAdditionalSystemInfoBlock(
         now: truncateToDay(input.now ?? new Date()),
         turnStart: undefined,
       };
-  const partial = await buildSystemBlockSections(volInput, sections);
+  // The volatile runtime section is the DYNAMIC part only (datetime + elapsed);
+  // static runtime facts live in the base system prompt.
+  const partial = await buildSystemBlockSections(volInput, sections, { runtimeInclude: { static: false, dynamic: true } });
   if (!partial) return null;
   const ts = includeTime ? `\n<timestamp>${new Date().toISOString()}</timestamp>` : "";
   return `<${ADDITIONAL_SYSTEM_INFO_TAG}>\n${partial}${ts}\n</${ADDITIONAL_SYSTEM_INFO_TAG}>`;

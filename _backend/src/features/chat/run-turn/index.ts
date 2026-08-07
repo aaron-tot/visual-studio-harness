@@ -336,6 +336,7 @@ export async function runTurn(
       dataDir, workspaceRoot, mode: getMode(), sessionId,
       agentSettings: runtime.settings, noSystemPrompt,
       systemPromptJoiners: config.systemPromptJoiners,
+      systemPromptSections: runtime.settings.systemPromptSections ?? config.systemPromptSections,
       workspaceManifest: config.workspaceGraph !== false ? config.workspaceManifest : undefined,
       graphService,
       now: turnStartNow,

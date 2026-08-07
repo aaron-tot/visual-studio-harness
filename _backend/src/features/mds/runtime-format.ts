@@ -11,27 +11,40 @@ export function formatElapsed(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
-export function formatRuntimeInfo(input: {
+interface RuntimeInfoInput {
   dataDir: string;
   workspaceRoot: string;
   mode: string;
   sessionId?: string;
   now?: Date;
   turnStart?: Date;
-}): string {
-  const now = input.now ?? new Date();
+}
+
+/** Static runtime facts — stable for a run/session; lives in the base system prompt. */
+export function formatRuntimeStatic(input: RuntimeInfoInput): string[] {
   const lines = [
-    "## Runtime",
     `- workspace_root: ${input.workspaceRoot}`,
     `- mode: ${input.mode}`,
     `- data_dir: ${resolve(input.dataDir)}`,
     `- os: ${platform()}`,
   ];
   if (input.sessionId?.trim()) lines.push(`- session_id: ${input.sessionId.trim()}`);
-  lines.push(`- datetime: ${now.toISOString()}`);
+  return lines;
+}
+
+/** Dynamic runtime facts — datetime + elapsed; lives in the volatile tail. */
+export function formatRuntimeDynamic(input: RuntimeInfoInput): string[] {
+  const now = input.now ?? new Date();
+  const lines = [`- datetime: ${now.toISOString()}`];
   if (input.turnStart) {
     const elapsedMs = Math.max(0, now.getTime() - input.turnStart.getTime());
     lines.push(`- turn_elapsed: ${formatElapsed(elapsedMs)}`);
   }
-  return lines.join("\n");
+  return lines;
+}
+
+/** Full runtime block (static + dynamic) — backward-compatible default. */
+export function formatRuntimeInfo(input: RuntimeInfoInput): string {
+  const lines = [...formatRuntimeStatic(input), ...formatRuntimeDynamic(input)];
+  return ["## Runtime", ...lines].join("\n");
 }

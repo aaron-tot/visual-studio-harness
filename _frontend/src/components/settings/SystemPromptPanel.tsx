@@ -3,6 +3,7 @@ import { Edit3, RefreshCw, X } from "lucide-react";
 import { useConfigStore } from "../../stores/config";
 import type { SystemPromptJoiners, WorkspaceManifestSettings } from "../../../../_shared/types";
 import { AdditionalSystemInfoPanel } from "./AdditionalSystemInfoPanel";
+import { SystemPromptSectionsPanel } from "./SystemPromptSectionsPanel";
 
 const DEFAULT_JOINERS: SystemPromptJoiners = {
   start: "",
@@ -151,6 +152,8 @@ export function SystemPromptPanel() {
             {renderField(section.postKey, "Postfix")}
           </div>
         ))}
+
+        <SystemPromptSectionsPanel />
 
         <div className="text-xs text-zinc-400 font-medium px-1 pt-3 pb-1">
           Additional System Info (volatile tail)

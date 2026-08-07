@@ -9,10 +9,10 @@ const DEFAULT_ASI: AdditionalSystemInfoSettings = {
   includeTime: false,
 };
 
-const SECTION_LABELS: Record<string, string> = {
-  runtime: "Runtime info",
-  todoList: "TODO List",
-  workspaceManifest: "Workspace Manifest",
+const SECTION_LABELS: Record<string, { label: string; hint?: string }> = {
+  runtime: { label: "Runtime (dynamic)", hint: "datetime + time spent on the turn" },
+  todoList: { label: "TODO List" },
+  workspaceManifest: { label: "Workspace Manifest" },
 };
 
 /**
@@ -77,7 +77,10 @@ export function AdditionalSystemInfoPanel() {
                     onChange={() => toggleSection(key)}
                     className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
                   />
-                  <span className="text-xs text-zinc-300">{SECTION_LABELS[key]}</span>
+                  <span className="text-xs text-zinc-300">{SECTION_LABELS[key].label}</span>
+                  {SECTION_LABELS[key].hint && (
+                    <span className="text-[10px] text-zinc-500"> — {SECTION_LABELS[key].hint}</span>
+                  )}
                 </label>
               ))}
             </div>

@@ -18,7 +18,7 @@ export {
   resolveSkillMds,
   type ResolveContext,
 } from "./reader";
-export { formatRuntimeInfo } from "./runtime-format";
+export { formatRuntimeInfo, formatRuntimeStatic, formatRuntimeDynamic } from "./runtime-format";
 export { formatTodoList } from "./todo-list-format";
 export { ensureGlobalSystemPromptFile } from "./seeder";
 export { messagesForModel, assertExactlyOneSystemMessage } from "./messages";

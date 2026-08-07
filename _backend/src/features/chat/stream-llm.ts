@@ -9,6 +9,7 @@ import { assertExactlyOneSystemMessage } from "../mds";
 import { getDescriptorByDisplayName } from "../../../../_shared/provider-registry";
 import { serverOriginFromBaseUrl } from "../../llm/slots";
 import { createMockFullStream } from "../../llm/mock-models";
+import { ensureTestServer, buildMockTools, hasMockActions } from "../../llm/mock-models/test-server";
 import type { StreamChatOptions, StreamChatResult } from "./stream-types";
 import { getRetryableLabel, DEFAULT_STREAM_RETRY_CONFIG } from "./stream-retry";
 import { createVerboseFetch } from "./raw-capture-fetch";
@@ -30,13 +31,27 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   // Per-attempt capture/provider are recreated on retry so stale exchanges don't pollute step attribution
   let lastCap: ReturnType<typeof createVerboseFetch> | undefined;
 
-  const makeSdkProvider = (fetchImpl: typeof fetch) =>
-    provider.displayName === "Test" ? null : createOpenAICompatible({
-      baseURL: provider.baseUrl, apiKey: provider.apiKey || "no-key",
-      headers: provider.headers, name: provider.displayName, fetch: fetchImpl,
-    });
+  // Test provider models with a server script (e.g. toolsV2) run through the
+  // REAL SDK against the local endpoint — exercising prepareStep, the ASI
+  // injection, and the true wire. Other test models keep the in-process generator.
+  const isTest = provider.displayName === "Test";
+  const useMockEndpoint = isTest && hasMockActions(model);
+  const sdkTools = useMockEndpoint ? buildMockTools(model, options.workspaceRoot) : tools;
 
-  const hasTools = tools && Object.keys(tools).length > 0;
+  const makeSdkProvider = (fetchImpl: typeof fetch) =>
+    isTest && !useMockEndpoint
+      ? null
+      : createOpenAICompatible({
+          baseURL: useMockEndpoint ? ensureTestServer() : provider.baseUrl,
+          apiKey: provider.apiKey || "no-key",
+          headers: useMockEndpoint
+            ? { ...(provider.headers ?? {}), "x-test-speed": String(options.modelSpeed || 0) }
+            : provider.headers,
+          name: provider.displayName,
+          fetch: fetchImpl,
+        });
+
+  const hasTools = sdkTools && Object.keys(sdkTools).length > 0;
   const bus = hookCtx ? getBus() : null;
   const stepBatch = new StepToolBatch({
     onBefore: async (p) => {
@@ -121,9 +136,8 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
         }
 
         dbg("streamChat:invoking-provider", { attempt, provider: provider.displayName, model, hasTools });
-        const result = provider.displayName === "Test"
-          ? { fullStream: createMockFullStream(model, signal, options.modelSpeed, options.workspaceRoot) }
-          : streamText({
+        const result = useMockEndpoint || provider.displayName !== "Test"
+          ? streamText({
               model: sdkProvider!(model),
               ...(instructions ? { instructions } : {}),
               ...(prepareStep ? { prepareStep } : {}),
@@ -132,7 +146,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
               maxRetries: 0,
               ...(temperature !== undefined ? { temperature } : {}),
               ...(providerOptions ? { providerOptions: providerOptions as never } : {}),
-              ...(hasTools ? { tools, stopWhen: stepCountIs(maxSteps) } : {}),
+              ...(hasTools ? { tools: sdkTools!, stopWhen: stepCountIs(maxSteps) } : {}),
               onError: ({ error }) => {
                 const errObj = error?.lastError ?? error;
                 const info = classifyLlmError(errObj ?? "stream error", errCtx);
@@ -140,7 +154,8 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
                 if (info.isCustom && info.raw !== info.message) console.error(`[LLM] raw: ${info.raw}`);
                 streamErrorInfo = info;
               },
-            });
+            })
+          : { fullStream: createMockFullStream(model, signal, options.modelSpeed, options.workspaceRoot) };
 
         const evtCounts: Record<string, number> = {};
         let firstEventLogged = false;

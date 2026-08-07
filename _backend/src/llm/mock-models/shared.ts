@@ -159,7 +159,7 @@ export async function* executeActions(
 // ── Expected text: generate the human-readable final output ────────────────
 
 /** Execute a tool against the real filesystem to get its actual result. */
-function executeTool(toolName: string, args: Record<string, unknown>, workspaceRoot?: string): unknown {
+export function executeTool(toolName: string, args: Record<string, unknown>, workspaceRoot?: string): unknown {
   switch (toolName) {
     case "bash": {
       const cmd = String(args.command || "");

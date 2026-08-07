@@ -536,15 +536,6 @@ export function AgentRuntimeEditor({
           const [extsText, setExtsText] = useState(wm.excludeExtensions?.join(", ") ?? DEFAULT_MANIFEST_EXTS);
           return (
             <div className="space-y-2">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={wm.enabled ?? true}
-                  onChange={(e) => patchWm({ enabled: e.target.checked })}
-                  className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-                />
-                <span className="text-[11px] text-zinc-400">Enabled (inject workspace manifest)</span>
-              </label>
               <div className="flex items-center gap-2">
                 <label className="text-[11px] text-zinc-500">Max depth</label>
                 <input

@@ -47,7 +47,6 @@ export const SystemPromptSectionsSchema = z.object({
 });
 
 export const WorkspaceManifestSettingsSchema = z.object({
-  enabled: z.boolean().default(true),
   maxDepth: z.number().int().positive().default(3).optional(),
   includeFiles: z.boolean().optional(),
   excludeDirs: z.array(z.string()).optional(),

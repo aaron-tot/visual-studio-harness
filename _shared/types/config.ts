@@ -186,7 +186,6 @@ export interface McpServerConfig {
 }
 
 export interface WorkspaceManifestSettings {
-  enabled: boolean;
   maxDepth?: number;
   includeFiles?: boolean;
   excludeDirs?: string[];

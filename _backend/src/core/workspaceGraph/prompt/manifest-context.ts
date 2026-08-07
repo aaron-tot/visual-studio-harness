@@ -12,8 +12,6 @@ export async function buildWorkspaceManifestContext(
 ): Promise<string | null> {
   const { config, graph, agentId } = input;
 
-  if (!config.enabled) return null;
-
   if (agentId && config.agents && config.agents.length > 0) {
     if (!config.agents.includes(agentId)) return null;
   }

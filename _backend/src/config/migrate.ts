@@ -58,7 +58,7 @@ export function migrateConfig(config: ConfigFile): ConfigFile {
 
   return {
     ...config,
-    workspaceManifest: config.workspaceManifest ?? { enabled: true },
+    workspaceManifest: config.workspaceManifest ?? {},
     providers,
     agents: migrated,
     headless: config.headless ?? false,

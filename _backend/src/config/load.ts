@@ -54,7 +54,7 @@ export async function initConfigWatcher(
         slotWaitTimeoutSec: 300,
       },
       headless: false,
-      workspaceManifest: { enabled: true },
+      workspaceManifest: {},
       additionalSystemInfo: DEFAULT_ADDITIONAL_SYSTEM_INFO,
       testModels: {
         model1000: { tokensPerSecond: 250 },

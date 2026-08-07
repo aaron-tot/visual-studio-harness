@@ -53,10 +53,7 @@ describe("additional system info builder split", () => {
   });
 
   test("volatile block wraps volatile sections in <additional_system_info> and omits base sections", async () => {
-    const vol = await buildAdditionalSystemInfoBlock({
-      ...baseInput,
-      workspaceManifest: { enabled: false },
-    } as any);
+    const vol = await buildAdditionalSystemInfoBlock(baseInput as any);
     expect(vol).toBeTruthy();
     expect(vol!.startsWith("<additional_system_info>")).toBe(true);
     expect(vol!.endsWith("</additional_system_info>")).toBe(true);
@@ -77,10 +74,7 @@ describe("additional system info builder split", () => {
   });
 
   test("buildAdditionalSystemInfoBlock respects a sections filter", async () => {
-    const vol = await buildAdditionalSystemInfoBlock({
-      ...baseInput,
-      workspaceManifest: { enabled: false },
-    } as any, ["runtime"] as any);
+    const vol = await buildAdditionalSystemInfoBlock(baseInput as any, ["runtime"] as any);
     expect(vol).toBeTruthy();
     expect(vol).toContain("<runtime>");
     expect(vol).not.toContain("<todoList>");

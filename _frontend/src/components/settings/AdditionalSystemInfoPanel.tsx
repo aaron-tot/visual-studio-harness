@@ -5,7 +5,6 @@ import type { AdditionalSystemInfoSettings, AdditionalSystemInfoVisibility } fro
 const DEFAULT_ASI: AdditionalSystemInfoSettings = {
   sections: ["runtime", "todoList", "workspaceManifest"],
   visibility: "collapsed",
-  persist: true,
   includeTime: false,
   always: false,
 };
@@ -101,17 +100,6 @@ export function AdditionalSystemInfoPanel() {
               <option value="expanded">Expanded</option>
             </select>
           </div>
-
-          {/* Persist (always true in this design) */}
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={asi.persist ?? true}
-              onChange={(e) => patch({ persist: e.target.checked })}
-              className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-            />
-            <span className="text-[11px] text-zinc-500">Persist emitted injections (replay verbatim)</span>
-          </label>
 
           {/* includeTime with warning */}
           <label className="flex items-start gap-1.5 cursor-pointer">

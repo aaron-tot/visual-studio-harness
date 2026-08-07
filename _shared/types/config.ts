@@ -78,10 +78,8 @@ export type AdditionalSystemInfoVisibility = "hidden" | "collapsed" | "expanded"
 export interface AdditionalSystemInfoSettings {
   /** Which volatile sections are rendered into the trailing block. Empty ⇒ no message emitted. */
   sections: Array<"runtime" | "todoList" | "workspaceManifest">;
-  /** UI default. Backend ignores this per the spec (persist is always true). */
+  /** UI default. */
   visibility: AdditionalSystemInfoVisibility;
-  /** Always true in this design. */
-  persist: boolean;
   /** If true, embeds a timestamp so the content ALWAYS changes each step.
    *  Default: false ⇒ only injected when manifest/todo actually change. */
   includeTime?: boolean;
@@ -96,7 +94,6 @@ export interface AdditionalSystemInfoSettings {
 export const DEFAULT_ADDITIONAL_SYSTEM_INFO: AdditionalSystemInfoSettings = {
   sections: ["runtime", "todoList", "workspaceManifest"],
   visibility: "collapsed",
-  persist: true,
   includeTime: false,
   always: false,
 };

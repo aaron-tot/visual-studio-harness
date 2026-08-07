@@ -19,11 +19,10 @@ const baseInput = {
 };
 
 describe("additional system info config", () => {
-  test("default has all three volatile sections, collapsed, persisted", () => {
+  test("default has all three volatile sections, collapsed", () => {
     const d = DEFAULT_ADDITIONAL_SYSTEM_INFO as AdditionalSystemInfoSettings;
     expect(d.sections).toEqual(["runtime", "todoList", "workspaceManifest"]);
     expect(d.visibility).toBe("collapsed");
-    expect(d.persist).toBe(true);
   });
 });
 

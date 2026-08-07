@@ -423,16 +423,6 @@ export function AgentRuntimeEditor({
                 </select>
               </label>
 
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={asi.persist}
-                  onChange={(e) => patchAsi({ persist: e.target.checked })}
-                  className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-                />
-                <span className="text-[11px] text-zinc-400">Persist emitted injections (replay verbatim)</span>
-              </label>
-
               <label className="flex items-start gap-1.5 cursor-pointer">
                 <input
                   type="checkbox"

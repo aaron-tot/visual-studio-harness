@@ -36,7 +36,6 @@ export const SkillMdConfigSchema = z.object({
 export const AdditionalSystemInfoSchema = z.object({
   sections: z.array(z.enum(["runtime", "todoList", "workspaceManifest"])).default(["runtime", "todoList", "workspaceManifest"]),
   visibility: z.enum(["hidden", "collapsed", "expanded"]).default("collapsed"),
-  persist: z.boolean().default(true),
   includeTime: z.boolean().default(false),
   always: z.boolean().default(false),
 });

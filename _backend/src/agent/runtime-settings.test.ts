@@ -60,7 +60,6 @@ describe("runtime-settings", () => {
       additionalSystemInfo: {
         sections: ["runtime"],
         visibility: "hidden",
-        persist: true,
         includeTime: false,
       },
     };
@@ -69,7 +68,6 @@ describe("runtime-settings", () => {
         additionalSystemInfo: {
           sections: ["todoList", "workspaceManifest"],
           visibility: "expanded",
-          persist: true,
           includeTime: true,
         },
       },
@@ -86,7 +84,6 @@ describe("runtime-settings", () => {
       additionalSystemInfo: {
         sections: ["runtime"],
         visibility: "hidden",
-        persist: true,
         includeTime: false,
       },
     };

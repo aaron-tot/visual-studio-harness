@@ -36,6 +36,8 @@ export function getAgentSettings(
     additionalSystemInfo: settings.additionalSystemInfo ?? config.additionalSystemInfo,
     // systemPromptSections is per-agent only (no global default).
     systemPromptSections: settings.systemPromptSections,
+    // Per-agent workspace manifest settings override the global default.
+    workspaceManifest: settings.workspaceManifest ?? config.workspaceManifest,
   };
 }
 

@@ -69,6 +69,8 @@ export interface AgentSettings {
   additionalSystemInfo?: AdditionalSystemInfoSettings;
   /** Which dynamic sections are ALSO baked into the static base system prompt (built once per turn). */
   systemPromptSections?: SystemPromptSections;
+  /** Per-agent workspace manifest settings (overrides the global default). */
+  workspaceManifest?: WorkspaceManifestSettings;
 }
 
 export type AdditionalSystemInfoVisibility = "hidden" | "collapsed" | "expanded";

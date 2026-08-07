@@ -57,8 +57,9 @@ export function AdditionalSystemInfoPanel() {
           </div>
           <div className="text-xs text-zinc-500 mt-0.5">
             Emitted at the tail of each request (as fabricated tool context) so the
-            stable leading system + history stays prompt-cache readable. Appended
-            only when its content changes.
+            stable leading system + history stays prompt-cache readable. Appended only
+            when its content differs from what the model already has in context (a
+            prior injection, or the sections baked into the system prompt).
           </div>
         </div>
       </label>

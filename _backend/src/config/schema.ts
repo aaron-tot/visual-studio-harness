@@ -62,6 +62,7 @@ export const AgentSettingsSchema = z.object({
   skillMds: z.array(SkillMdConfigSchema).default([]),
   additionalSystemInfo: AdditionalSystemInfoSchema.optional(),
   systemPromptSections: SystemPromptSectionsSchema.optional(),
+  workspaceManifest: WorkspaceManifestSettingsSchema.optional(),
 });
 
 /** Global subagent tool settings */

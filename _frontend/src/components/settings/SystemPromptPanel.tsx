@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Edit3, RefreshCw, X } from "lucide-react";
 import { useConfigStore } from "../../stores/config";
-import type { SystemPromptJoiners, WorkspaceManifestSettings } from "../../../../_shared/types";
+import type { SystemPromptJoiners } from "../../../../_shared/types";
 import { AdditionalSystemInfoPanel } from "./AdditionalSystemInfoPanel";
 
 const DEFAULT_JOINERS: SystemPromptJoiners = {
@@ -60,15 +60,6 @@ export function SystemPromptPanel() {
     await update({
       ...current,
       systemPromptJoiners: { ...(current.systemPromptJoiners ?? DEFAULT_JOINERS), ...partial },
-    });
-  };
-
-  const patchManifest = async (partial: Partial<WorkspaceManifestSettings>) => {
-    const current = useConfigStore.getState().config;
-    const currentManifest = current.workspaceManifest ?? { enabled: true };
-    await update({
-      ...current,
-      workspaceManifest: { ...currentManifest, ...partial },
     });
   };
 
@@ -160,12 +151,6 @@ export function SystemPromptPanel() {
             <div className="text-xs text-zinc-300 font-medium mb-2">{section.label}</div>
             {renderField(section.preKey, "Prefix")}
             {renderField(section.postKey, "Postfix")}
-            {section.preKey === "preWorkspaceManifest" && (
-              <WorkspaceManifestSettings
-                settings={config.workspaceManifest}
-                onChange={patchManifest}
-              />
-            )}
           </div>
         ))}
 
@@ -223,119 +208,6 @@ export function SystemPromptPanel() {
                 Save
               </button>
             </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const DEFAULT_EXCLUDE_DIRS = "node_modules, .git, dist, build, .vsh, coverage, .turbo";
-const DEFAULT_EXCLUDE_EXTS = ".png, .jpg, .jpeg, .gif, .svg, .ico, .woff2, .woff, .eot, .ttf";
-
-const MANIFEST_DEFAULTS = {
-  enabled: true,
-  maxDepth: 3,
-  includeFiles: false,
-  excludeDirs: DEFAULT_EXCLUDE_DIRS.split(", "),
-  excludeExtensions: DEFAULT_EXCLUDE_EXTS.split(", "),
-};
-
-function WorkspaceManifestSettings({
-  settings,
-  onChange,
-}: {
-  settings?: WorkspaceManifestSettings;
-  onChange: (partial: Partial<WorkspaceManifestSettings>) => void;
-}) {
-  const enabled = settings?.enabled ?? true;
-  const [dirsText, setDirsText] = useState(settings?.excludeDirs?.join(", ") ?? DEFAULT_EXCLUDE_DIRS);
-  const [extsText, setExtsText] = useState(settings?.excludeExtensions?.join(", ") ?? DEFAULT_EXCLUDE_EXTS);
-
-  const commitDirs = () => {
-    const parsed = dirsText.split(",").map((s) => s.trim()).filter(Boolean);
-    onChange({ excludeDirs: parsed.length > 0 ? parsed : undefined });
-  };
-
-  const commitExts = () => {
-    const parsed = extsText.split(",").map((s) => s.trim()).filter(Boolean);
-    onChange({ excludeExtensions: parsed.length > 0 ? parsed : undefined });
-  };
-
-  const resetAll = () => {
-    onChange(MANIFEST_DEFAULTS);
-    setDirsText(DEFAULT_EXCLUDE_DIRS);
-    setExtsText(DEFAULT_EXCLUDE_EXTS);
-  };
-
-  return (
-    <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
-      <label className="flex items-start gap-3 cursor-pointer group">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => onChange({ enabled: e.target.checked })}
-          className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-        />
-        <div>
-          <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
-            Inject workspace manifest into system prompt
-          </div>
-          <div className="text-xs text-zinc-500 mt-0.5">
-            Adds a tree view of your workspace to the system prompt so the agent
-            understands the project structure.
-          </div>
-        </div>
-      </label>
-
-      {enabled && (
-        <div className="ml-7 space-y-2">
-          <button
-            type="button"
-            onClick={resetAll}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300"
-          >
-            Reset to defaults
-          </button>
-          <div className="flex items-center gap-2">
-            <label className="text-[11px] text-zinc-500">Max depth</label>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={settings?.maxDepth ?? 3}
-              onChange={(e) => onChange({ maxDepth: parseInt(e.target.value, 10) || 3 })}
-              className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
-            />
-            <label className="flex items-center gap-1.5 ml-3">
-              <input
-                type="checkbox"
-                checked={settings?.includeFiles ?? false}
-                onChange={(e) => onChange({ includeFiles: e.target.checked })}
-                className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-              />
-              <span className="text-[11px] text-zinc-500">Include files in tree</span>
-            </label>
-          </div>
-          <div>
-            <label className="text-[11px] text-zinc-500 block mb-0.5">Excluded directories (comma-separated)</label>
-            <input
-              type="text"
-              value={dirsText}
-              onChange={(e) => setDirsText(e.target.value)}
-              onBlur={commitDirs}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] text-zinc-500 block mb-0.5">Excluded extensions (comma-separated)</label>
-            <input
-              type="text"
-              value={extsText}
-              onChange={(e) => setExtsText(e.target.value)}
-              onBlur={commitExts}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
-            />
           </div>
         </div>
       )}

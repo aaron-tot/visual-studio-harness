@@ -8,8 +8,12 @@ import type {
   SkillMdConfig,
   SystemPromptSections,
   ThinkingEffort,
+  WorkspaceManifestSettings,
 } from "../../../../_shared/types";
 import { DEFAULT_ADDITIONAL_SYSTEM_INFO, DEFAULT_SYSTEM_PROMPT_SECTIONS } from "../../../../_shared/types";
+
+const DEFAULT_MANIFEST_DIRS = "node_modules, .git, dist, build, .vsh, coverage, .turbo";
+const DEFAULT_MANIFEST_EXTS = ".png, .jpg, .jpeg, .gif, .svg, .ico, .woff2, .woff, .eot, .ttf";
 
 const ATTACHMENT_MODES: { value: "inject" | "hard" | "soft"; label: string; desc: string }[] = [
   { value: "inject", label: "Inject", desc: "Embed in system prompt" },
@@ -487,6 +491,91 @@ export function AgentRuntimeEditor({
                   </span>
                 </label>
               ))}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Workspace Manifest (per-agent override) */}
+      <div className="space-y-3 border-t border-zinc-800 pt-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-medium text-zinc-300">Workspace Manifest</h4>
+          {value.workspaceManifest && (
+            <button
+              onClick={() => patch({ workspaceManifest: undefined })}
+              className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+              title="Inherit the global workspaceManifest default"
+            >
+              <Undo2 className="h-3 w-3" />
+              Inherit global
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-zinc-500">
+          Per-agent override of the workspace manifest tree settings. Left empty, the global setting
+          applies.
+        </p>
+        {(() => {
+          const wm: WorkspaceManifestSettings = value.workspaceManifest ?? {};
+          const patchWm = (partial: Partial<WorkspaceManifestSettings>) =>
+            patch({ workspaceManifest: { ...wm, ...partial } });
+          const setList = (key: "excludeDirs" | "excludeExtensions", text: string) => {
+            const parsed = text.split(",").map((s) => s.trim()).filter(Boolean);
+            patchWm({ [key]: parsed.length > 0 ? parsed : undefined });
+          };
+          const [dirsText, setDirsText] = useState(wm.excludeDirs?.join(", ") ?? DEFAULT_MANIFEST_DIRS);
+          const [extsText, setExtsText] = useState(wm.excludeExtensions?.join(", ") ?? DEFAULT_MANIFEST_EXTS);
+          return (
+            <div className="space-y-2">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={wm.enabled ?? true}
+                  onChange={(e) => patchWm({ enabled: e.target.checked })}
+                  className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                />
+                <span className="text-[11px] text-zinc-400">Enabled (inject workspace manifest)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] text-zinc-500">Max depth</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={wm.maxDepth ?? 3}
+                  onChange={(e) => patchWm({ maxDepth: parseInt(e.target.value, 10) || 3 })}
+                  className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+                />
+                <label className="flex items-center gap-1.5 ml-3">
+                  <input
+                    type="checkbox"
+                    checked={wm.includeFiles ?? false}
+                    onChange={(e) => patchWm({ includeFiles: e.target.checked })}
+                    className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                  />
+                  <span className="text-[11px] text-zinc-500">Include files in tree</span>
+                </label>
+              </div>
+              <div>
+                <label className="text-[11px] text-zinc-500 block mb-0.5">Excluded directories (comma-separated)</label>
+                <input
+                  type="text"
+                  value={dirsText}
+                  onChange={(e) => setDirsText(e.target.value)}
+                  onBlur={() => setList("excludeDirs", dirsText)}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-zinc-500 block mb-0.5">Excluded extensions (comma-separated)</label>
+                <input
+                  type="text"
+                  value={extsText}
+                  onChange={(e) => setExtsText(e.target.value)}
+                  onBlur={() => setList("excludeExtensions", extsText)}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+                />
+              </div>
             </div>
           );
         })()}

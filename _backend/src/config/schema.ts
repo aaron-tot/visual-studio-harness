@@ -38,6 +38,7 @@ export const AdditionalSystemInfoSchema = z.object({
   visibility: z.enum(["hidden", "collapsed", "expanded"]).default("collapsed"),
   persist: z.boolean().default(true),
   includeTime: z.boolean().default(false),
+  always: z.boolean().default(false),
 });
 
 export const SystemPromptSectionsSchema = z.object({

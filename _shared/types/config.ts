@@ -85,6 +85,12 @@ export interface AdditionalSystemInfoSettings {
   /** If true, embeds a timestamp so the content ALWAYS changes each step.
    *  Default: false ⇒ only injected when manifest/todo actually change. */
   includeTime?: boolean;
+  /** If true, ALWAYS inject the block at the end of every step regardless of
+   *  whether the content changed (e.g. a constant todo-list reminder). Separate
+   *  from `includeTime` (which changes the content); `always` re-emits whatever
+   *  the enabled `sections` render, every step. Warns of growing token usage
+   *  (cached, but accumulates a pair per step over time). Default: false. */
+  always?: boolean;
 }
 
 export const DEFAULT_ADDITIONAL_SYSTEM_INFO: AdditionalSystemInfoSettings = {
@@ -92,6 +98,7 @@ export const DEFAULT_ADDITIONAL_SYSTEM_INFO: AdditionalSystemInfoSettings = {
   visibility: "collapsed",
   persist: true,
   includeTime: false,
+  always: false,
 };
 
 /**

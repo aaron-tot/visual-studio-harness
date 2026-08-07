@@ -27,6 +27,10 @@ export interface PerStepRebuildContext {
   additionalSystemInfoSections?: readonly string[];
   /** When true, a timestamp is appended so content always changes each step. */
   additionalSystemInfoIncludeTime?: boolean;
+  /** When true, ALWAYS emit an injection at the end of every step regardless of
+   *  whether the content changed (bypasses the emit-on-change comparison). The
+   *  enabled `sections` still apply. */
+  additionalSystemInfoAlways?: boolean;
   /** Timestamp used for the very first step so it matches the turn-initial block. */
   turnStartNow: Date;
   /**
@@ -103,7 +107,8 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
       if (!content) return; // empty resolved block ⇒ skip
 
       const baseline = ctx.lastEmitted ?? ctx.systemAsiBaseline ?? null;
-      if (baseline != null && baseline === content) return; // unchanged ⇒ do nothing
+      // `always`: re-inject every step regardless of change (e.g. constant todo reminder).
+      if (!ctx.additionalSystemInfoAlways && baseline != null && baseline === content) return; // unchanged ⇒ do nothing
 
       const callId = `asi-${ctx.turnStartNow.getTime()}-${stepNumber}`;
       ctx.pendingInjection = { callId, content };

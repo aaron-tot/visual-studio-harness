@@ -346,6 +346,7 @@ export async function runTurn(
     const asiCfg = runtime.settings.additionalSystemInfo ?? config.additionalSystemInfo ?? DEFAULT_ADDITIONAL_SYSTEM_INFO;
     const additionalSystemInfoSections = asiCfg?.sections ?? ["runtime", "todoList", "workspaceManifest"];
     const additionalSystemInfoIncludeTime = asiCfg?.includeTime === true;
+    const additionalSystemInfoAlways = asiCfg?.always === true;
 
     // Canonical ASI block for the sections baked into the base system prompt —
     // the emit-on-change baseline when no prior injection part exists yet.
@@ -502,6 +503,7 @@ export async function runTurn(
       graphService,
       additionalSystemInfoSections,
       additionalSystemInfoIncludeTime,
+      additionalSystemInfoAlways,
       systemAsiBaseline,
       turnStartNow,
       onBlockBuilt: (_stepNumber, block) => {

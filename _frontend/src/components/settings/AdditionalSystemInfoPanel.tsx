@@ -7,6 +7,7 @@ const DEFAULT_ASI: AdditionalSystemInfoSettings = {
   visibility: "collapsed",
   persist: true,
   includeTime: false,
+  always: false,
 };
 
 const SECTION_LABELS: Record<string, { label: string; hint?: string }> = {
@@ -126,6 +127,26 @@ export function AdditionalSystemInfoPanel() {
                 WARNING: includeTime embeds a timestamp, so additional_system_info is
                 injected on every step. Off: only injected when the manifest/todo list
                 actually changes.
+              </div>
+            </div>
+          </label>
+
+          {/* Always inject (separate from includeTime) */}
+          <label className="flex items-start gap-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={asi.always ?? false}
+              onChange={(e) => patch({ always: e.target.checked })}
+              className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+            />
+            <div>
+              <span className="text-[11px] text-zinc-500">Always inject (every step)</span>
+              <div className="text-[10px] text-amber-500/90 mt-0.5">
+                WARNING: always inject re-emits additional_system_info at the end of
+                EVERY step regardless of change, which over time can substantially
+                increase token usage (though it will be cached) — it can also
+                potentially improve agent performance, primarily due to the constant
+                todo-list reminder. The enabled sections above still apply.
               </div>
             </div>
           </label>

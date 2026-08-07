@@ -16,37 +16,6 @@ export interface ResolvedPermission {
 }
 
 /**
- * Check if the agent has access to a specific skill.
- * Returns true if allowed, false if denied.
- */
-export function checkSkillAccess(
-  skillName: string,
-  agentSettings?: import("../../../../../_shared/types").AgentSettings
-): boolean {
-  if (!agentSettings) return true; // no agent settings = allow all
-  const access = agentSettings.skillAccess ?? "all";
-  if (access === "all") return true;
-
-  // "attached" mode — only allow skills listed in skillMds
-  if (access === "attached") {
-    if (!agentSettings.skillMds?.length) return false;
-    // Resolve skill names from skillMds (names or paths)
-    const attachedNames = new Set<string>();
-    for (const skill of agentSettings.skillMds ?? []) {
-      if (skill.name) attachedNames.add(skill.name);
-      if (skill.path) {
-        // Extract folder name from path
-        const parts = skill.path.split("/").filter(Boolean);
-        if (parts.length > 0) attachedNames.add(parts[parts.length - 1]);
-      }
-    }
-    return attachedNames.has(skillName);
-  }
-
-  return true;
-}
-
-/**
  * Resolve tool permission from the three on-disk files only.
  *
  * Order (stop at first file that defines this tool):

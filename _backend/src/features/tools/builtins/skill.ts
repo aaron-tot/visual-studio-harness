@@ -29,7 +29,7 @@ interface SkillInfo {
   path: string;           // Absolute path to the skill folder
   depth: number;          // Depth from root (0 = direct child)
   root: string;           // Root it was found under
-  marker: "SKILL.md" | "prompt.md" | "loose-md" | "custom-tool-skill" | "tool-skill";
+  marker: "SKILL.md" | "prompt.md" | "loose-md" | "tool-skill";
   hasPromptJson: boolean;
   tags: string[];
 }
@@ -101,7 +101,7 @@ const walkDir = async (
         await walkDir(fullPath, currentDepth + 1, maxDepth, root, skills);
       } else if (e.isFile() && e.name.endsWith(".skill.md")) {
         // Tool skill guide — builtin (_tools/<name>/) or custom (custom-tools/). The
-        // .skill.md file IS the guide (like the custom-tool-skill path).
+        // .skill.md file IS the guide.
         const fullPath = join(dir, e.name);
         const name = basename(e.name, ".skill.md");
         skills.push({
@@ -311,7 +311,7 @@ export const skillTool: ToolDef = {
 
     // Content mode (default) — read the markdown file
     let filePath: string;
-    if (skill.marker === "custom-tool-skill" || skill.marker === "tool-skill") {
+    if (skill.marker === "tool-skill") {
       // For tool skills, the path IS the markdown file
       filePath = skill.path;
     } else {

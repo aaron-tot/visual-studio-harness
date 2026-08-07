@@ -33,7 +33,7 @@ import {
 } from "../../hooks";
 import { resolveRuntimeFromSettings, getAgentSettings, resolveSessionRuntime, type ResolvedRuntime } from "../../agents/runtime-settings";
 import { readAgent } from "../../agents/rest";
-import { createPerStepPrepareStep } from "../per-step-system-prompt";
+import { createPerStepSystemInfo } from "../per-step-system-prompt";
 import { getMode } from "../../../paths";
 import { getWorkspaceGraphManager } from "../../../core/workspaceGraph/service-singleton";
 import type { WorkspaceGraphService } from "../../../core/workspaceGraph/api/types";
@@ -483,21 +483,17 @@ export async function runTurn(
     const tps = config.testModels?.[model.modelName]?.tokensPerSecond;
     const modelSpeed = tps && tps > 0 ? Math.round(1000 / tps) : 0;
 
-    // ── Trace schema: step-scoped writer ───────────────────────────
+    // Trace schema: step-scoped writer ───────────────────────────
     let currentStepId: number | null = null;
     let stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
     let stepIdByIndex: Record<number, number> = {};
-    // Injections emitted by prepareStep are buffered and flushed in onStepFinish
-    // (prepareStep runs BEFORE the step row exists, so it cannot write the part
-    // against the correct stepId yet; flushing at step end places the injection
-    // AFTER the step's actual tool parts — spec §5/§6.1).
-    let pendingInjections: Array<{ toolCallId: string; toolName: string; content: string }> = [];
 
-    // Per-step system prompt rebuild (prepareStep). Step 0 uses the turn-initial
-    // timestamp so it matches the turn-level snapshot; later steps get fresh state.
-    let lastPreparedStepNumber = -1;
+    // Per-step system info. The ASI is BUILT+COMPARED+EMITTED at the END of each
+    // step (after its tools ran), so it reflects the changes that step caused and
+    // is attributed to that step (spec §5/§6.1). prepareStep merely CARRIES the
+    // pending injection from the previous step's end into the outgoing request.
     let lastPreparedBlock = systemBlock;
-    const prepareStep = createPerStepPrepareStep({
+    const perStepCtx: import("../per-step-system-prompt").PerStepRebuildContext = {
       dataDir, workspaceRoot, sessionId, mode: getMode(),
       noSystemPrompt,
       agentSettings: runtime.settings,
@@ -508,15 +504,28 @@ export async function runTurn(
       additionalSystemInfoIncludeTime,
       systemAsiBaseline,
       turnStartNow,
-      onBlockBuilt: (stepNumber, block) => {
-        lastPreparedStepNumber = stepNumber;
+      onBlockBuilt: (_stepNumber, block) => {
         // Per-step snapshot = base (+ injection) as a display proxy for the Inspector.
         lastPreparedBlock = systemBlock && block ? `${systemBlock}\n\n${block}` : (systemBlock || block);
       },
-      persist: ({ toolCallId, toolName, content }) => {
-        pendingInjections.push({ toolCallId, toolName, content });
+      persist: ({ toolCallId, toolName, content, stepIndex }) => {
+        if (currentStepId == null) return;
+        const seq = ++partSeq;
+        insertStepPart(
+          sessionId, traceTurnId, currentStepId, "tool",
+          { content, kind: "system-info", additionalSystemInfo: true, stepIndex },
+          seq, "completed",
+          { toolCallId, toolName },
+          dataDir,
+        );
+        // Surface the injection live (it is never streamed back by the model) so
+        // the UI renders it as a distinct bubble after this step's tools.
+        events.onToolCall?.({ toolCallId, toolName, args: {}, stepIndex, seq });
+        events.onToolResult?.({ toolCallId, toolName, output: content, isError: false, seq });
       },
-    });
+    };
+    const perStep = createPerStepSystemInfo(perStepCtx);
+    const prepareStep = perStep.prepareStep;
 
     let _fullContent = "";
     let _parts: MessagePartType[] | undefined;
@@ -538,8 +547,8 @@ export async function runTurn(
             partSeq = 0;
             stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
             stepIdByIndex = {};
-            pendingInjections = [];
-            lastPreparedStepNumber = -1;
+            perStepCtx.pendingInjection = null;
+            perStepCtx.lastEmitted = systemAsiBaseline;
             lastPreparedBlock = systemBlock;
           }
         },
@@ -557,8 +566,9 @@ export async function runTurn(
         },
         onStepStart: (info) => {
           stepWriter.closeOpen();
-          const stepBlock = lastPreparedStepNumber === info.stepIndex ? lastPreparedBlock : systemBlock;
-          const stepPromptSnapshotId = ensurePromptSnapshot(stepBlock, dataDir);
+          // Display proxy for the Inspector: the block reflects the injection
+          // emitted at the PREVIOUS step's end (carried into this step's request).
+          const stepPromptSnapshotId = ensurePromptSnapshot(lastPreparedBlock, dataDir);
           currentStepId = createStep(traceTurnId, sessionId, info.stepIndex, {
             providerName: provider.displayName,
             modelId: model.modelName,
@@ -570,28 +580,16 @@ export async function runTurn(
           stepIdByIndex[info.stepIndex] = currentStepId;
           stepWriter.rebindStep(currentStepId);
         },
-        onStepFinish: (info) => {
+        onStepFinish: async (info) => {
           if (currentStepId != null) {
-            // Persist injections emitted by prepareStep for THIS step, AFTER its
-            // actual tool parts so the stored/replayed order is [step tools][ASI]
-            // (spec §5 / §6.1: injection at the end of the step's tools).
-            if (pendingInjections.length > 0) {
-              for (const inj of pendingInjections) {
-                const seq = ++partSeq;
-                insertStepPart(
-                  sessionId, traceTurnId, currentStepId, "tool",
-                  { content: inj.content, kind: "system-info", additionalSystemInfo: true, stepIndex: info.stepIndex },
-                  seq, "completed",
-                  { toolCallId: inj.toolCallId, toolName: inj.toolName },
-                  dataDir,
-                );
-                // Surface the injection live (it is never streamed back by the
-                // model) so the UI renders it as a distinct bubble after the
-                // step's tools.
-                events.onToolCall?.({ toolCallId: inj.toolCallId, toolName: inj.toolName, args: {}, stepIndex: info.stepIndex, seq });
-                events.onToolResult?.({ toolCallId: inj.toolCallId, toolName: inj.toolName, output: inj.content, isError: false, seq });
-              }
-              pendingInjections = [];
+            // Build+compare+emit the ASI at the END of this step (after its tools
+            // executed). The injection reflects THIS step's changes and is persisted
+            // against THIS step (attributed to the part that caused it), then carried
+            // into the next step's request by prepareStep.
+            try {
+              await perStep.emitAtStepEnd(info.stepIndex);
+            } catch (err) {
+              console.error("[asi] emitAtStepEnd failed", err);
             }
             stepWriter.closeOpen();
             // Persist full SDK finish-step meta (usage details, performance, provider metadata)

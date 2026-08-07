@@ -31,97 +31,85 @@ export interface PerStepRebuildContext {
   turnStartNow: Date;
   /**
    * Canonical wrapped additional_system_info block for the sections baked into
-   * the base system prompt (systemPromptSections). Used as the emit-on-change
-   * baseline when no prior injection part exists in the transcript: if the
-   * fresh volatile content equals what the system already carries, no injection
-   * is emitted (avoiding a redundant tail copy).
+   * the base system prompt (systemPromptSections). The emit-on-change baseline
+   * at the start of the turn: if the fresh content equals what the system already
+   * carries, no injection is emitted.
    */
   systemAsiBaseline?: string | null;
   /** Called after each emission so callers can snapshot base(+injection) per step. */
   onBlockBuilt?: (stepNumber: number, block: string) => void;
-  /** Persist an emitted injection (see run-turn wiring). */
-  persist?: (injection: { toolCallId: string; toolName: string; content: string }) => void;
+  /** Persist an emitted injection against the step that JUST ended. */
+  persist?: (injection: { toolCallId: string; toolName: string; content: string; stepIndex: number }) => void;
+
+  // internal state shared between prepareStep and emitAtStepEnd
+  pendingInjection?: { callId: string; content: string } | null;
+  lastEmitted?: string | null;
 }
 
 /**
- * Builds a `prepareStep` hook for the AI SDK that injects the volatile
- * `additional_system_info` block (fabricated `assistant tool_call` + `tool result`
- * pair) at the tail of the outgoing `messages` — **only when its content changed**
- * since the last emitted injection (append-only, never removes). The base
- * `instructions` (real `system`) is built once per turn by run-turn and is never
- * overridden here, so the stable leading prefix stays byte-identical for cache.
+ * The injection is built+compared+emitted at the END of each step (after its
+ * tools have run), so it reflects the changes that step caused and is attributed
+ * to that step. `prepareStep` (start of the next step) only CARRIES the pending
+ * injection from the previous step's end into the outgoing request.
  */
-export function createPerStepPrepareStep(ctx: PerStepRebuildContext): PrepareStepFunction<ToolSet> {
-  return async ({ messages, stepNumber }) => {
-    if (ctx.noSystemPrompt) return {};
-
-    const content = await buildAdditionalSystemInfoBlock({
-      dataDir: ctx.dataDir,
-      workspaceRoot: ctx.workspaceRoot,
-      mode: ctx.mode,
-      sessionId: ctx.sessionId,
-      noSystemPrompt: ctx.noSystemPrompt,
-      agentSettings: ctx.agentSettings,
-      systemPromptJoiners: ctx.systemPromptJoiners,
-      workspaceManifest: ctx.workspaceManifest,
-      graphService: ctx.graphService,
-      now: stepNumber === 0 ? ctx.turnStartNow : new Date(),
-      turnStart: ctx.turnStartNow,
-    }, ctx.additionalSystemInfoSections, ctx.additionalSystemInfoIncludeTime);
-    if (!content) return {}; // empty resolved block ⇒ skip
-
-    // Last emitted content already present in the outgoing messages?
-    const last = (() => {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const m = messages[i];
-        if (!isAdditionalSystemInfoResult(m)) continue;
-        const c = m.content;
-        if (Array.isArray(c)) {
-          const p = c.find((x) => (x as any)?.type === "tool-result");
-          const val = (p as any)?.output;
-          const out = val && typeof val === "object" ? (val as any).value : val;
-          return typeof out === "string" ? out : "";
-        }
-        return "";
+export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
+  prepareStep: PrepareStepFunction<ToolSet>;
+  emitAtStepEnd: (stepNumber: number) => Promise<void>;
+} {
+  return {
+    prepareStep: async ({ messages }) => {
+      if (ctx.pendingInjection) {
+        const { callId, content } = ctx.pendingInjection;
+        ctx.pendingInjection = null;
+        return {
+          messages: [
+            ...messages,
+            {
+              role: "assistant",
+              content: [{ type: "tool-call", toolCallId: callId, toolName: ADDITIONAL_SYSTEM_INFO_TOOL, input: {} }],
+            },
+            {
+              role: "tool",
+              content: [
+                {
+                  type: "tool-result",
+                  toolCallId: callId,
+                  toolName: ADDITIONAL_SYSTEM_INFO_TOOL,
+                  output: { type: "text", value: content },
+                },
+              ],
+            },
+          ] as ModelMessage[],
+        };
       }
-      return null; // none present
-    })();
-    // Baseline: the most recent place this content already exists — the last
-    // injection part, else what the base system prompt bakes (same sections).
-    const baseline = last ?? ctx.systemAsiBaseline ?? null;
-    if (baseline != null && baseline === content) return {}; // unchanged ⇒ do nothing (stays cached)
+      return {};
+    },
 
-    // CHANGED ⇒ append a fresh fabricated pair at the tail (append-only, never remove).
-    const callId = `asi-${ctx.turnStartNow.getTime()}-${stepNumber}-${messages.length}`;
-    const next = [
-      ...messages,
-      {
-        role: "assistant",
-        content: [
-          { type: "tool-call", toolCallId: callId, toolName: ADDITIONAL_SYSTEM_INFO_TOOL, input: {} },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: callId,
-            toolName: ADDITIONAL_SYSTEM_INFO_TOOL,
-            output: { type: "text", value: content },
-          },
-        ],
-      },
-    ] as ModelMessage[];
+    emitAtStepEnd: async (stepNumber) => {
+      if (ctx.noSystemPrompt) return;
+      const content = await buildAdditionalSystemInfoBlock({
+        dataDir: ctx.dataDir,
+        workspaceRoot: ctx.workspaceRoot,
+        mode: ctx.mode,
+        sessionId: ctx.sessionId,
+        noSystemPrompt: ctx.noSystemPrompt,
+        agentSettings: ctx.agentSettings,
+        systemPromptJoiners: ctx.systemPromptJoiners,
+        workspaceManifest: ctx.workspaceManifest,
+        graphService: ctx.graphService,
+        now: stepNumber === 0 ? ctx.turnStartNow : new Date(),
+        turnStart: ctx.turnStartNow,
+      }, ctx.additionalSystemInfoSections, ctx.additionalSystemInfoIncludeTime);
+      if (!content) return; // empty resolved block ⇒ skip
 
-    // Persist what was emitted (so it replays verbatim next turn).
-    ctx.persist?.({
-      toolCallId: callId,
-      toolName: ADDITIONAL_SYSTEM_INFO_TOOL,
-      content,
-    });
+      const baseline = ctx.lastEmitted ?? ctx.systemAsiBaseline ?? null;
+      if (baseline != null && baseline === content) return; // unchanged ⇒ do nothing
 
-    ctx.onBlockBuilt?.(stepNumber, content);
-    return { messages: next };
+      const callId = `asi-${ctx.turnStartNow.getTime()}-${stepNumber}`;
+      ctx.pendingInjection = { callId, content };
+      ctx.lastEmitted = content;
+      ctx.onBlockBuilt?.(stepNumber, content);
+      ctx.persist?.({ toolCallId: callId, toolName: ADDITIONAL_SYSTEM_INFO_TOOL, content, stepIndex: stepNumber });
+    },
   };
 }

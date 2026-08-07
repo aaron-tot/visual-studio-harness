@@ -74,6 +74,24 @@ export function formatToolGroup(label: string, summary: string, toolsContent: st
   return fill(tpl, { groupLabel: label, groupSummary: summary }) + "\n" + toolsContent;
 }
 
+/**
+ * Render a standalone tool card that has the step's additional_system_info
+ * injection attached: its Output section becomes two sub-collapsibles —
+ * "Tool output" (the result) and the grey additional_system_info block.
+ */
+export function formatToolCardWithAsi(vars: ToolCardVars, asi: string): string {
+  const tpl = load("tool-standalone");
+  // The bubble is expanded by the test's expand-all pass, so it shows the open arrow.
+  const result = `▶ Tool output\n${vars.result}\n▾ additional_system_info\n${asi}`;
+  return fill(tpl, {
+    toolName: vars.toolName,
+    argSummary: vars.argSummary,
+    argsJson: vars.argsJson,
+    result,
+    statusLabel: vars.statusLabel ?? "COMPLETED",
+  });
+}
+
 /** Spacing rules – which spacer to use between two section types. */
 const SPACING: Record<string, string> = {
   "text-to-tool": "\n\n",

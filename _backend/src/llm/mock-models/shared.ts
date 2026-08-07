@@ -11,9 +11,9 @@
 
 import type { AsyncGenerator } from "../../../../_shared/types";
 import { execSync } from "child_process";
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { resolve, join } from "path";
-import { formatToolCard, formatToolGroup } from "./tool-returns/index";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "fs";
+import { resolve, join, dirname, extname } from "path";
+import { formatToolCard, formatToolCardWithAsi, formatToolGroup } from "./tool-returns/index";
 
 export const TEST_RESPONSE = "Hello this is a test. not from a llm";
 
@@ -64,6 +64,18 @@ function toolBlock(action: MockAction, workspaceRoot?: string): string {
     argsJson: argJson,
     result: r,
   });
+}
+
+function toolBlockWithAsi(action: MockAction, workspaceRoot: string | undefined, asi: string): string {
+  if (action.type !== "tool") return "";
+  const toolResult = executeTool(action.toolName, action.args, workspaceRoot);
+  const r = toolResult != null ? String(toolResult).trim() : "";
+  const argJson = JSON.stringify(action.args, null, 2);
+  const summary = argSummarySingle(action.toolName, action.args);
+  return formatToolCardWithAsi(
+    { toolName: action.toolName, argSummary: summary, argsJson: argJson, result: r },
+    asi,
+  );
 }
 
 function argSummarySingle(toolName: string, args: Record<string, unknown>): string {
@@ -157,6 +169,77 @@ export async function* executeActions(
 }
 
 // ── Expected text: generate the human-readable final output ────────────────
+
+// The expected text mirrors the rendered page, which now includes the trailing
+// additional_system_info injection (attached to the step's first tool). We
+// reproduce it synchronously: day-granular datetime + the workspace manifest
+// tree built from source files (matching the graph's indexable set), so the
+// expected string matches the expanded UI output (spec: Option A).
+const SOURCE_EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
+const MANIFEST_EXCLUDED_DIRS = new Set(["node_modules", ".git", "dist", "build", ".vsh", "coverage", ".turbo"]);
+const MANIFEST_EXCLUDED_EXTS = ".png, .jpg, .jpeg, .gif, .svg, .ico, .woff2, .woff, .eot, .ttf";
+
+function sourceDirTree(workspaceRoot?: string): string {
+  if (!workspaceRoot) return "";
+  const dirs = new Set<string>();
+  const walk = (dir: string): void => {
+    let entries: ReturnType<typeof readdirSync>;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name.startsWith(".") || MANIFEST_EXCLUDED_DIRS.has(e.name)) continue;
+        walk(p);
+      } else if (e.isFile()) {
+        if (SOURCE_EXTS.includes(extname(e.name))) dirs.add(dirname(p));
+      }
+    }
+  };
+  walk(workspaceRoot);
+
+  interface TreeNode { name: string; children: Record<string, TreeNode>; }
+  const root: TreeNode = { name: ".", children: {} };
+  const base = workspaceRoot.endsWith("/") ? workspaceRoot : workspaceRoot + "/";
+  for (const d of [...dirs].sort()) {
+    if (!d.startsWith(base)) continue;
+    const rel = d.slice(base.length);
+    if (!rel) continue;
+    const parts = rel.split("/");
+    let node = root;
+    for (const part of parts) {
+      if (!node.children[part]) node.children[part] = { name: part, children: {} };
+      node = node.children[part];
+    }
+  }
+
+  const render = (node: TreeNode, indent: string, isLast: boolean): string => {
+    let r = indent + (isLast ? "└── " : "├── ") + node.name + "\n";
+    const children = Object.values(node.children);
+    for (let i = 0; i < children.length; i++) {
+      r += render(children[i], indent + (isLast ? "    " : "│   "), i === children.length - 1);
+    }
+    return r;
+  };
+  return render(root, "", true).trimEnd();
+}
+
+/** Synchronously reproduce the trailing additional_system_info block the backend injects. */
+function buildAsiContentSync(workspaceRoot?: string): string {
+  const dayIso = new Date().toISOString().slice(0, 10) + "T00:00:00.000Z";
+  const runtime = `<runtime>\n## Runtime\n- datetime: ${dayIso}\n</runtime>`;
+  const tree = sourceDirTree(workspaceRoot);
+  if (!tree) return `<additional_system_info>\n${runtime}\n</additional_system_info>`;
+  const manifest =
+    `<workspaceManifest>\nMax depth: 3 levels (use graph_files to list files in specific directories)\n` +
+    `Includes: directories only\nExcluded dirs: node_modules, .git, dist, build, .vsh, coverage, .turbo\n` +
+    `Excluded extensions: ${MANIFEST_EXCLUDED_EXTS}\n\n${tree}\n\n` +
+    `Note: Manifest refreshes each turn. For files, symbols, functions, classes, imports/exports use graph tools.\n</workspaceManifest>`;
+  return `<additional_system_info>\n${runtime}\n\n${manifest}\n</additional_system_info>`;
+}
 
 /** Execute a tool against the real filesystem to get its actual result. */
 export function executeTool(toolName: string, args: Record<string, unknown>, workspaceRoot?: string): unknown {
@@ -290,6 +373,8 @@ export function executeTool(toolName: string, args: Record<string, unknown>, wor
 export function generateExpectedText(actions: MockAction[], workspaceRoot?: string): string {
   const segments: string[] = [];
   const spacers: string[] = [];
+  const asi = buildAsiContentSync(workspaceRoot);
+  let asiAttached = false;
 
   // Group consecutive tools by category
   const grouped: (MockAction | MockAction[])[] = [];
@@ -366,7 +451,13 @@ export function generateExpectedText(actions: MockAction[], workspaceRoot?: stri
     } else if (entry.type === "tool") {
       const toolResult = executeTool(entry.toolName, entry.args, workspaceRoot);
       const r = toolResult != null ? String(toolResult).trim() : "";
-      segments.push(toolBlock(entry, workspaceRoot));
+      if (asi && !asiAttached) {
+        // The step-0 injection attaches to the first tool (emit-on-change ⇒ one block).
+        segments.push(toolBlockWithAsi(entry, workspaceRoot, asi));
+        asiAttached = true;
+      } else {
+        segments.push(toolBlock(entry, workspaceRoot));
+      }
       spacers.push(r.length > 0 ? "\n\n" : "\n");
     } else if (entry.type === "thinking") {
       const t = entry.words.join("");

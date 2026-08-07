@@ -31,6 +31,8 @@ export function SystemInfoBubble({ content, agentName }: { content: string; agen
     <div className="rounded-md px-3 py-1.5 text-xs w-full bg-zinc-800/40 border border-zinc-700/40 text-zinc-400">
       <button
         type="button"
+        data-collapsible="true"
+        data-collapsible-state={open ? "open" : "closed"}
         onClick={() => setUserOpen((v) => !v)}
         className="flex items-center gap-2 text-zinc-500 hover:text-zinc-300 font-mono"
       >

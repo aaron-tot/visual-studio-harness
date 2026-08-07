@@ -25,6 +25,8 @@ interface ToolCallPartProps {
   cacheSummary?: string;
   /** Child tool calls from sub-agent, rendered nested inside the task card */
   childParts?: MessagePartType[];
+  /** Verbatim additional_system_info content for this step, nested in Output */
+  additionalSystemInfo?: string;
 }
 
 export function ToolCallPart({
@@ -37,6 +39,7 @@ export function ToolCallPart({
   sessionId,
   cacheSummary,
   childParts,
+  additionalSystemInfo,
 }: ToolCallPartProps) {
   const hasChildren = childParts && childParts.length > 0;
 
@@ -54,6 +57,7 @@ export function ToolCallPart({
         error={error}
         sessionId={sessionId}
         cacheSummary={cacheSummary}
+        additionalSystemInfo={additionalSystemInfo}
       />
       {/* Nested sub-agent tool calls */}
       {hasChildren && (

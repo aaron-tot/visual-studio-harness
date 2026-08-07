@@ -14,6 +14,7 @@ import { useChatStore } from "../../stores/chat";
 import { useSessionStore } from "../../stores/sessions";
 import { getToolStatusColor } from "../chat/tools/tool-status-colors";
 import { ToolErrorCard } from "../chat/tools/ToolErrorCard";
+import { MemoSystemInfoBubble } from "../chat/SystemInfoBubble";
 import { cn } from "../../lib/utils";
 
 function truncateMiddle(s: string, maxLen: number): string {
@@ -98,6 +99,8 @@ interface ToolCallCardProps {
   error?: string;
   sessionId?: string | null;
   cacheSummary?: string;
+  /** Verbatim additional_system_info content for this step, shown in Output */
+  additionalSystemInfo?: string;
 }
 
 const Chevron = ({ open }: { open: boolean }) => (
@@ -120,6 +123,7 @@ export function ToolCallCard({
   error,
   sessionId,
   cacheSummary,
+  additionalSystemInfo,
 }: ToolCallCardProps) {
   const respondPermission = useChatStore((s) => s.respondPermission);
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
@@ -131,6 +135,8 @@ export function ToolCallCard({
   // Sub-sections: both collapsed by default
   const [inputOpen, setInputOpen] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
+  // Tool-output sub-collapsible (only shown when an injection is present)
+  const [toolOutOpen, setToolOutOpen] = useState(false);
 
   // Auto-expand main card when awaiting user action
   useEffect(() => {
@@ -158,7 +164,7 @@ export function ToolCallCard({
         : JSON.stringify(args, null, 2);
 
   const hasInput = argsText.length > 0;
-  const hasOutput = resultText.length > 0 || (status === "error" && error);
+  const hasOutput = resultText.length > 0 || (status === "error" && error) || Boolean(additionalSystemInfo);
 
   const decide = (decision: PermissionDecision) => {
     respondPermission(toolCallId, decision, sessionId, toolName);
@@ -344,17 +350,50 @@ export function ToolCallCard({
                 </span>
               </button>
               {outputOpen && (
-                <div className="px-2 pb-2 border-t border-zinc-800/40">
-                  {status === "error" && error ? (
-                    <div className="pt-1">
-                      <ToolErrorCard toolName={toolName} error={error} />
+                additionalSystemInfo ? (
+                  /* Two sub-collapsibles: the tool output + the grey injection */
+                  <div className="px-2 pb-2 border-t border-zinc-800/40 space-y-1.5">
+                    <div className="border border-zinc-800/60 rounded-md">
+                      <button
+                        type="button"
+                        data-collapsible="true"
+                        data-collapsible-level="output-content"
+                        data-collapsible-state={toolOutOpen ? "open" : "closed"}
+                        onClick={() => setToolOutOpen((o) => !o)}
+                        className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-[11px] text-zinc-400 hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                      >
+                        <Chevron open={toolOutOpen} />
+                        <span className="font-medium">Tool output</span>
+                      </button>
+                      {toolOutOpen && (
+                        <div className="px-2 pb-2 border-t border-zinc-800/40">
+                          {status === "error" && error ? (
+                            <div className="pt-1">
+                              <ToolErrorCard toolName={toolName} error={error} />
+                            </div>
+                          ) : (
+                            <pre className="max-h-48 overflow-auto text-zinc-400 whitespace-pre-wrap break-all text-[11px] pt-1">
+                              {resultText}
+                            </pre>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <pre className="max-h-48 overflow-auto text-zinc-400 whitespace-pre-wrap break-all text-[11px] pt-1">
-                      {resultText}
-                    </pre>
-                  )}
-                </div>
+                    <MemoSystemInfoBubble content={additionalSystemInfo} />
+                  </div>
+                ) : (
+                  <div className="px-2 pb-2 border-t border-zinc-800/40">
+                    {status === "error" && error ? (
+                      <div className="pt-1">
+                        <ToolErrorCard toolName={toolName} error={error} />
+                      </div>
+                    ) : (
+                      <pre className="max-h-48 overflow-auto text-zinc-400 whitespace-pre-wrap break-all text-[11px] pt-1">
+                        {resultText}
+                      </pre>
+                    )}
+                  </div>
+                )
               )}
             </div>
           )}

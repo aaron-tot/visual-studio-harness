@@ -22,7 +22,8 @@ import { ThinkingPart } from "./parts/ThinkingPart";
 import { ErrorPart } from "./parts/ErrorPart";
 import { ContextToolGroup, groupContextParts } from "./tools/ContextToolGroup";
 import { StepToolGroup } from "./tools/StepToolGroup";
-import { groupByStep } from "./tools/group-by-step";
+import { groupByStep, type GroupedParts } from "./tools/group-by-step";
+import { isAdditionalSystemInfoPart, extractSystemInfoContent } from "./system-info";
 import { TurnContextMenu } from "./TurnContextMenu";
 import { useChatStore } from "../../stores/chat";
 import { StreamingTimer } from "./StreamingTimer";
@@ -49,8 +50,44 @@ function formatTime(iso: string) {
   }
 }
 
-function collectErrors(message: Message): Array<{ message: string; raw?: string; isCustom?: boolean }> {
-  const out: Array<{ message: string; raw?: string; isCustom?: boolean }> = [];
+/**
+ * Attaches each standalone `additional_system_info` injection to the tool(s)
+ * of the step it was prepared for (same stepIndex):
+ * - batch (array of tools) → append the injection as the last grey item;
+ * - single tool → set `asiContent` so the tool card nests it in its Output;
+ * - no matching tool (zero-tool step) → keep it standalone.
+ */
+function attachAsiToTools(parts: GroupedParts[]): GroupedParts[] {
+  const out: GroupedParts[] = [];
+  for (const part of parts) {
+    if (!Array.isArray(part) && isAdditionalSystemInfoPart(part)) {
+      const asiIdx = (part as any).stepIndex as number | undefined;
+      let attached = false;
+      for (let i = out.length - 1; i >= 0; i--) {
+        const prev = out[i];
+        const entryTools = Array.isArray(prev) ? prev : [prev];
+        const stepTool = entryTools.find(
+          (p) => p.type === "tool" && !isAdditionalSystemInfoPart(p) && p.stepIndex === asiIdx,
+        );
+        if (stepTool) {
+          if (Array.isArray(prev)) {
+            out[i] = [...prev, part];
+          } else {
+            (prev as any).asiContent = extractSystemInfoContent(part);
+          }
+          attached = true;
+          break;
+        }
+      }
+      if (!attached) out.push(part);
+    } else {
+      out.push(part);
+    }
+  }
+  return out;
+}
+
+function collectErrors(message: Message): Array<{ message: string; raw?: string; isCustom?: boolean }> {  const out: Array<{ message: string; raw?: string; isCustom?: boolean }> = [];
   const seen = new Set<string>();
   const push = (messageText: string, raw?: string, isCustom?: boolean) => {
     const key = messageText.trim();
@@ -264,7 +301,7 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
 
   // Single card per assistant turn
   const bodyParts = message.parts?.filter((p) => p.type !== "error") ?? [];
-  const groupedParts = bodyParts.length ? groupByStep(bodyParts) : undefined;
+  const groupedParts = bodyParts.length ? attachAsiToTools(groupByStep(bodyParts)) : undefined;
   const hasReasoning = message.parts?.some((p) => p.type === "reasoning") ?? false;
   const errors = collectErrors(message);
   const isError = isFailedStatus || errors.length > 0;

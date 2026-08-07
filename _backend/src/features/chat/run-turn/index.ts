@@ -560,7 +560,7 @@ export async function runTurn(
                 const seq = ++partSeq;
                 insertStepPart(
                   sessionId, traceTurnId, currentStepId, "tool",
-                  { content: inj.content, kind: "system-info", additionalSystemInfo: true },
+                  { content: inj.content, kind: "system-info", additionalSystemInfo: true, stepIndex: info.stepIndex },
                   seq, "completed",
                   { toolCallId: inj.toolCallId, toolName: inj.toolName },
                   dataDir,

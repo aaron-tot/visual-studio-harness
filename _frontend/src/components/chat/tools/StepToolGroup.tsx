@@ -6,6 +6,8 @@ import { ToolCallCard } from "../../tools/ToolCallCard";
 import { ToolStatusBorder } from "./ToolStatusBorder";
 import { groupByStep } from "./group-by-step";
 import { ContextToolGroup, getCategory, type GroupCategory } from "./ContextToolGroup";
+import { isAdditionalSystemInfoPart, extractSystemInfoContent } from "../system-info";
+import { MemoSystemInfoBubble } from "../SystemInfoBubble";
 
 function summarize(parts: MessagePartType[]): string {
   const counts: Record<string, number> = {};
@@ -47,16 +49,20 @@ function groupParallelByCategory(parts: MessagePartType[]): CategoryBucket[] {
 
 export function StepToolGroup({ parts, toolCacheByCallId }: { parts: MessagePartType[]; toolCacheByCallId?: Record<string, string> }) {
   const [collapsed, setCollapsed] = useState(true);
-  const summary = useMemo(() => summarize(parts), [parts]);
-  const buckets = useMemo(() => groupParallelByCategory(parts), [parts]);
-  const toolCount = parts.filter((p) => p.type === "tool").length;
-  const allDone = parts.every((p) => p.type === "tool" && (p.status === "completed" || p.status === "error"));
-  const someRunning = parts.some((p) => p.type === "tool" && p.status === "running");
+  // Injections are context, not tool calls — kept aside and rendered as the
+  // last grey item(s) in the group.
+  const asiParts = parts.filter((p) => isAdditionalSystemInfoPart(p));
+  const toolParts = parts.filter((p) => p.type === "tool" && !isAdditionalSystemInfoPart(p));
+  const summary = useMemo(() => summarize(toolParts), [toolParts]);
+  const buckets = useMemo(() => groupParallelByCategory(toolParts), [toolParts]);
+  const toolCount = toolParts.length;
+  const allDone = toolParts.length > 0 && toolParts.every((p) => p.status === "completed" || p.status === "error");
+  const someRunning = toolParts.some((p) => p.status === "running");
 
   // All parallel tools in one step share the same prompt-cache hit (their
   // results are batched into a single subsequent SDK call). Read it from the
   // first tool's entry and show it on the group header.
-  const firstCallId = parts.find((p) => p.type === "tool")?.toolCallId;
+  const firstCallId = toolParts[0]?.toolCallId;
   const cacheText = firstCallId ? toolCacheByCallId?.[firstCallId] : undefined;
 
   const flatTools = (bucket: CategoryBucket) => {
@@ -106,6 +112,10 @@ export function StepToolGroup({ parts, toolCacheByCallId }: { parts: MessagePart
               />
             );
           })}
+          {/* Injections render as grey items at the end of the parallel group */}
+          {asiParts.map((p, i) => (
+            <MemoSystemInfoBubble key={`asi-${i}-${(p as any).toolCallId ?? i}`} content={extractSystemInfoContent(p)} />
+          ))}
         </div>
       )}
     </div>

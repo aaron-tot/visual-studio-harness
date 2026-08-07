@@ -46,6 +46,18 @@ export const SystemPromptSectionsSchema = z.object({
   workspaceManifest: z.boolean().default(false),
 });
 
+export const WorkspaceManifestSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxDepth: z.number().int().positive().default(3).optional(),
+  includeFiles: z.boolean().optional(),
+  excludeDirs: z.array(z.string()).optional(),
+  excludeExtensions: z.array(z.string()).optional(),
+  includeGitignore: z.boolean().optional(),
+  agents: z.array(z.string()).optional(),
+  prefix: z.string().optional(),
+  postfix: z.string().optional(),
+});
+
 /** Per-agent settings (runtime + MD attachments) */
 export const AgentSettingsSchema = z.object({
   providerName: z.string().optional(),
@@ -125,18 +137,6 @@ export const SystemPromptJoinersSchema = z.object({
   preExtras: z.string().default("<extras>"),
   postExtras: z.string().default("</extras>"),
   end: z.string().default(""),
-});
-
-export const WorkspaceManifestSettingsSchema = z.object({
-  enabled: z.boolean().default(true),
-  maxDepth: z.number().int().positive().default(3).optional(),
-  includeFiles: z.boolean().optional(),
-  excludeDirs: z.array(z.string()).optional(),
-  excludeExtensions: z.array(z.string()).optional(),
-  includeGitignore: z.boolean().optional(),
-  agents: z.array(z.string()).optional(),
-  prefix: z.string().optional(),
-  postfix: z.string().optional(),
 });
 
 export const SnippetConfigSchema = z.object({

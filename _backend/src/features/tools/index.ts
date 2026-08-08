@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createRegistry, type ToolRegistry } from "./registry";
-import { loadToolsFromFolders } from "./folder-store";
+import { listToolFolders, loadToolsFromFolders } from "./folder-store";
 import { readTool } from "./builtins/read";
 import { writeTool } from "./builtins/write";
 import { editTool } from "./builtins/edit";
@@ -108,11 +108,22 @@ export async function createFolderRegistry(
   opts?: CreateRegistryOptions,
   agents?: Record<string, AgentSettings>
 ): Promise<ToolRegistry> {
+  const folders = await listToolFolders(dataDir);
   const folderTools = await loadToolsFromFolders(dataDir);
-  setDefaultTools(folderTools);
+
+  // Compiled binary / fresh install before the first seed has no builtin tool
+  // folders under data. Fall back to the compiled ALL_TOOLS for the builtin
+  // set (mirroring loadLiveToolDefs' existsSync guard) while keeping any
+  // folder custom tools. This guarantees the packaged binary ships the full
+  // native tool set even when folder seeding can't run.
+  const tools = folders.some((f) => f.kind === "builtin")
+    ? folderTools
+    : [...ALL_TOOLS, ...folderTools];
+
+  setDefaultTools(tools);
   const registry = createRegistry();
   const exclude = new Set(opts?.exclude ?? []);
-  for (const t of folderTools) {
+  for (const t of tools) {
     if (exclude.has(t.name)) {
       continue;
     }

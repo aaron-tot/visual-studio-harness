@@ -171,10 +171,8 @@ describe("customTool native tool store", () => {
       enabled: true,
     };
 
-    // The validation happens in the tool itself, not the store
-    // Store should accept any name, validation is at tool level
-    await writeCustomTool(testDir, tool);
-    const read = await readCustomTool(testDir, "Invalid Name!");
-    expect(read).not.toBeNull();
+    // The store rejects names that are not path-safe (SAFE_NAME); validation
+    // is enforced there so corrupt names can't escape the tools directory.
+    await expect(writeCustomTool(testDir, tool)).rejects.toThrow(/Invalid custom tool name/);
   });
 });

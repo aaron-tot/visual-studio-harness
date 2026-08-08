@@ -21,6 +21,24 @@ export const CUSTOM_TOOL_ENTRY = "index.js";
 const ENTRY_MODULE_RE = /^export\s+(?:async\s+)?function\s+execute\b/s;
 
 /**
+ * Custom tool names become the folder/file names under `data/tools/custom/`,
+ * so they must be path-safe: start alphanumeric, then alphanumeric/`_`/`-`,
+ * max 64 chars. Guards against corrupt names like `"../../escape"` escaping
+ * the custom-tools directory.
+ */
+export const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+
+/**
+ * Test-only injection point: when set, `writeCustomTool` invokes it right
+ * after creating the tool folder and writing `<name>.json`, so tests can
+ * simulate a mid-write failure (e.g. by throwing).
+ */
+let writeCustomToolFailureHook: (() => void) | undefined;
+export function __setWriteCustomToolFailureHook(fn: (() => void) | undefined): void {
+  writeCustomToolFailureHook = fn;
+}
+
+/**
  * Convert a `CustomTool.code` (a function BODY, e.g. `return args.msg;` as the
  * legacy store and the UI author) into a loadable folder entry module.
  * `loadToolEntry` dynamic-imports the file and requires an `execute` export.
@@ -174,9 +192,13 @@ export async function readSkillGuide(dataDir: string, name: string): Promise<str
 }
 
 export async function writeCustomTool(dataDir: string, tool: CustomTool): Promise<void> {
+  if (!SAFE_NAME.test(tool.name)) {
+    throw new Error(`Invalid custom tool name '${tool.name}' (must match ${SAFE_NAME.source})`);
+  }
   await ensureCustomToolsDir(dataDir);
   await mkdir(toolDir(dataDir, tool.name), { recursive: true });
   await writeFile(toolPath(dataDir, tool.name), JSON.stringify(customToolToConfig(tool), null, 2) + "\n", "utf-8");
+  writeCustomToolFailureHook?.(); // test-only: simulate a mid-write failure
   // The tool's code IS the entry file (NOT inline in the config).
   await writeFile(entryPath(dataDir, tool.name), codeToEntryModule(tool.code), "utf-8");
 
@@ -230,7 +252,7 @@ export async function migrateLegacyCustomTools(dataDir: string): Promise<number>
     }
 
     const name = typeof parsed?.name === "string" ? parsed.name : "";
-    if (!name || typeof parsed.code !== "string") continue; // not a legacy custom tool
+    if (!name || !SAFE_NAME.test(name) || typeof parsed.code !== "string") continue; // not a legacy custom tool / unsafe name
     if (existsSync(toolDir(dataDir, name))) continue; // already migrated (idempotent)
 
     try {
@@ -245,8 +267,10 @@ export async function migrateLegacyCustomTools(dataDir: string): Promise<number>
       await writeCustomTool(dataDir, parsed);
 
       // Verify the folder shape reads back before touching the legacy source.
+      // Compare the read-back code against the EXPECTED entry (codeToEntryModule
+      // of the source `code`), not against the entry file it was read from.
       const verify = await readCustomTool(dataDir, name);
-      if (!verify || verify.code !== (await readFile(entryPath(dataDir, name), "utf-8"))) {
+      if (!verify || verify.code !== codeToEntryModule(parsed.code)) {
         await rm(toolDir(dataDir, name), { recursive: true, force: true }).catch(() => {});
         continue;
       }
@@ -256,8 +280,11 @@ export async function migrateLegacyCustomTools(dataDir: string): Promise<number>
       await unlink(join(legacyDir, `${legacyName}.skill.md`)).catch(() => {});
       await unlink(join(legacyDir, `${legacyName}.prompt.json`)).catch(() => {});
     } catch {
-      // A failure leaves both the legacy source AND any partial target intact;
-      // the source is never deleted on error.
+      // A mid-write failure (e.g. ENOSPC, transient EACCES) may have left a
+      // partial `data/tools/custom/<name>/` folder. Remove it so the next run
+      // doesn't mistake the half-migrated folder for "already migrated" and
+      // permanently skip this tool. The legacy source is never deleted on error.
+      await rm(toolDir(dataDir, name), { recursive: true, force: true }).catch(() => {});
     }
   }
   return migrated;

@@ -11,6 +11,7 @@ import {
   loadCustomToolDefs,
   migrateLegacyCustomTools,
   codeToEntryModule,
+  __setWriteCustomToolFailureHook,
 } from "./store";
 import type { BaseToolContext } from "../tools/types";
 
@@ -250,6 +251,69 @@ describe("custom-tools folder store (unified folder-per-tool shape)", () => {
       );
       // And the legacy source is left alone (never deleted when skipped).
       expect(existsSync(join(legacyDir, "dup.json"))).toBe(true);
+    });
+
+    it("cleans up the partial folder on a mid-write failure so the next run retries", async () => {
+      const legacyDir = join(testDir, "custom-tools");
+      await mkdir(legacyDir, { recursive: true });
+      await writeFile(
+        join(legacyDir, "flaky.json"),
+        JSON.stringify({
+          name: "flaky",
+          description: "F",
+          inputSchema: { type: "object", properties: {} },
+          code: "return 'flaky';",
+          enabled: true,
+        })
+      );
+
+      // Simulate a write that fails partway (after the folder + config are
+      // written, before the entry file).
+      __setWriteCustomToolFailureHook(() => {
+        throw new Error("simulated mid-write failure");
+      });
+      try {
+        const first = await migrateLegacyCustomTools(testDir);
+        expect(first).toBe(0);
+      } finally {
+        __setWriteCustomToolFailureHook(undefined);
+      }
+
+      // (a) No partial `data/tools/custom/<name>/` folder remains.
+      expect(existsSync(join(testDir, "tools", "custom", "flaky"))).toBe(false);
+      // (b) The legacy source is retained.
+      expect(existsSync(join(legacyDir, "flaky.json"))).toBe(true);
+
+      // (c) A subsequent run migrates it successfully.
+      const second = await migrateLegacyCustomTools(testDir);
+      expect(second).toBe(1);
+      expect(await readFile(join(testDir, "tools", "custom", "flaky", "index.js"), "utf-8")).toBe(
+        codeToEntryModule("return 'flaky';")
+      );
+      expect(existsSync(join(legacyDir, "flaky.json"))).toBe(false);
+    });
+
+    it("skips legacy tools with an unsafe name (path escape) and leaves them for manual handling", async () => {
+      const legacyDir = join(testDir, "custom-tools");
+      await mkdir(legacyDir, { recursive: true });
+      await writeFile(
+        join(legacyDir, "escape.json"),
+        JSON.stringify({
+          name: "../../escape",
+          description: "E",
+          inputSchema: { type: "object", properties: {} },
+          code: "return 'escape';",
+          enabled: true,
+        })
+      );
+
+      const migrated = await migrateLegacyCustomTools(testDir);
+      expect(migrated).toBe(0);
+      // Nothing escaped the custom-tools directory.
+      expect(existsSync(join(testDir, "tools", "custom", "..", "..", "escape"))).toBe(false);
+      expect(existsSync(join(testDir, "escape"))).toBe(false);
+      // The unsafe legacy source is kept for manual handling.
+      expect(existsSync(join(legacyDir, "escape.json"))).toBe(true);
     });
   });
 

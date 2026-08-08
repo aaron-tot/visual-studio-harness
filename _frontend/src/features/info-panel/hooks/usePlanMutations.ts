@@ -210,12 +210,13 @@ export function usePlanMutations({
           name: designName,
           fromScope: location.scope,
           toScope,
-          ...paramsOf(location),
+          workspaceRoot: workspaceRoot?.trim() || undefined,
+          sessionId: sessionId || undefined,
         });
         setResult(`"${designName}" moved`);
       });
     },
-    [requireLocation, paramsOf, run]
+    [requireLocation, paramsOf, run, workspaceRoot, sessionId]
   );
 
   return {

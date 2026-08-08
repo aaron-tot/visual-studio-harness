@@ -50,11 +50,23 @@ const notesSchema = z.object({
   toScope: z.enum(["global", "project", "session"]).optional().describe("Target scope (move)"),
 });
 
+const notesMoveChecked = notesSchema.superRefine((val, ctx) => {
+  if (val.action !== "move") return;
+  if (!val.toScope) ctx.addIssue({ code: "custom", message: "toScope is required for move", path: ["toScope"] });
+  if (!val.fromScope) ctx.addIssue({ code: "custom", message: "fromScope is required for move", path: ["fromScope"] });
+  if (val.fromScope && val.fromScope === val.toScope) {
+    ctx.addIssue({ code: "custom", message: "fromScope and toScope must differ", path: ["toScope"] });
+  }
+});
+// This zod build returns a ZodEffects wrapper that drops `.shape`; restore the
+// plain object's shape so introspection (tests + field extraction) keeps working.
+(notesMoveChecked as any).shape = notesSchema.shape;
+
 export const notesTool: ToolDef = {
   name: "notes",
   description: "Create, read, update, and archive user notes. Set 'action' to pick the operation.",
   permissionDefault: "allow",
-  inputSchema: notesSchema,
+  inputSchema: notesMoveChecked,
   execute: async (args, ctx) => {
     const action = args.action as NotesAction;
     const tool = ORIGINAL_TOOLS[action];

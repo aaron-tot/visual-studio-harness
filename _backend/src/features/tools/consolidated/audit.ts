@@ -92,6 +92,18 @@ const auditSchema = z.object({
   templateInstructions: z.string().optional().describe("Prompt instructions"),
 });
 
+const auditMoveChecked = auditSchema.superRefine((val, ctx) => {
+  if (val.action !== "move") return;
+  if (!val.toScope) ctx.addIssue({ code: "custom", message: "toScope is required for move", path: ["toScope"] });
+  if (!val.fromScope) ctx.addIssue({ code: "custom", message: "fromScope is required for move", path: ["fromScope"] });
+  if (val.fromScope && val.fromScope === val.toScope) {
+    ctx.addIssue({ code: "custom", message: "fromScope and toScope must differ", path: ["toScope"] });
+  }
+});
+// This zod build returns a ZodEffects wrapper that drops `.shape`; restore the
+// plain object's shape so introspection (tests + field extraction) keeps working.
+(auditMoveChecked as any).shape = auditSchema.shape;
+
 export const auditTool: ToolDef = {
   name: "audit",
   description:
@@ -99,7 +111,7 @@ export const auditTool: ToolDef = {
     "Read skill:audit before performing an audit — it defines the findings/assessments/attachments structure. " +
     "Set 'action' to pick the operation.",
   permissionDefault: "allow",
-  inputSchema: auditSchema,
+  inputSchema: auditMoveChecked,
   execute: async (args, ctx) => {
     const action = args.action as AuditAction;
     const tool = ORIGINAL_TOOLS[action];

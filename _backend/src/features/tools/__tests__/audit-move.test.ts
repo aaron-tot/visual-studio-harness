@@ -30,6 +30,13 @@ describe("audit move action", () => {
     expect(values).toContain("move");
   });
 
+  it("rejects moves that omit fromScope/toScope or target the same scope", () => {
+    const schema = auditTool.inputSchema as any;
+    expect(schema.safeParse({ action: "move", toScope: "session" }).success).toBe(false);
+    expect(schema.safeParse({ action: "move", name: "x", fromScope: "global", toScope: "global" }).success).toBe(false);
+    expect(schema.safeParse({ action: "move", name: "x", fromScope: "global", toScope: "session" }).success).toBe(true);
+  });
+
   it("moves an audit via the consolidated tool", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "vsh-audit-tool-"));
     roots.push(dataDir);

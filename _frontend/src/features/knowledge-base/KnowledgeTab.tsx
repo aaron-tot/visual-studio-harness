@@ -5,6 +5,8 @@ import { FileText } from "lucide-react";
 import type { PlanScope } from "../info-panel/types";
 import { knowledgeOpenDocument, knowledgeGetEmbeddings } from "../../lib/api";
 import { MoveScopeModal } from "../info-panel/components/MoveScopeModal";
+import { useChatStore } from "../../stores/chat";
+import { useSessionViewStore } from "../../stores/sessionView";
 
 export function KnowledgeTab({ scope }: { scope: PlanScope }) {
   const {
@@ -27,6 +29,11 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
   const [showSearch, setShowSearch] = useState(false);
   const [detailDocId, setDetailDocId] = useState<string | null>(null);
   const [moveDocId, setMoveDocId] = useState<{ id: string; scope: "global" | "project" | "session" } | null>(null);
+
+  const workspaceRoot = useChatStore((s) => s.workspaceRoot);
+  const chatSessionId = useChatStore((s) => s.sessionId);
+  const viewSessionId = useSessionViewStore((s) => s.currentSessionId);
+  const currentSessionId = viewSessionId || chatSessionId;
 
   useEffect(() => {
     fetchDocuments(scope);
@@ -204,7 +211,10 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
           currentScope={moveDocId.scope}
           onClose={() => setMoveDocId(null)}
           onMove={(toScope) => {
-            void moveDocument(moveDocId.id, moveDocId.scope, toScope);
+            void moveDocument(moveDocId.id, moveDocId.scope, toScope, {
+              workspaceRoot: workspaceRoot?.trim() || undefined,
+              sessionId: currentSessionId || undefined,
+            });
             setMoveDocId(null);
           }}
         />

@@ -109,6 +109,18 @@ const designSchema = z.object({
   toScope: z.enum(["global", "project", "session"]).optional().describe("Target scope (move)"),
 });
 
+const designMoveChecked = designSchema.superRefine((val, ctx) => {
+  if (val.action !== "move") return;
+  if (!val.toScope) ctx.addIssue({ code: "custom", message: "toScope is required for move", path: ["toScope"] });
+  if (!val.fromScope) ctx.addIssue({ code: "custom", message: "fromScope is required for move", path: ["fromScope"] });
+  if (val.fromScope && val.fromScope === val.toScope) {
+    ctx.addIssue({ code: "custom", message: "fromScope and toScope must differ", path: ["toScope"] });
+  }
+});
+// This zod build returns a ZodEffects wrapper that drops `.shape`; restore the
+// plain object's shape so introspection (tests + field extraction) keeps working.
+(designMoveChecked as any).shape = designSchema.shape;
+
 export const designTool: ToolDef = {
   name: "design",
   description:
@@ -116,7 +128,7 @@ export const designTool: ToolDef = {
     "Parameters content, document, and patch accept JSON objects or valid JSON object strings. " +
     "See skill:design for the document structure and skill:design-edit for patch semantics.",
   permissionDefault: "allow",
-  inputSchema: designSchema,
+  inputSchema: designMoveChecked,
   execute: async (args, ctx) => {
     const action = args.action as DesignAction;
     const tool = ORIGINAL_TOOLS[action];

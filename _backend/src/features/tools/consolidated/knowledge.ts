@@ -75,6 +75,21 @@ const knowledgeSchema = z.object({
   toScope: z.enum(["global", "project", "session"]).optional().describe("Target scope (move)"),
 });
 
+const knowledgeMoveChecked = knowledgeSchema.superRefine((val, ctx) => {
+  if (val.action !== "move") return;
+  if (!val.toScope) ctx.addIssue({ code: "custom", message: "toScope is required for move", path: ["toScope"] });
+  if (!val.fromScope) ctx.addIssue({ code: "custom", message: "fromScope is required for move", path: ["fromScope"] });
+  if (val.fromScope && val.fromScope === val.toScope) {
+    ctx.addIssue({ code: "custom", message: "fromScope and toScope must differ", path: ["toScope"] });
+  }
+  if (val.action === "move" && !val.documentId && !val.filename) {
+    ctx.addIssue({ code: "custom", message: "documentId or filename is required for move", path: ["documentId"] });
+  }
+});
+// This zod build returns a ZodEffects wrapper that drops `.shape`; restore the
+// plain object's shape so introspection (tests + field extraction) keeps working.
+(knowledgeMoveChecked as any).shape = knowledgeSchema.shape;
+
 export const knowledgeTool: ToolDef = {
   name: "knowledge",
   description:
@@ -89,7 +104,7 @@ export const knowledgeTool: ToolDef = {
     { name: "filename", type: "string", description: "Source filename (open)", required: false },
     { name: "id", type: "string", description: "Document UUID (doc_create, doc_edit, doc_delete)", required: false },
   ],
-  inputSchema: knowledgeSchema,
+  inputSchema: knowledgeMoveChecked,
   execute: async (args, ctx) => {
     const action = args.action as KnowledgeAction;
     const tool = ORIGINAL_TOOLS[action];

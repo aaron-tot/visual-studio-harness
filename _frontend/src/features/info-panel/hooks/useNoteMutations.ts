@@ -164,12 +164,13 @@ export function useNoteMutations({
           name: noteName,
           fromScope: location.scope,
           toScope,
-          ...paramsOf(location),
+          workspaceRoot: workspaceRoot?.trim() || undefined,
+          sessionId: sessionId || undefined,
         });
         setResult(`"${noteName}" moved`);
       });
     },
-    [requireLocation, paramsOf, run]
+    [requireLocation, paramsOf, run, workspaceRoot, sessionId]
   );
 
   return {

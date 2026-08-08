@@ -33,6 +33,16 @@ export async function moveDocumentAcrossScopes(
   const src = await openKnowledgeDb(params.dataDir, params.fromScope, params.workspaceRoot, params.sessionId);
   if (!src) throw new MoveError(`source scope "${params.fromScope}" not available`, 400);
 
+  // Resolve the source document FIRST so a nonexistent document fails with 404
+  // before any target DB is materialized and before the dimension check can
+  // mask the not-found error with a 400.
+  const doc = src.db
+    .select()
+    .from(knowledgeDocuments)
+    .where(eq(knowledgeDocuments.id, params.documentId))
+    .get();
+  if (!doc) throw new MoveError("Document not found in source scope", 404);
+
   // Open the target with the source's vec0 embedding dimension so a fresh target
   // DB is created with the same dimension (a fresh target defaults to 768 and
   // would reject vectors of any other dimension). If the target already has a
@@ -46,13 +56,6 @@ export async function moveDocumentAcrossScopes(
       throw new MoveError("target knowledge DB embedding dimension mismatch", 400);
     }
   }
-
-  const doc = src.db
-    .select()
-    .from(knowledgeDocuments)
-    .where(eq(knowledgeDocuments.id, params.documentId))
-    .get();
-  if (!doc) throw new MoveError("Document not found in source scope", 404);
 
   // filename + scope is unique per DB; reject a move into a DB that has it
   const existing = dst.db

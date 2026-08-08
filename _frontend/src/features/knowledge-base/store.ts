@@ -28,6 +28,7 @@ interface KnowledgeState {
     id: string,
     fromScope: "global" | "project" | "session",
     toScope: "global" | "project" | "session",
+    opts?: { workspaceRoot?: string; sessionId?: string },
   ) => Promise<void>;
   ingest: (scope: "global" | "project" | "session") => Promise<void>;
   uploadFiles: (files: File[], scope: "global" | "project" | "session") => Promise<void>;
@@ -91,10 +92,16 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
     }
   },
 
-  moveDocument: async (id, fromScope, toScope) => {
+  moveDocument: async (id, fromScope, toScope, opts) => {
     set({ loading: true, error: null });
     try {
-      await moveKnowledgeDocumentViaApi({ documentId: id, fromScope, toScope });
+      await moveKnowledgeDocumentViaApi({
+        documentId: id,
+        fromScope,
+        toScope,
+        workspaceRoot: opts?.workspaceRoot,
+        sessionId: opts?.sessionId,
+      });
       await get().fetchDocuments(fromScope);
     } catch (err: any) {
       set({ error: err.message, loading: false });

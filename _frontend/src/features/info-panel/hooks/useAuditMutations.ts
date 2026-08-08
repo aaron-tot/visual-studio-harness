@@ -121,12 +121,13 @@ export function useAuditMutations({
           name: auditName,
           fromScope: location.scope,
           toScope,
-          ...paramsOf(location),
+          workspaceRoot: workspaceRoot?.trim() || undefined,
+          sessionId: sessionId || undefined,
         });
         setResult(`"${auditName}" moved`);
       });
     },
-    [requireLocation, paramsOf, run]
+    [requireLocation, paramsOf, run, workspaceRoot, sessionId]
   );
 
   return {

@@ -61,3 +61,13 @@ repos:
         language: system
         types: [text]
         exclude: ^(scripts/hooks/|\.pre-commit-config\.yaml)
+
+      # --- Root directory .md/.txt file guard ---
+      - id: root-md-txt-guard
+        name: Prevent unauthorized .md/.txt files in root
+        description: Only AGENTS.md and STYLE.md allowed in project root
+        entry: bash
+        args: [scripts/hooks/root-md-txt-guard.sh]
+        language: system
+        types: [text]
+        always_run: true

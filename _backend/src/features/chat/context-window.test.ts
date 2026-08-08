@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   computeFirstTurnFromMaxTurns,
   resolveRuntimeFirstTurnNumber,
+  resolveRuntimeHistoryInclusion,
   type ContextScopeConfig,
 } from "./context-window";
 
@@ -116,5 +117,67 @@ describe("resolveRuntimeFirstTurnNumber", () => {
       completedTurnNumbers: turns,
     });
     expect(r).toEqual({ firstTurnNumber: null, source: "none" });
+  });
+});
+
+describe("resolveRuntimeHistoryInclusion", () => {
+  const defaults = {
+    includeFailedTurnsInHistory: true,
+    includeToolCallsInHistory: true,
+    includeReasoningInHistory: false,
+    includePatchesInHistory: false,
+    includeOtherPartsInHistory: false,
+  };
+
+  test("falls back to defaults when no scope sets a field", () => {
+    const r = resolveRuntimeHistoryInclusion({ defaults });
+    expect(r).toEqual(defaults);
+    expect(r.includeReasoningInHistory).toBe(false);
+  });
+
+  test("global value is picked as the base", () => {
+    const r = resolveRuntimeHistoryInclusion({
+      global: { includeReasoningInHistory: true },
+      defaults,
+    });
+    expect(r.includeReasoningInHistory).toBe(true);
+  });
+
+  test("enabled session overrides global", () => {
+    const r = resolveRuntimeHistoryInclusion({
+      session: { includeReasoningInHistory: false, enabled: true },
+      global: { includeReasoningInHistory: true },
+      defaults,
+    });
+    expect(r.includeReasoningInHistory).toBe(false);
+  });
+
+  test("session manual pin contributes even without enabled", () => {
+    const r = resolveRuntimeHistoryInclusion({
+      session: { mode: "manual", firstTurnNumber: 4, includeReasoningInHistory: true },
+      global: { includeReasoningInHistory: false },
+      defaults,
+    });
+    expect(r.includeReasoningInHistory).toBe(true);
+  });
+
+  test("disabled session ignored; enabled project overrides global", () => {
+    const r = resolveRuntimeHistoryInclusion({
+      session: { includeReasoningInHistory: true, enabled: false },
+      project: { includeReasoningInHistory: false, enabled: true },
+      global: { includeReasoningInHistory: true },
+      defaults,
+    });
+    expect(r.includeReasoningInHistory).toBe(false);
+    expect(r.includeToolCallsInHistory).toBe(true);
+  });
+
+  test("disabled project ignored; falls through to global", () => {
+    const r = resolveRuntimeHistoryInclusion({
+      project: { includeReasoningInHistory: false, enabled: false },
+      global: { includeReasoningInHistory: true },
+      defaults,
+    });
+    expect(r.includeReasoningInHistory).toBe(true);
   });
 });

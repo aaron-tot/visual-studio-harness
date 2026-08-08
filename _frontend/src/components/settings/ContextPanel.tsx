@@ -189,6 +189,13 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
               {/* History Inclusion Settings */}
               <div className="space-y-3">
                 <h3 className="text-sm font-medium text-zinc-100 mb-2">History Included in Context</h3>
+                <p className="text-xs text-zinc-500 mb-1">
+                  These apply to <span className="text-zinc-300">previous turns only</span> — everything
+                  from the current turn is always sent to the model. Turning a part type off removes it
+                  from history starting with the next turn. Because the first turn that included it was
+                  sent differently, that turn no longer matches the next request, so it (and every turn
+                  after it) will miss the provider's prompt cache from that point on.
+                </p>
                 <label className="flex items-start gap-3 cursor-pointer group">
                   <input
                     type="checkbox"
@@ -236,6 +243,11 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
                       When enabled, reasoning/thinking blocks from previous turns are sent to the model.
+                    </div>
+                    <div className="text-xs text-amber-500/90 mt-0.5">
+                      Caution: disabling this can break reasoning models (e.g. DeepSeek reasoner) that
+                      require the previous turn's reasoning to be echoed back. If a turn fails with
+                      "reasoning_content ... must be passed back", re-enable this.
                     </div>
                   </div>
                 </label>

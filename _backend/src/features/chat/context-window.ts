@@ -12,6 +12,24 @@ export interface ContextScopeConfig {
   manualMode?: "turnsBack" | "pinned" | string;
   manualTurnsBack?: number;
   enabled?: boolean;
+  // "History Included in Context" flags — these control which part types are
+  // re-sent from PREVIOUS turns. The current turn always carries everything.
+  includeFailedTurnsInHistory?: boolean;
+  includeToolCallsInHistory?: boolean;
+  includeReasoningInHistory?: boolean;
+  includePatchesInHistory?: boolean;
+  includeOtherPartsInHistory?: boolean;
+  contextMaxTurns?: number;
+}
+
+/** Effective "History Included in Context" flags resolved for a turn. */
+export interface HistoryInclusionFlags {
+  includeFailedTurnsInHistory: boolean;
+  includeToolCallsInHistory: boolean;
+  includeReasoningInHistory: boolean;
+  includePatchesInHistory: boolean;
+  includeOtherPartsInHistory: boolean;
+  contextMaxTurns?: number;
 }
 
 export interface ResolveRuntimeFirstTurnInput {
@@ -118,4 +136,50 @@ export function resolveRuntimeFirstTurnNumber(
   }
 
   return { firstTurnNumber: null, source: "none" };
+}
+
+export interface ResolveRuntimeHistoryInclusionInput {
+  session?: ContextScopeConfig | null;
+  project?: ContextScopeConfig | null;
+  global?: ContextScopeConfig | null;
+  /** Base values from the chat config; used when no scope sets a field. */
+  defaults: HistoryInclusionFlags;
+}
+
+/**
+ * Resolve the "History Included in Context" flags for a turn using the same
+ * precedence as firstTurnNumber: session > project > global, with session and
+ * project only contributing when enabled, and global always serving as the
+ * base. Fields not set in any scope fall back to the chat-config defaults.
+ *
+ * NOTE: these flags only govern what is re-sent from PREVIOUS turns. The
+ * current turn always includes all part types regardless of these settings.
+ */
+export function resolveRuntimeHistoryInclusion(
+  input: ResolveRuntimeHistoryInclusionInput,
+): HistoryInclusionFlags {
+  const sessionOn = sessionContributes(input.session);
+  const projectOn = projectContributes(input.project);
+
+  const pick = <K extends keyof HistoryInclusionFlags>(key: K): HistoryInclusionFlags[K] => {
+    if (sessionOn && input.session && input.session[key] !== undefined) {
+      return input.session[key] as HistoryInclusionFlags[K];
+    }
+    if (projectOn && input.project && input.project[key] !== undefined) {
+      return input.project[key] as HistoryInclusionFlags[K];
+    }
+    if (input.global && input.global[key] !== undefined) {
+      return input.global[key] as HistoryInclusionFlags[K];
+    }
+    return input.defaults[key];
+  };
+
+  return {
+    includeFailedTurnsInHistory: pick("includeFailedTurnsInHistory"),
+    includeToolCallsInHistory: pick("includeToolCallsInHistory"),
+    includeReasoningInHistory: pick("includeReasoningInHistory"),
+    includePatchesInHistory: pick("includePatchesInHistory"),
+    includeOtherPartsInHistory: pick("includeOtherPartsInHistory"),
+    contextMaxTurns: pick("contextMaxTurns"),
+  };
 }

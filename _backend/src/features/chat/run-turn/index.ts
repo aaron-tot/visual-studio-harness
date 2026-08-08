@@ -63,6 +63,7 @@ import { DEFAULT_ADDITIONAL_SYSTEM_INFO, DEFAULT_SYSTEM_PROMPT_SECTIONS } from "
 import { getSessionModelConfigJson } from "../../sessions/db";
 import {
   resolveRuntimeFirstTurnNumber,
+  resolveRuntimeHistoryInclusion,
   type ContextScopeConfig,
   type ContextSource,
 } from "../context-window";
@@ -190,7 +191,6 @@ export async function runTurn(
   }, dataDir);
 
   // ── Context refs ─────────────────────────────────────────────────
-  const includeFailedTurns = config.includeFailedTurnsInHistory ?? true;
 
   // Resolve firstTurnNumber: WS wins; else session pin / auto; else project; else global.
   // Prior turns only (exclude the turn just created) so auto maxTurns matches UI semantics.
@@ -216,6 +216,24 @@ export async function runTurn(
     }
   } catch { /* ignore */ }
 
+  // Effective "History Included in Context" flags from the context scopes
+  // (session > project > global), falling back to base chat-config values.
+  // These only control what is re-sent from PREVIOUS turns; the current turn
+  // always includes all part types.
+  const historyFlags = resolveRuntimeHistoryInclusion({
+    session: sessionCtx,
+    project: projectCtx,
+    global: globalCtx,
+    defaults: {
+      includeFailedTurnsInHistory: config.includeFailedTurnsInHistory ?? true,
+      includeToolCallsInHistory: config.includeToolCallsInHistory ?? true,
+      includeReasoningInHistory: config.includeReasoningInHistory ?? false,
+      includePatchesInHistory: config.includePatchesInHistory ?? false,
+      includeOtherPartsInHistory: config.includeOtherPartsInHistory ?? false,
+      contextMaxTurns: config.contextMaxTurns,
+    },
+  });
+
   const dbForCtx = dataDir ? getDbForDataDir(dataDir) : getDb();
   const priorTurnRows = dbForCtx
     .select({ turnNumber: turns.turnNumber })
@@ -237,7 +255,7 @@ export async function runTurn(
 
   console.error("[run-turn] ctxFirstTurnNumber final:", firstTurnNumber, "source:", contextSource);
 
-  const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns, firstTurnNumber });
+  const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns: historyFlags.includeFailedTurnsInHistory, firstTurnNumber });
 
   await bus?.emit("message.user_persisted", hookCtx, { message: userMessage, sessionId });
   const session = await getSession(dataDir, sessionId);
@@ -372,12 +390,12 @@ export async function runTurn(
       systemBlock,
       {
         contextTurnIds,
-        includeIncompleteTurns: config.includeFailedTurnsInHistory ?? true,
+        includeIncompleteTurns: historyFlags.includeFailedTurnsInHistory,
         includeTextParts: true,
-        includeTools: config.includeToolCallsInHistory ?? true,
-        includeReasoningParts: config.includeReasoningInHistory ?? false,
-        includePatchParts: config.includePatchesInHistory ?? false,
-        includeOtherParts: config.includeOtherPartsInHistory ?? false,
+        includeTools: historyFlags.includeToolCallsInHistory,
+        includeReasoningParts: historyFlags.includeReasoningInHistory,
+        includePatchParts: historyFlags.includePatchesInHistory,
+        includeOtherParts: historyFlags.includeOtherPartsInHistory,
         // maxTurns removed: slider auto mode computes firstTurnNumber as primary filter
         // Second maxTurns slice was redundant and could conflict with slider position
         currentTurnNumber: turnNumber,
@@ -470,12 +488,12 @@ export async function runTurn(
 
     // Store config snapshot for reconstruction
     updateTurnConfigSnapshot(traceTurnId, {
-      includeFailedTurnsInHistory: config.includeFailedTurnsInHistory ?? true,
-      includeToolCallsInHistory: config.includeToolCallsInHistory ?? true,
-      includeReasoningInHistory: config.includeReasoningInHistory ?? false,
-      includePatchesInHistory: config.includePatchesInHistory ?? false,
-      includeOtherPartsInHistory: config.includeOtherPartsInHistory ?? false,
-      contextMaxTurns: config.contextMaxTurns,
+      includeFailedTurnsInHistory: historyFlags.includeFailedTurnsInHistory,
+      includeToolCallsInHistory: historyFlags.includeToolCallsInHistory,
+      includeReasoningInHistory: historyFlags.includeReasoningInHistory,
+      includePatchesInHistory: historyFlags.includePatchesInHistory,
+      includeOtherPartsInHistory: historyFlags.includeOtherPartsInHistory,
+      contextMaxTurns: historyFlags.contextMaxTurns,
       firstTurnNumber,
       promptSnapshotId,
       toolsSnapshotId,

@@ -31,11 +31,11 @@ describe("design move action", () => {
     expect(values).toContain("move");
   });
 
-  it("rejects moves that omit fromScope/toScope or target the same scope", () => {
+  it("requires toScope for move but keeps fromScope optional (auto-resolved)", () => {
     const schema = designTool.inputSchema as any;
-    expect(schema.safeParse({ action: "move", toScope: "session" }).success).toBe(false);
-    expect(schema.safeParse({ action: "move", name: "x", fromScope: "global", toScope: "global" }).success).toBe(false);
-    expect(schema.safeParse({ action: "move", name: "x", fromScope: "global", toScope: "session" }).success).toBe(true);
+    expect(schema.safeParse({ action: "move" }).success).toBe(false);
+    expect(schema.safeParse({ action: "move", toScope: "session" }).success).toBe(true);
+    expect(schema.safeParse({ action: "move", fromScope: "global", toScope: "global" }).success).toBe(false);
   });
 
   it("moves a design via the consolidated tool", async () => {

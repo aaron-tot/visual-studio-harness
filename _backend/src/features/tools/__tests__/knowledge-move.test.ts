@@ -23,11 +23,12 @@ describe("knowledge move action", () => {
     expect(values).toContain("move");
   });
 
-  it("rejects moves that omit required fields or target the same scope", () => {
+  it("requires toScope + documentId/filename for move; keeps fromScope optional", () => {
     const schema = knowledgeTool.inputSchema as any;
+    expect(schema.safeParse({ action: "move" }).success).toBe(false);
     expect(schema.safeParse({ action: "move", toScope: "session" }).success).toBe(false);
+    expect(schema.safeParse({ action: "move", documentId: "abc", toScope: "session" }).success).toBe(true);
     expect(schema.safeParse({ action: "move", documentId: "abc", fromScope: "global", toScope: "global" }).success).toBe(false);
-    expect(schema.safeParse({ action: "move", documentId: "abc", fromScope: "global", toScope: "session" }).success).toBe(true);
   });
 
   it("move tool errors when KB service not initialized", async () => {

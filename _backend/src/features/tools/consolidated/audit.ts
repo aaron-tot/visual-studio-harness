@@ -95,7 +95,6 @@ const auditSchema = z.object({
 const auditMoveChecked = auditSchema.superRefine((val, ctx) => {
   if (val.action !== "move") return;
   if (!val.toScope) ctx.addIssue({ code: "custom", message: "toScope is required for move", path: ["toScope"] });
-  if (!val.fromScope) ctx.addIssue({ code: "custom", message: "fromScope is required for move", path: ["fromScope"] });
   if (val.fromScope && val.fromScope === val.toScope) {
     ctx.addIssue({ code: "custom", message: "fromScope and toScope must differ", path: ["toScope"] });
   }

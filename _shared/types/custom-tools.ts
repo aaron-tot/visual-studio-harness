@@ -1,5 +1,10 @@
 /**
  * A user-defined custom tool — stored as {dataDir}/custom-tools/{name}.json
+ *
+ * NOTE: Under the unified tools system this shape is being folded into
+ * `ToolConfig` (see `_shared/types/config.ts`). Custom tools become
+ * `ToolConfig` with an entry file, stored as `data/tools/custom/<name>/<name>.json`.
+ * This interface is kept until the migration lands in a later task.
  */
 export interface CustomTool {
   /** Unique tool name (alphanumeric + hyphens, used as filename). */

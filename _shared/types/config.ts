@@ -285,3 +285,48 @@ export interface ConfigFile {
   permissionRequestTimeoutEnabled?: boolean;
   permissionRequestTimeoutMs?: number;
 }
+
+/**
+ * Unified tool config — the `<name>.json` inside each tool folder
+ * under `data/tools/{builtin,custom}/<name>/`. Shared by builtin and
+ * custom tools (custom tools are `ToolConfig` with an entry file instead
+ * of the legacy `CustomTool.code` field).
+ */
+export interface ToolConfig {
+  /** Unique tool name (alphanumeric + hyphens, used as folder name). */
+  name: string;
+  /** Human-readable description shown to the LLM. */
+  description: string;
+  /** Entry file inside the tool folder (e.g. "index.ts"). */
+  entry: string;
+  /** JSON Schema object describing the tool's input parameters. */
+  inputSchema: Record<string, unknown>;
+  /** When false, the tool is hidden from agents. */
+  enabled: boolean;
+  /** Default permission mode when the tool is first invoked. */
+  permissionDefault: "allow" | "ask" | "deny";
+  /** Per-invocation timeout bounds (ms). */
+  timeouts?: { minMs?: number; maxMs?: number; defaultMs?: number };
+  /** When true, the tool may make external network calls. */
+  externalAccess?: boolean;
+  /** Subagent-specific scheduling options. */
+  subagent?: {
+    slotBusyPolicy?: SlotBusyPolicy;
+    pollIntervalSec?: number;
+    waitTimeoutSec?: number;
+  };
+  /** Search providers the tool may use. */
+  searchProviders?: SearchProviderConfig[];
+  /** Optional skill guide attached to the tool. */
+  skill?: {
+    /** Skill guide markdown content for agent guidance. */
+    guide: string;
+    /** "soft" = optional hint, "hard" = required read, "custom" = use custom text. */
+    pushMode: "soft" | "hard" | "custom";
+    /** Skill ID for reading via skill tool (defaults to tool name). */
+    id?: string;
+    tags?: string[];
+    /** Custom push text when pushMode is "custom". */
+    customPushText?: string;
+  };
+}

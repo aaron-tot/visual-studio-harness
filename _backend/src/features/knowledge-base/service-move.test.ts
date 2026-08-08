@@ -6,8 +6,8 @@ import { existsSync } from "node:fs";
 import { createDocument } from "./service-mutations";
 import { moveDocumentAcrossScopes } from "./service-move";
 import { openKnowledgeDb, closeAllKnowledgeDbs } from "./db";
-import { knowledgeDocuments, knowledgeChunks } from "./schema";
-import { eq } from "drizzle-orm";
+import { knowledgeDocuments, knowledgeChunks, knowledgeRelationships } from "./schema";
+import { eq, or } from "drizzle-orm";
 import { MoveError } from "../../rest/scope-move";
 
 const roots: string[] = [];
@@ -65,5 +65,64 @@ describe("moveDocumentAcrossScopes", () => {
       expect(e).toBeInstanceOf(MoveError);
       expect((e as MoveError).code).toBe(409);
     }
+  });
+
+  it("skips relationships whose other endpoint is not in the target (FK-safe)", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "vsh-kb-move-"));
+    roots.push(dataDir);
+    const a = await createDocument(dataDir, "global", { filename: "c.md", content: "# C", createdBy: "agent" });
+    const b = await createDocument(dataDir, "global", { filename: "d.md", content: "# D", createdBy: "agent" });
+    const src = await openKnowledgeDb(dataDir, "global");
+    await src!.db.insert(knowledgeRelationships).values({
+      id: "rel-c-d",
+      sourceDocumentId: a.id,
+      targetDocumentId: b.id,
+      relationType: "related",
+      weight: 1,
+      createdAt: new Date().toISOString(),
+    });
+
+    const r = await moveDocumentAcrossScopes({ fromScope: "global", toScope: "session", documentId: a.id, dataDir, sessionId: "s1" });
+    expect(r.documentId).toBe(a.id);
+
+    const dst = await openKnowledgeDb(dataDir, "session", undefined, "s1");
+    const dstRels = dst!.db
+      .select()
+      .from(knowledgeRelationships)
+      .where(
+        or(
+          eq(knowledgeRelationships.sourceDocumentId, a.id),
+          eq(knowledgeRelationships.targetDocumentId, a.id),
+        ),
+      )
+      .all();
+    expect(dstRels.length).toBe(0);
+
+    const srcRels = src!.db.select().from(knowledgeRelationships).all();
+    expect(srcRels.length).toBe(0);
+  });
+
+  it("copies self-referential relationships (both endpoints in the target)", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "vsh-kb-move-"));
+    roots.push(dataDir);
+    const a = await createDocument(dataDir, "global", { filename: "e.md", content: "# E", createdBy: "agent" });
+    const src = await openKnowledgeDb(dataDir, "global");
+    await src!.db.insert(knowledgeRelationships).values({
+      id: "rel-e-e",
+      sourceDocumentId: a.id,
+      targetDocumentId: a.id,
+      relationType: "related",
+      weight: 1,
+      createdAt: new Date().toISOString(),
+    });
+
+    await moveDocumentAcrossScopes({ fromScope: "global", toScope: "session", documentId: a.id, dataDir, sessionId: "s1" });
+
+    const dst = await openKnowledgeDb(dataDir, "session", undefined, "s1");
+    const rels = dst!.db.select().from(knowledgeRelationships).all();
+    expect(rels.length).toBe(1);
+    expect(rels[0].id).toBe("rel-e-e");
+    expect(rels[0].sourceDocumentId).toBe(a.id);
+    expect(rels[0].targetDocumentId).toBe(a.id);
   });
 });

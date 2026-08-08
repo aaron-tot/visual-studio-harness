@@ -62,6 +62,19 @@ export function dropVecTable(sqlite: Database): void {
 }
 
 /**
+ * Read the embedding dimension from an existing vec0 table (from sqlite_master),
+ * or null if absent.
+ */
+export function getVecDimension(sqlite: Database): number | null {
+  const row = sqlite.query(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'knowledge_embeddings'"
+  ).get() as { sql?: string } | undefined;
+  if (!row?.sql) return null;
+  const m = row.sql.match(/FLOAT\[(\d+)\]/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/**
  * Remove embeddings for a document's chunks from vec0, cache, and meta.
  * vec0 is a virtual table so it has no FK cascade — cleanup is manual.
  */

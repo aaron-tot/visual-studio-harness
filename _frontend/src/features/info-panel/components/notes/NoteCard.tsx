@@ -1,6 +1,8 @@
-import { Archive, ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Archive, ArrowRightFromLine, ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
 import type { NoteEntry } from "../../../../lib/api";
-import type { DesignLocation } from "../../types";
+import type { DesignLocation, PlanScope } from "../../types";
+import { MoveScopeModal } from "../MoveScopeModal";
 
 interface NoteCardProps {
   note: NoteEntry;
@@ -10,6 +12,7 @@ interface NoteCardProps {
   onEdit: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  onMove: (toScope: PlanScope) => void;
   /** Location for API calls */
   location: DesignLocation;
 }
@@ -22,7 +25,10 @@ export function NoteCard({
   onEdit,
   onArchive,
   onDelete,
+  onMove,
+  location,
 }: NoteCardProps) {
+  const [showMove, setShowMove] = useState(false);
   const bodyPreview = note.body
     ? note.body.length > 120
       ? note.body.slice(0, 120) + "…"
@@ -118,6 +124,16 @@ export function NoteCard({
             </button>
             <button
               type="button"
+              className="text-[9px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-sky-700 hover:text-sky-200 transition-colors"
+              disabled={busy}
+              onClick={() => setShowMove(true)}
+              title="Move to another scope"
+            >
+              <ArrowRightFromLine size={10} className="inline mr-0.5" />
+              Move
+            </button>
+            <button
+              type="button"
               className="text-[9px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-red-700 hover:text-red-200 transition-colors"
               disabled={busy}
               onClick={onDelete}
@@ -126,6 +142,17 @@ export function NoteCard({
               Delete
             </button>
           </div>
+          {showMove && (
+            <MoveScopeModal
+              title={`Move note "${note.title}"`}
+              currentScope={location.scope}
+              onClose={() => setShowMove(false)}
+              onMove={(toScope) => {
+                setShowMove(false);
+                onMove(toScope);
+              }}
+            />
+          )}
         </div>
       )}
     </div>

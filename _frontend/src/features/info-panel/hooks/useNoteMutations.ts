@@ -3,6 +3,7 @@ import {
   archiveNoteViaApi,
   createNoteViaApi,
   deleteNoteViaApi,
+  moveNoteViaApi,
   updateNoteViaApi,
 } from "../../../lib/api";
 import type { DesignLocation, PlanScope } from "../types";
@@ -151,6 +152,26 @@ export function useNoteMutations({
     [requireLocation, paramsOf, run]
   );
 
+  const move = useCallback(
+    async (noteName: string, location: DesignLocation, toScope: PlanScope) => {
+      const blocked = requireLocation(location);
+      if (blocked) {
+        setResult(blocked);
+        return false;
+      }
+      return run(async () => {
+        await moveNoteViaApi({
+          name: noteName,
+          fromScope: location.scope,
+          toScope,
+          ...paramsOf(location),
+        });
+        setResult(`"${noteName}" moved`);
+      });
+    },
+    [requireLocation, paramsOf, run]
+  );
+
   return {
     busy,
     result,
@@ -160,5 +181,6 @@ export function useNoteMutations({
     update,
     archive,
     remove,
+    move,
   };
 }

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import type { NoteEntry } from "../../../../lib/api";
-import type { NoteGroup } from "../../types";
+import type { DesignLocation, NoteGroup, PlanScope } from "../../types";
 import { EmptyState } from "../ui";
 import { NoteCard } from "./NoteCard";
 
@@ -19,6 +19,7 @@ interface NoteGroupListProps {
   onEditNote: (noteName: string, note: NoteEntry, location: NoteGroup["location"]) => void;
   onArchive: (noteName: string, location: NoteGroup["location"]) => void;
   onDelete: (noteName: string, location: NoteGroup["location"]) => void;
+  onMove: (noteName: string, location: DesignLocation, toScope: PlanScope) => void;
 }
 
 function NoteRows({
@@ -29,6 +30,7 @@ function NoteRows({
   onEditNote,
   onArchive,
   onDelete,
+  onMove,
   indent,
 }: {
   group: NoteGroup;
@@ -38,6 +40,7 @@ function NoteRows({
   onEditNote: (noteName: string, note: NoteEntry, location: NoteGroup["location"]) => void;
   onArchive: (noteName: string, location: NoteGroup["location"]) => void;
   onDelete: (noteName: string, location: NoteGroup["location"]) => void;
+  onMove: (noteName: string, location: DesignLocation, toScope: PlanScope) => void;
   indent: boolean;
 }) {
   return (
@@ -55,6 +58,7 @@ function NoteRows({
             onArchive={() => onArchive(note.name, group.location)}
             onDelete={() => onDelete(note.name, group.location)}
             location={group.location}
+            onMove={(toScope) => onMove(note.name, group.location, toScope)}
           />
         );
       })}
@@ -75,6 +79,7 @@ export function NoteGroupList({
   onEditNote,
   onArchive,
   onDelete,
+  onMove,
 }: NoteGroupListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const total = groups.reduce((s, g) => s + g.notes.length, 0);
@@ -138,6 +143,7 @@ export function NoteGroupList({
             onEditNote={onEditNote}
             onArchive={onArchive}
             onDelete={onDelete}
+            onMove={onMove}
             indent={false}
           />
         )}
@@ -216,6 +222,7 @@ export function NoteGroupList({
                   onEditNote={onEditNote}
                   onArchive={onArchive}
                   onDelete={onDelete}
+                  onMove={onMove}
                   indent
                 />
               ))}

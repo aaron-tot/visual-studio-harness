@@ -169,6 +169,7 @@ export function NotesTab({ active, scope }: NotesTabProps) {
           onEditNote={handleEditNote}
           onArchive={(name, loc) => void mutations.archive(name, loc)}
           onDelete={(name, loc) => void mutations.remove(name, loc)}
+          onMove={(name, loc, toScope) => void mutations.move(name, loc, toScope)}
         />
       </div>
 

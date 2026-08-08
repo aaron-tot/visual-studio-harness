@@ -1,0 +1,132 @@
+{
+  "name": "audit",
+  "description": "Create/read/edit/delete audit documents and manage audit prompt presets. Read skill:audit before performing an audit — it defines the findings/assessments/attachments structure. Set 'action' to pick the operation.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "create",
+          "read",
+          "edit",
+          "delete",
+          "prompt_create",
+          "prompt_list",
+          "prompt_read",
+          "prompt_edit",
+          "prompt_delete"
+        ],
+        "description": "Operation: create, read, edit, delete, prompt_*"
+      },
+      "name": {
+        "type": "string",
+        "description": "Audit or prompt name (slug)"
+      },
+      "id": {
+        "type": "string",
+        "description": "Prompt id (slug)"
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Scope (omit on edit/read to resolve existing doc: session→project→global)"
+      },
+      "title": {
+        "type": "string",
+        "description": "Title"
+      },
+      "auditType": {
+        "type": "string",
+        "description": "Audit category (e.g. implementation_completed, custom)"
+      },
+      "endGoal": {
+        "type": "string",
+        "description": "Question the audit answers"
+      },
+      "summary": {
+        "type": "string",
+        "description": "Executive summary"
+      },
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "description": "Audit findings; see skill:audit"
+      },
+      "attachments": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "description": "Linked designs/specs/plans; see skill:audit"
+      },
+      "overallStatus": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "partial",
+          "fail"
+        ],
+        "description": "Overall status"
+      },
+      "overallAssessment": {
+        "type": "string",
+        "description": "Overall assessment"
+      },
+      "assessments": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "description": "Per-aspect assessments; see skill:audit"
+      },
+      "agentModel": {
+        "type": "string",
+        "description": "Model"
+      },
+      "rawReport": {
+        "type": "string",
+        "description": "Full markdown report"
+      },
+      "document": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": true,
+        "description": "Full audit document (edit) — see skill:audit"
+      },
+      "description": {
+        "type": "string",
+        "description": "Prompt description"
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "general",
+          "implementation"
+        ],
+        "description": "Prompt category"
+      },
+      "templateInstructions": {
+        "type": "string",
+        "description": "Prompt instructions"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

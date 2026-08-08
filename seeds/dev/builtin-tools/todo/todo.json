@@ -1,0 +1,63 @@
+{
+  "name": "todo",
+  "description": "Replace or read the session todo list. Set 'action' to write (replace the full list) or read. See skill:todo for the todo model and statuses.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "write",
+          "read"
+        ],
+        "description": "Operation: write or read"
+      },
+      "todos": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "in_progress",
+                "completed",
+                "cancelled"
+              ]
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "content",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Complete todo list (write only)"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

@@ -1,0 +1,32 @@
+{
+  "name": "edit",
+  "description": "Exact string replacement in a file; replace_all=true for every match.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "old_string": {
+        "type": "string"
+      },
+      "new_string": {
+        "type": "string"
+      },
+      "replace_all": {
+        "type": "boolean",
+        "description": "Replace all occurrences (default false)"
+      }
+    },
+    "required": [
+      "path",
+      "old_string",
+      "new_string"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "ask"
+}

@@ -1,0 +1,86 @@
+{
+  "name": "customTool",
+  "description": "Manage custom tools. Set 'action' to create, read, update, delete, or list. Custom tools are user-defined tools stored in data/{mode}/custom-tools/. They support skill guides with soft/hard/custom push modes.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "create",
+          "read",
+          "update",
+          "delete",
+          "list"
+        ],
+        "description": "Operation to perform: create, read, update, delete, list"
+      },
+      "name": {
+        "type": "string",
+        "description": "Tool name (required for create, read, update, delete)"
+      },
+      "description": {
+        "type": "string",
+        "description": "Tool description (for create/update)"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": {},
+        "description": "JSON Schema for tool parameters (for create/update)"
+      },
+      "code": {
+        "type": "string",
+        "description": "JavaScript handler code (for create/update)"
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "Whether tool is enabled (for create/update)"
+      },
+      "permissionDefault": {
+        "type": "string",
+        "enum": [
+          "allow",
+          "ask",
+          "deny"
+        ],
+        "description": "Default permission mode (for create/update)"
+      },
+      "skillGuide": {
+        "type": "string",
+        "description": "Skill guide markdown content (for create/update)"
+      },
+      "skillPushMode": {
+        "type": "string",
+        "enum": [
+          "soft",
+          "hard",
+          "custom"
+        ],
+        "description": "Skill push mode: soft, hard, or custom (for create/update)"
+      },
+      "skillId": {
+        "type": "string",
+        "description": "Skill ID for reading via skill tool (for create/update)"
+      },
+      "skillCustomPushText": {
+        "type": "string",
+        "description": "Custom push text when skillPushMode is custom (for create/update)"
+      },
+      "skillTags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Tags for skill guide (stored in prompt.json)"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

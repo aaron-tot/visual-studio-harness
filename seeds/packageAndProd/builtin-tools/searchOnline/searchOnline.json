@@ -1,0 +1,80 @@
+{
+  "name": "searchOnline",
+  "description": "Search the web by query or fetch a known URL. Set 'action' to search or fetch. For search: provider is a provider id from the search provider registry (not just exa/parallel). See skill:search-online for websearch backends.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "fetch"
+        ],
+        "description": "Operation: search (query) or fetch (URL)"
+      },
+      "query": {
+        "type": "string",
+        "description": "Search query (search)"
+      },
+      "numResults": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Number of results"
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "fast",
+          "deep"
+        ],
+        "description": "Search depth"
+      },
+      "livecrawl": {
+        "type": "string",
+        "enum": [
+          "fallback",
+          "preferred"
+        ],
+        "description": "Live crawl"
+      },
+      "contextMaxCharacters": {
+        "type": "integer",
+        "minimum": 500,
+        "maximum": 50000,
+        "description": "Max context chars"
+      },
+      "provider": {
+        "type": "string",
+        "description": "Force specific provider by id (from registry)"
+      },
+      "url": {
+        "type": "string",
+        "description": "URL to fetch (fetch)"
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "markdown",
+          "text",
+          "html"
+        ],
+        "description": "Return format (fetch)"
+      },
+      "timeout": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "description": "Timeout seconds (fetch)"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

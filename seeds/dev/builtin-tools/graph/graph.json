@@ -1,0 +1,86 @@
+{
+  "name": "graph",
+  "description": "Query workspace symbols and files: search the graph index, inspect imports/exports, get status/manifest, and locate or read symbol source. Set 'action'. See skill:graph.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "files",
+          "info",
+          "imports",
+          "exports",
+          "manifest",
+          "status",
+          "symbol_find",
+          "symbol_read"
+        ],
+        "description": "Operation: search, files, info, imports, exports, manifest, status, symbol_find, symbol_read"
+      },
+      "name": {
+        "type": "string",
+        "description": "Symbol name or substring"
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "function",
+          "class",
+          "interface",
+          "enum",
+          "variable",
+          "type"
+        ],
+        "description": "Symbol kind"
+      },
+      "folder_path": {
+        "type": "string",
+        "description": "Subdirectory"
+      },
+      "file_path": {
+        "type": "string",
+        "description": "File path"
+      },
+      "max_depth": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Max tree depth"
+      },
+      "include_files": {
+        "type": "boolean",
+        "description": "Include files"
+      },
+      "query": {
+        "type": "string",
+        "description": "Symbol name or substring (symbol_find)"
+      },
+      "path": {
+        "type": "string",
+        "description": "Limit to a file/subdirectory (symbol_find/read)"
+      },
+      "head_limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "Max hits"
+      },
+      "context_lines": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 50,
+        "description": "Context lines (symbol_read)"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

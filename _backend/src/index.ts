@@ -34,6 +34,7 @@ import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
 import { createHooksSystem, setHooksSystem } from "./features/hooks";
 import { ensureGlobal } from "./features/tools/perms/store";
 import { createDefaultRegistry } from "./features/tools";
+import { seedBuiltinToolFolders } from "./features/tools/folder-seed";
 import { migrateToSqlite } from "./storage/migrate";
 import { abortOrphanedStreamingTurns } from "./features/chat/db-trace";
 
@@ -145,6 +146,17 @@ async function main() {
   } catch (err) {
     console.error("Failed to ensure globalPerms.json:", err);
     throw err;
+  }
+
+  // Unified tools: clone builtin tool folders from source defaults when missing.
+  // Once present, the data copy is authoritative and never overwritten.
+  try {
+    const cloned = await seedBuiltinToolFolders(DATA_DIR, MODE);
+    if (cloned > 0) {
+      console.log(`[seed] Cloned ${cloned} builtin tool folder(s) into data/tools/builtin/`);
+    }
+  } catch (err) {
+    console.error("Failed to seed builtin tool folders:", err);
   }
 
   // Spec: if global systemPromptBase.md missing, seed from defaults then always read disk.

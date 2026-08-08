@@ -1,0 +1,31 @@
+{
+  "name": "read",
+  "description": "Read a file (numbered lines; offset/limit for large files; cannot read binary).",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "0-based start line"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 2000,
+        "description": "Max lines (default 2000)"
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

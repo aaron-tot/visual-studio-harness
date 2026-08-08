@@ -1,0 +1,35 @@
+{
+  "name": "task",
+  "description": "Delegate work to a subagent in its own session; you act as its user.\n- Give a detailed prompt; the subagent runs the normal agent pipeline.\n- You receive only its final assistant message (no tool traces).\n- Result includes task_id; pass it again to continue that session.\n- Wait for the result before dependent work; do not nest task calls.\n- See skill:task for subagent semantics.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "agent_name": {
+        "type": "string",
+        "description": "Agent config to use"
+      },
+      "description": {
+        "type": "string",
+        "description": "Short UI label"
+      },
+      "prompt": {
+        "type": "string",
+        "description": "Full task for the subagent"
+      },
+      "task_id": {
+        "type": "string",
+        "description": "Prior task_id to resume that session"
+      }
+    },
+    "required": [
+      "agent_name",
+      "description",
+      "prompt"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "ask"
+}

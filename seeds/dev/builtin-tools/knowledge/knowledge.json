@@ -1,0 +1,102 @@
+{
+  "name": "knowledge",
+  "description": "Search, open, ingest, and manage Knowledge Base documents. Set 'action' to pick the operation. See skill:knowledge for scopes and doc structure.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "open",
+          "ingest",
+          "doc_create",
+          "doc_edit",
+          "doc_delete"
+        ],
+        "description": "Operation"
+      },
+      "query": {
+        "type": "string",
+        "description": "Search query"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "description": "Max results"
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Scope"
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "general",
+          "code",
+          "research",
+          "documentation"
+        ],
+        "description": "Retrieval mode"
+      },
+      "filters": {
+        "type": "object",
+        "properties": {
+          "extension": {
+            "type": "string",
+            "description": "Extension (e.g. .md)"
+          },
+          "createdBy": {
+            "type": "string",
+            "description": "Creator (user/agent/system)"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Metadata filters"
+      },
+      "documentId": {
+        "type": "string",
+        "description": "Document UUID or filename"
+      },
+      "maxChars": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 50000,
+        "description": "Max chars"
+      },
+      "filename": {
+        "type": "string",
+        "description": "Filename (.md/.txt)"
+      },
+      "content": {
+        "type": "string",
+        "description": "Document content"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Tags"
+      },
+      "confirmed": {
+        "type": "boolean",
+        "description": "Confirm delete"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

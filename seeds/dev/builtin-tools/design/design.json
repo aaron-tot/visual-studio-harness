@@ -1,0 +1,105 @@
+{
+  "name": "design",
+  "description": "Create, read, edit, and abandon spec/plan design documents. Set 'action' to pick the operation. Parameters content, document, and patch accept JSON objects or valid JSON object strings. See skill:design for the document structure and skill:design-edit for patch semantics.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "create",
+          "read",
+          "edit",
+          "abandon"
+        ],
+        "description": "Operation: create, read, edit, abandon"
+      },
+      "name": {
+        "type": "string",
+        "description": "Design directory name"
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "spec",
+          "plan"
+        ],
+        "description": "Document type"
+      },
+      "version": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "description": "Version"
+      },
+      "goal": {
+        "type": "string",
+        "description": "Goal or end-goal"
+      },
+      "specReference": {
+        "type": "string",
+        "description": "Spec name this plan implements"
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Scope"
+      },
+      "content": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "description": "Document body (JSON object or valid JSON object string); see skill:design"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "description": "Full replacement document JSON (object or valid JSON object string)"
+      },
+      "patch": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "description": "Partial doc to merge (RFC 7396) (object or valid JSON object string)"
+      },
+      "reason": {
+        "type": "string",
+        "description": "Abandon reason"
+      },
+      "successor": {
+        "type": "string",
+        "description": "Replacement design name"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

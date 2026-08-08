@@ -1,0 +1,48 @@
+{
+  "name": "notes",
+  "description": "Create, read, update, and archive user notes. Set 'action' to pick the operation.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "read",
+          "create",
+          "update",
+          "archive"
+        ],
+        "description": "Operation: read, create, update, archive"
+      },
+      "name": {
+        "type": "string",
+        "description": "Note name"
+      },
+      "title": {
+        "type": "string",
+        "description": "Title"
+      },
+      "body": {
+        "type": "string",
+        "description": "Body"
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Scope"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

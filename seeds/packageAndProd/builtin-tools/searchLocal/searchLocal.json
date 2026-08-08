@@ -1,0 +1,47 @@
+{
+  "name": "searchLocal",
+  "description": "Search local workspace files: regex content search (grep) or filename/glob search (glob). Set 'action'. See skill:search-local for usage.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "grep",
+          "glob"
+        ],
+        "description": "Operation: grep (content) or glob (filename)"
+      },
+      "pattern": {
+        "type": "string",
+        "description": "Regex (grep) or glob pattern (glob)"
+      },
+      "path": {
+        "type": "string",
+        "description": "File/dir under workspace"
+      },
+      "glob": {
+        "type": "string",
+        "description": "File filter e.g. \"*.ts\" (grep)"
+      },
+      "case_insensitive": {
+        "type": "boolean",
+        "description": "Case-insensitive (grep)"
+      },
+      "head_limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "description": "Max results"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

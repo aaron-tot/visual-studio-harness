@@ -1,0 +1,51 @@
+{
+  "name": "skill",
+  "description": "Load a skill markdown pack into context by name (on-demand). Supports recursive search, path-like names (e.g., 'coding/debugging'), and multiple return modes.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Skill name or path (e.g., 'debugging' or 'coding/debugging'). Omit for list mode."
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "content",
+          "path",
+          "meta",
+          "list"
+        ],
+        "default": "content",
+        "description": "Return mode: content (default), path (folder only), meta (metadata), list (all skills)"
+      },
+      "maxDepth": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 3,
+        "description": "Max directory depth to search"
+      },
+      "filter": {
+        "type": "string",
+        "description": "Substring filter on skill name (list mode only)"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Filter by tags from prompt.json (list mode only)"
+      },
+      "root": {
+        "type": "string",
+        "description": "Override skillRoots — search only this root"
+      }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

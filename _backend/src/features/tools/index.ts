@@ -44,6 +44,17 @@ const ALL_TOOLS: ToolDef[] = [
   searchOnlineTool,
 ];
 
+/**
+ * Authoritative list of builtin tool names (folder-per-tool seed targets).
+ * Derived from ALL_TOOLS, filtering out non-ToolDef entries (the `makeTaskTool`
+ * factory is a function, not a tool) and deduping (task appears once).
+ */
+export const BUILTIN_TOOL_NAMES: readonly string[] = [
+  ...new Set(
+    ALL_TOOLS.filter((t): t is ToolDef => typeof t === "object" && t !== null).map((t) => t.name)
+  ),
+];
+
 export interface CreateRegistryOptions {
   /** Tool names to omit (e.g. ["task"] for subagent sessions). */
   exclude?: string[];

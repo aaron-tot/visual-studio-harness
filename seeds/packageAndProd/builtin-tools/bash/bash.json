@@ -1,0 +1,33 @@
+{
+  "name": "bash",
+  "description": "Run a shell command in a persistent bash session (env persists across calls).",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string"
+      },
+      "timeout_ms": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "description": "Timeout in ms (default/config in settings)"
+      },
+      "description": {
+        "type": "string",
+        "description": "Short 5-10 word description for the UI"
+      },
+      "cwd": {
+        "type": "string",
+        "description": "Working directory (defaults to workspace)"
+      }
+    },
+    "required": [
+      "command"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "ask"
+}

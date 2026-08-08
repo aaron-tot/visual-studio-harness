@@ -12,6 +12,7 @@ const roots: string[] = [];
 
 afterAll(async () => {
   closeAllKnowledgeDbs();
+  setKbService(null as any); // restore pristine default (uninitialized) so sibling tests see "service not initialized"
   for (const r of roots) await rm(r, { recursive: true, force: true });
 });
 

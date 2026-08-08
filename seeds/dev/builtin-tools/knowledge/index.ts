@@ -169,6 +169,42 @@ async function actionDocDelete(args: any, ctx: any) {
   }
 }
 
+async function actionMove(args: any, ctx: any) {
+  try {
+    const kb = new ctx.services.KnowledgeBaseService(ctx.dataDir);
+    let docId = args.documentId;
+    let fromScope = (args.fromScope as Scope | undefined) ?? "global";
+    if (!docId && args.filename) {
+      for (const scope of ["session", "project", "global"] as Scope[]) {
+        const meta = await kb.resolveFilename(scope, args.filename, ctx.workspaceRoot, ctx.sessionId);
+        if (meta) {
+          docId = meta.id;
+          fromScope = scope;
+          break;
+        }
+      }
+      if (!docId) {
+        return {
+          title: "Move failed",
+          output: `Document "${args.filename}" not found in any scope`,
+          isError: true,
+        };
+      }
+    }
+    if (!docId) {
+      return { title: "Move failed", output: "documentId or filename is required", isError: true };
+    }
+    const r = await kb.moveDocument(fromScope, args.toScope as Scope, docId, ctx.workspaceRoot, ctx.sessionId);
+    return {
+      title: "Document moved",
+      output: `Document ${docId} moved from ${fromScope} to ${args.toScope} scope.`,
+      metadata: r,
+    };
+  } catch (err) {
+    return gracefulError("Knowledge move unavailable", err);
+  }
+}
+
 export async function execute(args: any, ctx: any): Promise<any> {
   const action = args.action;
   switch (action) {
@@ -184,6 +220,8 @@ export async function execute(args: any, ctx: any): Promise<any> {
       return actionDocEdit(args, ctx);
     case "doc_delete":
       return actionDocDelete(args, ctx);
+    case "move":
+      return actionMove(args, ctx);
   }
   return {
     title: "Invalid action",

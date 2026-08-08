@@ -10,6 +10,7 @@ const KNOWLEDGE_ACTIONS = [
   "doc_create",
   "doc_edit",
   "doc_delete",
+  "move",
 ];
 
 describe("knowledge tool consolidation", () => {

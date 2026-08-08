@@ -13,7 +13,8 @@
           "ingest",
           "doc_create",
           "doc_edit",
-          "doc_delete"
+          "doc_delete",
+          "move"
         ],
         "description": "Operation"
       },
@@ -89,6 +90,24 @@
       "confirmed": {
         "type": "boolean",
         "description": "Confirm delete"
+      },
+      "fromScope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Source scope (move)"
+      },
+      "toScope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Target scope (move)"
       }
     },
     "required": [

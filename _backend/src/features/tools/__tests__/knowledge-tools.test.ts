@@ -33,10 +33,10 @@ describe("knowledge tool consolidation", () => {
     expect(tool!.outputFields!.length).toBeGreaterThan(0);
   });
 
-  it("knowledge tool action enum includes all 6 sub-commands", () => {
+  it("knowledge tool action enum includes all 7 sub-commands", () => {
     const schema = knowledgeTool.inputSchema as any;
     const values = schema.shape.action._def.values as string[];
-    expect(values.sort()).toEqual(["doc_create", "doc_delete", "doc_edit", "ingest", "open", "search"].sort());
+    expect(values.sort()).toEqual(["doc_create", "doc_delete", "doc_edit", "ingest", "open", "search", "move"].sort());
   });
 
   it("search action: limit is optional so the mode preset chunk count applies", () => {

@@ -6,6 +6,7 @@ import { knowledgeIngestTool } from "../builtins/knowledge_ingest";
 import { knowledgeDocumentCreateTool } from "../builtins/knowledge_document_create";
 import { knowledgeDocumentEditTool } from "../builtins/knowledge_document_edit";
 import { knowledgeDocumentDeleteTool } from "../builtins/knowledge_document_delete";
+import { knowledgeDocumentMoveTool } from "../builtins/knowledge_document_move";
 
 /**
  * Consolidated `knowledge` tool.
@@ -21,6 +22,7 @@ import { knowledgeDocumentDeleteTool } from "../builtins/knowledge_document_dele
  *   doc_create - Create a new knowledge document                    (knowledge_document_create)
  *   doc_edit   - Edit an existing knowledge document                (knowledge_document_edit)
  *   doc_delete - Delete a knowledge document                        (knowledge_document_delete)
+ *   move       - Move a knowledge document to another scope         (knowledge_document_move)
  *
  * Schema is a flat object: `action` is the only required field; all other
  * params are optional and shared across the sub-commands, each defined once.
@@ -32,6 +34,7 @@ const KNOWLEDGE_ACTIONS = [
   "doc_create",
   "doc_edit",
   "doc_delete",
+  "move",
 ] as const;
 
 export type KnowledgeAction = (typeof KNOWLEDGE_ACTIONS)[number];
@@ -43,6 +46,7 @@ const ORIGINAL_TOOLS: Record<KnowledgeAction, ToolDef> = {
   doc_create: knowledgeDocumentCreateTool,
   doc_edit: knowledgeDocumentEditTool,
   doc_delete: knowledgeDocumentDeleteTool,
+  move: knowledgeDocumentMoveTool,
 };
 
 const knowledgeSchema = z.object({
@@ -67,6 +71,8 @@ const knowledgeSchema = z.object({
   content: z.string().optional().describe("Document content"),
   tags: z.array(z.string()).optional().describe("Tags"),
   confirmed: z.boolean().optional().describe("Confirm delete"),
+  fromScope: z.enum(["global", "project", "session"]).optional().describe("Source scope (move)"),
+  toScope: z.enum(["global", "project", "session"]).optional().describe("Target scope (move)"),
 });
 
 export const knowledgeTool: ToolDef = {

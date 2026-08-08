@@ -1,6 +1,6 @@
 {
   "name": "customTool",
-  "description": "Manage custom tools. Set 'action' to create, read, update, delete, or list. Custom tools are user-defined tools stored in data/{mode}/custom-tools/. They support skill guides with soft/hard/custom push modes.",
+  "description": "Manage custom tools. Set 'action' to create, read, update, delete, or list. Custom tools are user-defined tools stored in data/tools/custom/<name>/ (folder-per-tool: <name>.json ToolConfig + index.js entry, with optional skill.md/prompt.json). They support skill guides with soft/hard/custom push modes.",
   "entry": "index.ts",
   "inputSchema": {
     "type": "object",

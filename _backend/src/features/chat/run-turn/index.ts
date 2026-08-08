@@ -18,7 +18,6 @@ import {
   isStopTurnResult,
   type ResolveContext,
 } from "../../tools";
-import { loadCustomToolDefs } from "../../custom-tools/store";
 import { normalizeWorkspace } from "../../sessions/rest";
 import { getMcpManager } from "../../mcp";
 import {
@@ -262,9 +261,10 @@ export async function runTurn(
 
   const useTools = toolsEnabled();
   const mcpTools = getMcpManager().getTools();
-  const customTools = dataDir ? await loadCustomToolDefs(dataDir) : [];
+  // Custom tools live in `data/tools/custom/<name>/` and are loaded by
+  // createFolderRegistry → loadToolsFromFolders automatically (same as builtins).
   const registry = useTools
-    ? await createFolderRegistry(dataDir, { exclude: input.excludeTools, extraTools: [...mcpTools, ...customTools] }, config.agents)
+    ? await createFolderRegistry(dataDir, { exclude: input.excludeTools, extraTools: mcpTools }, config.agents)
     : null;
 
   const abortSignal = events.signal;

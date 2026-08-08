@@ -8,8 +8,8 @@ export function registerSkillsRoutes(app: FastifyInstance, dataDir: string) {
     const names = new Set<string>();
     // All three locations the skill tool discovers: generic skills (_skills),
     // builtin tool skills (_tools/<name>/<name>.skill.md), custom tool skills
-    // (custom-tools/<name>.skill.md).
-    const roots = [join(dataDir, "mds", "_skills"), join(dataDir, "mds", "_tools"), join(dataDir, "custom-tools")];
+    // (tools/custom/<name>/skill.md).
+    const roots = [join(dataDir, "mds", "_skills"), join(dataDir, "mds", "_tools"), join(dataDir, "tools", "custom")];
     for (const dir of roots) {
       if (!existsSync(dir)) continue;
       try {
@@ -18,13 +18,14 @@ export function registerSkillsRoutes(app: FastifyInstance, dataDir: string) {
           if (e.isDirectory()) {
             const inFolder = [
               join(dir, e.name, `${e.name}.skill.md`),
+              join(dir, e.name, "skill.md"),
               join(dir, e.name, "prompt.md"),
               join(dir, e.name, "SKILL.md"),
             ];
             if (inFolder.some((p) => existsSync(p))) names.add(e.name);
           } else if (e.isFile() && e.name.endsWith(".skill.md")) {
             names.add(e.name.replace(/\.skill\.md$/, ""));
-          } else if (e.isFile() && e.name.endsWith(".md") && dir !== join(dataDir, "custom-tools")) {
+          } else if (e.isFile() && e.name.endsWith(".md") && dir !== join(dataDir, "tools", "custom")) {
             names.add(e.name.replace(/\.md$/, ""));
           }
         }

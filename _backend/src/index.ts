@@ -35,6 +35,7 @@ import { createHooksSystem, setHooksSystem } from "./features/hooks";
 import { ensureGlobal } from "./features/tools/perms/store";
 import { createDefaultRegistry } from "./features/tools";
 import { seedBuiltinToolFolders } from "./features/tools/folder-seed";
+import { migrateLegacyCustomTools } from "./features/custom-tools/store";
 import { migrateToSqlite } from "./storage/migrate";
 import { abortOrphanedStreamingTurns } from "./features/chat/db-trace";
 
@@ -157,6 +158,19 @@ async function main() {
     }
   } catch (err) {
     console.error("Failed to seed builtin tool folders:", err);
+  }
+
+  // Unified tools: one-time migration of legacy flat custom tools
+  // (`data/{mode}/custom-tools/*.json` with inline code) into the folder-per-tool
+  // shape `data/tools/custom/<name>/` (ToolConfig + index.js + skill files).
+  // Idempotent + non-destructive (copies, verifies, then removes the old files).
+  try {
+    const migrated = await migrateLegacyCustomTools(DATA_DIR);
+    if (migrated > 0) {
+      console.log(`[migrate] Migrated ${migrated} custom tool(s) to data/tools/custom/`);
+    }
+  } catch (err) {
+    console.error("Failed to migrate legacy custom tools:", err);
   }
 
   // Spec: if global systemPromptBase.md missing, seed from defaults then always read disk.

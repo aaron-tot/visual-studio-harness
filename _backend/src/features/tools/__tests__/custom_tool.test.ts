@@ -58,10 +58,10 @@ describe("customTool native tool store", () => {
 
     await writeCustomTool(testDir, tool);
 
-    // Check .skill.md file exists and has content
+    // Check skill.md exists and has content
     const { readFile } = await import("node:fs/promises");
     const { join } = await import("node:path");
-    const skillPath = join(testDir, "custom-tools", "skill-file-test.skill.md");
+    const skillPath = join(testDir, "tools", "custom", "skill-file-test", "skill.md");
     const content = await readFile(skillPath, "utf-8");
     expect(content).toBe("# Skill File Test\n\nThis is a test skill guide.");
   });
@@ -104,9 +104,8 @@ describe("customTool native tool store", () => {
 
     await deleteCustomTool(testDir, "delete-test");
 
-    // Both .json and .skill.md should be gone
-    expect(existsSync(join(testDir, "custom-tools", "delete-test.json"))).toBe(false);
-    expect(existsSync(join(testDir, "custom-tools", "delete-test.skill.md"))).toBe(false);
+    // The whole folder should be gone
+    expect(existsSync(join(testDir, "tools", "custom", "delete-test"))).toBe(false);
   });
 
   it("injects skill push text into tool description", async () => {

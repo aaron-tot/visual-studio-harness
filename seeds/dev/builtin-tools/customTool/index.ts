@@ -1,11 +1,12 @@
 /**
  * Builtin `customTool` tool — self-contained ctx entry.
- * Manages user-defined custom tools stored at `dataDir/custom-tools/` (the
- * pre-migration location; the move to `data/tools/custom/` is a later task).
+ * Manages user-defined custom tools stored at `data/tools/custom/<name>/`
+ * (the unified folder-per-tool shape: `<name>.json` ToolConfig + `index.js`
+ * entry + optional `skill.md`/`prompt.json`).
  * list/read/write/delete are implemented directly over node:fs because the
  * custom-tools store is not exposed on `ctx.services` yet.
  */
-import { readFile, writeFile, readdir, unlink, mkdir } from "node:fs/promises";
+import { readFile, writeFile, readdir, unlink, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -13,16 +14,39 @@ const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const ACTIONS = ["create", "read", "update", "delete", "list"] as const;
 type Action = (typeof ACTIONS)[number];
 
+/** Entry file name inside the folder-per-tool shape (the code IS this file). */
+const ENTRY = "index.js";
+
+/** Wrap a bare function body (the `code` a user authors) into an entry module. */
+const ENTRY_MODULE_RE = /^export\s+(?:async\s+)?function\s+execute\b/s;
+function codeToEntryModule(code: string): string {
+  const trimmed = (code ?? "").trim();
+  if (ENTRY_MODULE_RE.test(trimmed)) return code;
+  return `export async function execute(args, ctx) {\n${code}\n}\n`;
+}
+
 function toolsDir(dataDir: string): string {
-  return join(resolve(dataDir), "custom-tools");
+  return join(resolve(dataDir), "tools", "custom");
+}
+
+function toolDir(dataDir: string, name: string): string {
+  return join(toolsDir(dataDir), name);
 }
 
 function toolPath(dataDir: string, name: string): string {
-  return join(toolsDir(dataDir), `${name}.json`);
+  return join(toolDir(dataDir, name), `${name}.json`);
+}
+
+function entryPath(dataDir: string, name: string): string {
+  return join(toolDir(dataDir, name), ENTRY);
 }
 
 function skillPath(dataDir: string, name: string): string {
-  return join(toolsDir(dataDir), `${name}.skill.md`);
+  return join(toolDir(dataDir, name), "skill.md");
+}
+
+function promptPath(dataDir: string, name: string): string {
+  return join(toolDir(dataDir, name), "prompt.json");
 }
 
 async function ensureCustomToolsDir(dataDir: string): Promise<void> {
@@ -44,34 +68,36 @@ interface CustomToolRecord {
   skillTags?: string[];
 }
 
-async function listCustomTools(dataDir: string): Promise<CustomToolRecord[]> {
-  const dir = toolsDir(dataDir);
-  if (!existsSync(dir)) return [];
-  const entries = await readdir(dir, { withFileTypes: true });
-  const tools: CustomToolRecord[] = [];
-  for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith(".json") || e.name.endsWith(".prompt.json")) continue;
-    try {
-      const raw = await readFile(join(dir, e.name), "utf-8");
-      const parsed = JSON.parse(raw) as CustomToolRecord;
-      tools.push(parsed);
-    } catch {
-      // skip unreadable
-    }
-  }
-  return tools.sort((a, b) => a.name.localeCompare(b.name));
-}
-
-async function readCustomTool(dataDir: string, name: string): Promise<CustomToolRecord | null> {
+/** Read a folder-per-tool record: `<name>.json` (ToolConfig) + `index.js` (code). */
+async function readRecord(dataDir: string, name: string): Promise<CustomToolRecord | null> {
   const fp = toolPath(dataDir, name);
   try {
-    const raw = await readFile(fp, "utf-8");
-    const tool = JSON.parse(raw) as CustomToolRecord;
-    if (!tool.skillGuide) {
-      const skillMd = await readSkillGuide(dataDir, name);
-      if (skillMd) tool.skillGuide = skillMd;
+    const cfg = JSON.parse(await readFile(fp, "utf-8")) as Record<string, unknown>;
+    const code = await readFile(entryPath(dataDir, name), "utf-8").catch(() => "");
+    const skillGuide = await readFile(skillPath(dataDir, name), "utf-8").catch(() => null);
+    const skill = (cfg.skill ?? {}) as Record<string, unknown>;
+    let skillTags: string[] = [];
+    try {
+      const prompt = JSON.parse(await readFile(promptPath(dataDir, name), "utf-8")) as { tags?: unknown };
+      if (Array.isArray(prompt.tags)) skillTags = prompt.tags.filter((t): t is string => typeof t === "string");
+    } catch {}
+    const record: CustomToolRecord = {
+      name: String(cfg.name ?? name),
+      description: String(cfg.description ?? ""),
+      inputSchema: (cfg.inputSchema as Record<string, unknown>) ?? {},
+      code,
+      enabled: cfg.enabled !== false,
+      permissionDefault: (cfg.permissionDefault as CustomToolRecord["permissionDefault"]) ?? "ask",
+    };
+    if (skillGuide ?? (skill.guide as string | undefined)) {
+      record.skillGuide = (skillGuide ?? skill.guide) as string;
+      record.skillPushMode = (skill.pushMode as CustomToolRecord["skillPushMode"]) ?? "soft";
+      record.skillId = (skill.id as string | undefined) ?? String(cfg.name ?? name);
+      record.skillCustomPushText = skill.customPushText as string | undefined;
     }
-    return tool;
+    if (skillTags.length > 0) record.skillTags = skillTags;
+    else if (Array.isArray(skill.tags)) record.skillTags = skill.tags.filter((t): t is string => typeof t === "string");
+    return record;
   } catch {
     return null;
   }
@@ -85,34 +111,55 @@ async function readSkillGuide(dataDir: string, name: string): Promise<string | n
   }
 }
 
-async function writeCustomTool(dataDir: string, tool: CustomToolRecord): Promise<void> {
+async function writeRecord(dataDir: string, tool: CustomToolRecord): Promise<void> {
   await ensureCustomToolsDir(dataDir);
-  await writeFile(toolPath(dataDir, tool.name), JSON.stringify(tool, null, 2) + "\n", "utf-8");
+  await mkdir(toolDir(dataDir, tool.name), { recursive: true });
+
+  const cfg: Record<string, unknown> = {
+    name: tool.name,
+    description: tool.description,
+    entry: ENTRY,
+    inputSchema: tool.inputSchema,
+    enabled: tool.enabled !== false,
+    permissionDefault: tool.permissionDefault ?? "ask",
+  };
+  if (tool.skillGuide) {
+    cfg.skill = {
+      guide: tool.skillGuide,
+      pushMode: tool.skillPushMode ?? "soft",
+      id: tool.skillId ?? tool.name,
+      tags: Array.isArray(tool.skillTags) && tool.skillTags.length > 0 ? tool.skillTags : undefined,
+      customPushText: tool.skillCustomPushText,
+    };
+  }
+  await writeFile(toolPath(dataDir, tool.name), JSON.stringify(cfg, null, 2) + "\n", "utf-8");
+  await writeFile(entryPath(dataDir, tool.name), codeToEntryModule(tool.code), "utf-8");
+
   if (tool.skillGuide) {
     await writeFile(skillPath(dataDir, tool.name), tool.skillGuide, "utf-8");
+  } else {
+    await unlink(skillPath(dataDir, tool.name)).catch(() => {});
   }
   if (tool.skillGuide && Array.isArray(tool.skillTags) && tool.skillTags.length > 0) {
-    const promptPath = join(toolsDir(dataDir), `${tool.name}.prompt.json`);
-    await writeFile(promptPath, JSON.stringify({ tags: tool.skillTags }, null, 2) + "\n", "utf-8");
+    await writeFile(promptPath(dataDir, tool.name), JSON.stringify({ tags: tool.skillTags }, null, 2) + "\n", "utf-8");
+  } else {
+    await unlink(promptPath(dataDir, tool.name)).catch(() => {});
   }
 }
 
-async function deleteCustomTool(dataDir: string, name: string): Promise<void> {
-  try {
-    await unlink(toolPath(dataDir, name));
-  } catch {
-    // already gone
+async function listCustomTools(dataDir: string): Promise<CustomToolRecord[]> {
+  const dir = toolsDir(dataDir);
+  if (!existsSync(dir)) return [];
+  const entries = await readdir(dir, { withFileTypes: true });
+  const tools: CustomToolRecord[] = [];
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const name = e.name;
+    if (!existsSync(toolPath(dataDir, name))) continue;
+    const record = await readRecord(dataDir, name);
+    if (record) tools.push(record);
   }
-  try {
-    await unlink(skillPath(dataDir, name));
-  } catch {
-    // no skill file
-  }
-  try {
-    await unlink(join(toolsDir(dataDir), `${name}.prompt.json`));
-  } catch {
-    // no prompt.json file
-  }
+  return tools.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function execute(
@@ -172,7 +219,7 @@ export async function execute(
           return { title: "Error", output: "ERROR customTool: description is required for create", isError: true };
         }
 
-        const existing = await readCustomTool(dataDir, name);
+        const existing = await readRecord(dataDir, name);
         if (existing) {
           return { title: "Error", output: `ERROR customTool: tool "${name}" already exists`, isError: true };
         }
@@ -205,7 +252,7 @@ export async function execute(
           skillTags: Array.isArray(args.skillTags) ? args.skillTags.map(String) : undefined,
         };
 
-        await writeCustomTool(dataDir, tool);
+        await writeRecord(dataDir, tool);
 
         return {
           title: `Created: ${name}`,
@@ -218,7 +265,7 @@ export async function execute(
         if (!args.name) {
           return { title: "Error", output: "ERROR customTool: name is required for read", isError: true };
         }
-        const tool = await readCustomTool(dataDir, String(args.name));
+        const tool = await readRecord(dataDir, String(args.name));
         if (!tool) {
           return {
             title: "Error",
@@ -238,7 +285,7 @@ export async function execute(
         if (!args.name) {
           return { title: "Error", output: "ERROR customTool: name is required for update", isError: true };
         }
-        const existing = await readCustomTool(dataDir, name);
+        const existing = await readRecord(dataDir, name);
         if (!existing) {
           return {
             title: "Error",
@@ -285,9 +332,10 @@ export async function execute(
                 ? args.skillCustomPushText.trim()
                 : undefined
               : existing.skillCustomPushText,
+          skillTags: args.skillTags !== undefined ? args.skillTags.map(String) : existing.skillTags,
         };
 
-        await writeCustomTool(dataDir, updated);
+        await writeRecord(dataDir, updated);
 
         return {
           title: `Updated: ${name}`,
@@ -301,11 +349,11 @@ export async function execute(
           return { title: "Error", output: "ERROR customTool: name is required for delete", isError: true };
         }
         const name = String(args.name);
-        const existing = await readCustomTool(dataDir, name);
+        const existing = await readRecord(dataDir, name);
         if (!existing) {
           return { title: "Error", output: `ERROR customTool: tool "${name}" not found`, isError: true };
         }
-        await deleteCustomTool(dataDir, name);
+        await rm(toolDir(dataDir, name), { recursive: true, force: true });
         return {
           title: `Deleted: ${name}`,
           output: `Custom tool "${name}" deleted successfully.`,

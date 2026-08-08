@@ -6,8 +6,6 @@ import {
   writeCustomTool,
   deleteCustomTool,
   ensureCustomToolsDir,
-  customToolToToolDef,
-  loadCustomToolDefs,
 } from "../../../features/custom-tools/store";
 
 const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
@@ -43,7 +41,8 @@ export const customToolTool: ToolDef = {
   name: "customTool",
   description:
     "Manage custom tools. Set 'action' to create, read, update, delete, or list. " +
-    "Custom tools are user-defined tools stored in data/{mode}/custom-tools/. " +
+    "Custom tools are user-defined tools stored in data/tools/custom/<name>/ (folder-per-tool: " +
+    "<name>.json ToolConfig + index.js entry, with optional skill.md/prompt.json). " +
     "They support skill guides with soft/hard/custom push modes.",
   permissionDefault: "allow",
   outputFields: [

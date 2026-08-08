@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seedBuiltinToolFolders } from "./folder-seed";
-import { loadToolsFromFolders } from "./folder-store";
+import { listToolFolders, loadToolEntry, loadToolsFromFolders } from "./folder-store";
 import type { BaseToolContext } from "./types";
 
 function fakeBaseCtx(dataDir: string, workspaceRoot: string): BaseToolContext {
@@ -197,5 +197,110 @@ describe("builtin entries (real data-folder path)", () => {
     expect(result.isError).toBeFalsy();
     expect(result.output).toContain("No designs, notes, audits, and knowledge found");
     expect(result.metadata?.count).toBe(0);
+  });
+
+  it("list aggregates seeded entries through the ctx.services contract", async () => {
+    // Call the raw entry execute (bypassing folderToToolDef, which would inject
+    // the real dataDir-bound services) so we can stub ctx.services and lock in
+    // the exact method names + arg shapes the list entry depends on.
+    await loadSeededTools();
+    const folder = (await listToolFolders(dataDir)).find((f) => f.name === "list")!;
+    const { execute } = await loadToolEntry(folder);
+
+    const calls: {
+      listDesigns?: unknown[];
+      listNotes?: unknown[];
+      listAudits?: unknown[];
+      kbListDocuments?: unknown[];
+    } = {};
+    const kbDataDirs: string[] = [];
+
+    const services = {
+      listDesigns: async (scope: unknown, workspaceRoot: unknown, sessionId: unknown) => {
+        calls.listDesigns = [scope, workspaceRoot, sessionId];
+        return [
+          {
+            name: "design-1",
+            specs: [{ meta: { version: 1 } }, { meta: { version: 2 } }],
+            plans: [{ meta: { version: 3 } }],
+          },
+        ];
+      },
+      listNotes: async (scope: unknown, workspaceRoot: unknown, sessionId: unknown) => {
+        calls.listNotes = [scope, workspaceRoot, sessionId];
+        return [{ name: "note-1", title: "My Note" }];
+      },
+      listAudits: async (scope: unknown, workspaceRoot: unknown, sessionId: unknown) => {
+        calls.listAudits = [scope, workspaceRoot, sessionId];
+        return [
+          {
+            name: "audit-1",
+            document: {
+              meta: { title: "Audit T", auditType: "security", totalFindings: 3 },
+            },
+          },
+        ];
+      },
+      KnowledgeBaseService: class {
+        constructor(dataDir: string) {
+          kbDataDirs.push(dataDir);
+        }
+        async listDocuments(scope: unknown, filters: unknown, workspaceRoot: unknown, sessionId: unknown) {
+          calls.kbListDocuments = [scope, filters, workspaceRoot, sessionId];
+          return [
+            {
+              id: "kb-1",
+              filename: "doc.md",
+              extension: "md",
+              fileSize: 42,
+              status: "active",
+              tags: ["kb", "dev"],
+              createdBy: "alice",
+            },
+          ];
+        }
+      },
+    };
+
+    const ctx = { ...fakeBaseCtx(dataDir, ws), services };
+    const result = (await execute({ scope: "global" }, ctx)) as {
+      title: string;
+      output: string;
+      metadata?: Record<string, unknown>;
+    };
+
+    expect(result.isError).toBeFalsy();
+    expect(result.output).toContain("## designs (global): 1 item(s)");
+    expect(result.output).toContain("design-1/  (specs: v1, v2, plans: v3)");
+    expect(result.output).toContain("note-1  — My Note");
+    expect(result.output).toContain("audit-1  — Audit T (security, 3 findings)");
+    expect(result.output).toContain("ID:kb-1  doc.md  (md, 42 bytes, status: active, tags: kb, dev, by: alice)");
+    expect(result.metadata?.totalCount).toBe(4);
+
+    // Lock in the exact arg shapes the entry passes to each service.
+    expect(calls.listDesigns).toEqual(["global", ws, "sess-entries-1"]);
+    expect(calls.listNotes).toEqual(["global", ws, "sess-entries-1"]);
+    expect(calls.listAudits).toEqual(["global", ws, "sess-entries-1"]);
+    const kbFilters = calls.kbListDocuments?.[1] as Record<string, unknown>;
+    expect(calls.kbListDocuments).toEqual([
+      "global",
+      kbFilters,
+      ws,
+      "sess-entries-1",
+    ]);
+    expect(kbFilters).toHaveProperty("extension");
+    expect(kbFilters).toHaveProperty("status");
+    expect(kbFilters).toHaveProperty("createdBy");
+    expect(kbDataDirs).toEqual([dataDir]);
+  });
+
+  it("read returns an error result when the file does not exist", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const read = defs.find((d) => d.name === "read")!;
+
+    const result = await read.execute({ path: "missing.txt" }, ctx);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("file not found");
   });
 });

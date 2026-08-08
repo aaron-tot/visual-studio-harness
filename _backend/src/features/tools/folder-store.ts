@@ -28,10 +28,12 @@ import {
   resolveNotesDir,
   allPossibleNotesDirs,
   findNoteDirByName,
+  findNoteScope,
   listNotes,
   createNote,
   updateNote,
   archiveNote,
+  moveNote,
   type NotesScope,
   type NoteEntry,
   type CreateNoteParams,
@@ -197,6 +199,14 @@ export interface ToolServices {
   createNote: (params: Omit<CreateNoteParams, "dataDir">) => Promise<{ path: string }>;
   updateNote: (params: Omit<UpdateNoteParams, "dataDir">) => Promise<{ path: string }>;
   archiveNote: (params: Omit<ArchiveNoteParams, "dataDir">) => Promise<{ archivedPath: string }>;
+  findNoteScope: (
+    name: string,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => Promise<import("../../rest/notes").NotesScope | null>;
+  moveNote: (
+    params: Omit<import("../../rest/notes").MoveNoteParams, "dataDir">
+  ) => Promise<{ fromPath: string; toPath: string }>;
 
   // ── audits ─────────────────────────────────────────────────────────
   resolveAuditsDir: (
@@ -396,6 +406,9 @@ export function resolveToolCtx(
       createNote: (params) => createNote({ ...params, dataDir: baseCtx.dataDir }),
       updateNote: (params) => updateNote({ ...params, dataDir: baseCtx.dataDir }),
       archiveNote: (params) => archiveNote({ ...params, dataDir: baseCtx.dataDir }),
+      findNoteScope: (name, workspaceRoot, sessionId) =>
+        findNoteScope(name, baseCtx.dataDir, workspaceRoot, sessionId),
+      moveNote: (params) => moveNote({ ...params, dataDir: baseCtx.dataDir }),
       // audits
       resolveAuditsDir: (scope, workspaceRoot, sessionId) =>
         resolveAuditsDir(baseCtx.dataDir, scope, workspaceRoot, sessionId),

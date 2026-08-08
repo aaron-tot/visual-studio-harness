@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { join, resolve } from "node:path";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { moveScopedDir, MoveError } from "./scope-move";
 
 export type NotesScope = "global" | "project" | "session";
 
@@ -24,23 +25,41 @@ export function resolveNotesDir(
 }
 
 /** All possible notes directories for a given dataDir (used for fallback search). */
-export function allPossibleNotesDirs(dataDir: string): string[] {
-  return [
-    join(dataDir, "notes"),
-    join(dataDir, "session", "notes"),
-  ];
+export function allPossibleNotesDirs(dataDir: string, sessionId?: string): string[] {
+  const dirs = [join(dataDir, "notes")];
+  if (sessionId) dirs.push(join(dataDir, "session", sessionId, "notes"));
+  // legacy pre-session-hash fallback
+  dirs.push(join(dataDir, "session", "notes"));
+  return dirs;
 }
 
 /** Find a note directory by name, searching all possible notes directories. */
 export async function findNoteDirByName(
   dataDir: string,
-  name: string
+  name: string,
+  sessionId?: string,
 ): Promise<string | null> {
-  for (const dir of allPossibleNotesDirs(dataDir)) {
+  for (const dir of allPossibleNotesDirs(dataDir, sessionId)) {
     const nd = join(dir, name);
-    if (existsSync(nd)) {
-      return nd;
-    }
+    if (existsSync(nd)) return nd;
+  }
+  return null;
+}
+
+/** Locate which scope holds a note by name (session → project → global). */
+export async function findNoteScope(
+  name: string,
+  dataDir: string,
+  workspaceRoot?: string,
+  sessionId?: string,
+): Promise<NotesScope | null> {
+  const candidates: NotesScope[] = [];
+  if (sessionId) candidates.push("session");
+  if (workspaceRoot) candidates.push("project");
+  candidates.push("global");
+  for (const scope of candidates) {
+    const dir = resolveNotesDir(dataDir, scope, workspaceRoot, sessionId);
+    if (dir && existsSync(join(dir, name))) return scope;
   }
   return null;
 }
@@ -86,7 +105,7 @@ export async function listNotes(
   sessionId?: string
 ): Promise<NoteEntry[]> {
   // Search all possible notes directories
-  const allDirs = allPossibleNotesDirs(dataDir);
+  const allDirs = allPossibleNotesDirs(dataDir, sessionId);
   const results: NoteEntry[] = [];
 
   for (const dir of allDirs) {
@@ -178,7 +197,7 @@ export async function updateNote(params: UpdateNoteParams): Promise<{ path: stri
   let fp = join(nd, "note.json");
   if (!existsSync(fp)) {
     // Fallback: search all possible notes directories
-    const foundDir = await findNoteDirByName(params.dataDir, params.name);
+    const foundDir = await findNoteDirByName(params.dataDir, params.name, params.sessionId);
     if (!foundDir) {
       throw new Error("note not found");
     }
@@ -219,7 +238,7 @@ export async function archiveNote(params: ArchiveNoteParams): Promise<{ archived
   }
   let nd = join(notesDir, params.name);
   if (!existsSync(nd)) {
-    const foundDir = await findNoteDirByName(params.dataDir, params.name);
+    const foundDir = await findNoteDirByName(params.dataDir, params.name, params.sessionId);
     if (!foundDir) {
       throw new Error("note not found");
     }
@@ -229,6 +248,34 @@ export async function archiveNote(params: ArchiveNoteParams): Promise<{ archived
   const archivedPath = join(notesDir, `${params.name}.archived.${ts}`);
   await rename(nd, archivedPath);
   return { archivedPath };
+}
+
+export interface MoveNoteParams {
+  name: string;
+  fromScope: NotesScope;
+  toScope: NotesScope;
+  dataDir: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}
+
+export async function moveNote(
+  params: MoveNoteParams,
+): Promise<{ fromPath: string; toPath: string }> {
+  const fromDir = resolveNotesDir(params.dataDir, params.fromScope, params.workspaceRoot, params.sessionId);
+  const toDir = resolveNotesDir(params.dataDir, params.toScope, params.workspaceRoot, params.sessionId);
+  if (!fromDir) throw new MoveError(`source scope "${params.fromScope}" not available`, 400);
+  if (!toDir) throw new MoveError(`target scope "${params.toScope}" not available`, 400);
+  const r = await moveScopedDir({ name: params.name, fromDir, toDir });
+  const fp = join(r.toPath, "note.json");
+  try {
+    const doc = JSON.parse(await readFile(fp, "utf-8")) as { meta?: { updatedAt?: string } };
+    if (doc.meta) doc.meta.updatedAt = new Date().toISOString();
+    await writeFile(fp, JSON.stringify(doc, null, 2) + "\n");
+  } catch {
+    // missing/unparseable note.json — leave as-is
+  }
+  return r;
 }
 
 export function registerNotesRoutes(app: FastifyInstance, dataDir: string) {
@@ -337,5 +384,31 @@ export function registerNotesRoutes(app: FastifyInstance, dataDir: string) {
     }
     await rm(nd, { recursive: true, force: true });
     return { ok: true };
+  });
+
+  app.post<{
+    Body: {
+      name: string;
+      fromScope?: string;
+      toScope?: string;
+      workspaceRoot?: string;
+      sessionId?: string;
+    };
+  }>("/api/notes/move", async (request, reply) => {
+    const { name, fromScope, toScope, workspaceRoot, sessionId } = request.body;
+    if (!name?.trim()) return reply.code(400).send({ error: "name is required" });
+    const fs_ = (fromScope as NotesScope) || "global";
+    const ts = (toScope as NotesScope) || "global";
+    if (!["global", "project", "session"].includes(fs_) || !["global", "project", "session"].includes(ts)) {
+      return reply.code(400).send({ error: "invalid scope" });
+    }
+    if (fs_ === ts) return reply.code(400).send({ error: "from and to scopes are the same" });
+    try {
+      const result = await moveNote({ name: name.trim(), fromScope: fs_, toScope: ts, dataDir, workspaceRoot, sessionId });
+      return { ok: true, ...result };
+    } catch (err) {
+      if (err instanceof MoveError) return reply.code(err.code).send({ error: err.message });
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 }

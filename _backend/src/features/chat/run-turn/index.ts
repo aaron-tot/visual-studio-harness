@@ -12,12 +12,9 @@ import {
 import { streamChat } from "../stream-llm";
 import { classifyLlmError, LlmError, type LlmErrorInfo } from "../../../llm/errors";
 import {
-  createDefaultRegistry,
+  createFolderRegistry,
   getWorkspaceRoot,
   toolsEnabled,
-  setTodoDataDir,
-  setSkillRoots,
-  setCustomToolsSkillDir,
   isStopTurnResult,
   type ResolveContext,
 } from "../../tools";
@@ -267,12 +264,8 @@ export async function runTurn(
   const mcpTools = getMcpManager().getTools();
   const customTools = dataDir ? await loadCustomToolDefs(dataDir) : [];
   const registry = useTools
-    ? createDefaultRegistry({ exclude: input.excludeTools, extraTools: [...mcpTools, ...customTools] }, config.agents)
+    ? await createFolderRegistry(dataDir, { exclude: input.excludeTools, extraTools: [...mcpTools, ...customTools] }, config.agents)
     : null;
-
-  setTodoDataDir(dataDir);
-  setSkillRoots([join(dataDir, "mds", "_tools"), join(dataDir, "mds", "_skills")]);
-  setCustomToolsSkillDir(join(dataDir, "custom-tools"));
 
   const abortSignal = events.signal;
   let turnEnded = false;
@@ -308,6 +301,7 @@ export async function runTurn(
           sessionId, turnId: traceTurnId, workspaceRoot, dataDir,
           providerName, modelName,
           toolSettings: config.toolSettings,
+          skillRoots: [join(dataDir, "mds", "_tools"), join(dataDir, "mds", "_skills")],
           abortSignal: abortSignal ?? new AbortController().signal,
           callId, hookCtx,
           graphService,

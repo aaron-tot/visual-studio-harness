@@ -81,6 +81,11 @@ export interface BaseToolContext {
   modelName?: string;
   /** Agent settings for the current turn (includes skillAccess, skillMds, etc.) */
   agentSettings?: import("../../../../../_shared/types").AgentSettings;
+  /**
+   * Ordered skill-discovery roots for the folder `skill` entry. run-turn threads
+   * the runtime roots here so the folder entry honors them (fallback: mds dirs).
+   */
+  skillRoots?: string[];
 }
 
 /** Extended context used only by the task tool — adds subagent/slot/agent callbacks. */

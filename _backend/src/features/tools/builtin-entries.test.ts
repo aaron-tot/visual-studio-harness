@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seedBuiltinToolFolders } from "./folder-seed";
 import { listToolFolders, loadToolEntry, loadToolsFromFolders } from "./folder-store";
+import { SearchProviderRegistry, getSearchProviderRegistry, setSearchProviderRegistry } from "./host/search-provider-registry";
 import type { BaseToolContext } from "./types";
 
 function fakeBaseCtx(dataDir: string, workspaceRoot: string): BaseToolContext {
@@ -454,6 +455,32 @@ describe("builtin entries (real data-folder path)", () => {
     const noProviders = await searchOnline.execute({ action: "search", query: "example" }, ctx);
     expect(noProviders.isError).toBe(true);
     expect(noProviders.output).toContain("Unknown error");
+  });
+
+  it("searchOnline falls back to the global registry when folder searchProviders are all disabled", async () => {
+    const defs = await loadSeededTools();
+    const searchOnline = defs.find((d) => d.name === "searchOnline")!;
+    const ctx = fakeBaseCtx(dataDir, ws);
+
+    // The seeded searchOnline.json ships two DISABLED example providers. Those
+    // must not shadow a provider enabled in the global registry (config.json).
+    const prev = getSearchProviderRegistry();
+    const reg = new SearchProviderRegistry();
+    reg.setAll([{ id: "global-probe", type: "exa", name: "Global Probe", enabled: true, priority: 0 }]);
+    setSearchProviderRegistry(reg);
+    // Keep the attempt deterministic: fail the fetch immediately so no network.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      throw new Error("network disabled in test");
+    };
+    try {
+      const result = await searchOnline.execute({ action: "search", query: "probe" }, ctx);
+      // Fallback fired: the search attempted the global provider, not "Unknown error".
+      expect(result.metadata?.attempted).toContain("global-probe");
+    } finally {
+      globalThis.fetch = realFetch;
+      setSearchProviderRegistry(prev);
+    }
   });
 
   it("searchOnline fetch returns a graceful error for missing/invalid URLs", async () => {

@@ -72,6 +72,47 @@ describe("resolveAccessiblePath", () => {
     expect(abs).toBe("/tmp/out2.txt");
   });
 
+  test("outside deny hard-blocks even with externalAccess true", async () => {
+    await writeGlobal(dataDir, { [extKey("read")]: "deny" });
+    await expect(
+      resolveAccessiblePath(ctx({ externalAccess: true }), "/tmp/out.txt")
+    ).rejects.toThrow(/denied/);
+  });
+
+  test("outside ask still prompts when externalAccess is false", async () => {
+    await writeGlobal(dataDir, { [extKey("read")]: "ask" });
+    let asked = false;
+    const abs = await resolveAccessiblePath(
+      ctx({
+        externalAccess: false,
+        askPermission: async (name) => {
+          asked = name === extKey("read");
+          return true;
+        },
+      }),
+      "/tmp/out2.txt"
+    );
+    expect(asked).toBe(true);
+    expect(abs).toBe("/tmp/out2.txt");
+  });
+
+  test("outside ask returns the path without prompting when externalAccess is true", async () => {
+    await writeGlobal(dataDir, { [extKey("read")]: "ask" });
+    let asked = false;
+    const abs = await resolveAccessiblePath(
+      ctx({
+        externalAccess: true,
+        askPermission: async () => {
+          asked = true;
+          return true;
+        },
+      }),
+      "/tmp/out3.txt"
+    );
+    expect(asked).toBe(false);
+    expect(abs).toBe("/tmp/out3.txt");
+  });
+
   test("per-tool external keys are independent", async () => {
     await writeGlobal(dataDir, {
       [extKey("read")]: "allow",

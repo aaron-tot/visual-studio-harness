@@ -173,10 +173,16 @@ async function runSearch(
   }
 
   // Prefer the tool's own searchProviders (from searchOnline.json, injected on
-  // the ctx by folderToToolDef); fall back to the global registry singleton.
+  // the ctx by folderToToolDef) — but only when at least one is actually
+  // enabled. The seeded folders ship disabled example providers, so when all of
+  // the folder's providers are off (or there are none) fall back to the global
+  // registry singleton, which holds any providers enabled via config.json.
   const providers = ctx.searchProviders;
+  const enabled = Array.isArray(providers)
+    ? providers.filter((p) => p && p.enabled)
+    : [];
   const registry =
-    providers && providers.length
+    enabled.length > 0
       ? ctx.newSearchProviderRegistry(providers)
       : ctx.getSearchProviderRegistry();
   const options: SearchCallOptions = {

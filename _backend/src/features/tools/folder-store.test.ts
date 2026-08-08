@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listToolFolders, loadToolEntry, loadToolsFromFolders } from "./folder-store";
+import {
+  listToolFolders,
+  loadToolEntry,
+  loadToolsFromFolders,
+  normalizeToolResult,
+} from "./folder-store";
 import { createFolderRegistry } from "./index";
 import type { BaseToolContext } from "./types";
 
@@ -43,6 +48,34 @@ function fakeBaseCtx(dataDir: string): BaseToolContext {
     agentSettings: {},
     toolSettings: {},
   };
+}
+
+/** Scaffold a custom tool folder with the given entry content. */
+async function writeToolFolder(
+  dataDir: string,
+  name: string,
+  entryContent: string,
+  configOverrides: Record<string, unknown> = {}
+): Promise<void> {
+  const dir = join(dataDir, "tools", "custom", name);
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, `${name}.json`),
+    JSON.stringify(
+      {
+        name,
+        description: `${name} tool`,
+        entry: "index.js",
+        inputSchema: {},
+        enabled: true,
+        permissionDefault: "allow",
+        ...configOverrides,
+      },
+      null,
+      2
+    )
+  );
+  await writeFile(join(dir, "index.js"), entryContent);
 }
 
 describe("folder store", () => {
@@ -129,6 +162,53 @@ describe("folder store", () => {
     );
 
     expect(result).toEqual({ output: "echo:hello|hasCtx" });
+  });
+
+  it("loads an entry that default-exports its execute function", async () => {
+    await writeToolFolder(
+      dataDir,
+      "defaults",
+      `export default async function execute(args, ctx) {
+  return { output: "default:" + args.msg };
+}
+`
+    );
+
+    const folders = await listToolFolders(dataDir);
+    const entry = await loadToolEntry(folders.find((f) => f.name === "defaults")!);
+    const result = await entry.execute({ msg: "hi" }, { workspaceRoot: "/fake/ws" });
+
+    expect(result).toEqual({ output: "default:hi" });
+  });
+
+  it("loads an entry that exports { tool: { execute } }", async () => {
+    await writeToolFolder(
+      dataDir,
+      "wrapped",
+      `export const tool = {
+  execute: async function execute(args, ctx) {
+    return { output: "wrapped:" + args.msg };
+  },
+};
+`
+    );
+
+    const folders = await listToolFolders(dataDir);
+    const entry = await loadToolEntry(folders.find((f) => f.name === "wrapped")!);
+    const result = await entry.execute({ msg: "yo" }, { workspaceRoot: "/fake/ws" });
+
+    expect(result).toEqual({ output: "wrapped:yo" });
+  });
+
+  it("throws when an entry exports no execute function", async () => {
+    await writeToolFolder(dataDir, "bogus", "export const nope = 42;\n");
+
+    const folders = await listToolFolders(dataDir);
+    const bogus = folders.find((f) => f.name === "bogus")!;
+
+    await expect(loadToolEntry(bogus)).rejects.toThrow(
+      /does not export an `execute` function/
+    );
   });
 
   it("builds ToolDefs and passes the harness ctx into the tool", async () => {
@@ -218,6 +298,30 @@ describe("folder store", () => {
     const thrownResult = await mixedDef.execute({ kind: "throw" }, baseCtx);
     expect(thrownResult.isError).toBe(true);
     expect(thrownResult.output).toContain("kaboom");
+  });
+
+  it("passes _stopTurn and metadata through object results", () => {
+    const result = normalizeToolResult("probe", {
+      output: "done",
+      _stopTurn: true,
+      metadata: { reason: "complete", attempts: 2 },
+    });
+
+    expect(result).toEqual({
+      title: "probe",
+      output: "done",
+      _stopTurn: true,
+      metadata: { reason: "complete", attempts: 2 },
+    });
+  });
+
+  it("normalizes non-string, non-object results via String()", () => {
+    expect(normalizeToolResult("num", 42)).toEqual({ title: "num", output: "42" });
+    expect(normalizeToolResult("nil", null)).toEqual({ title: "nil", output: "" });
+    expect(normalizeToolResult("undef", undefined)).toEqual({
+      title: "undef",
+      output: "",
+    });
   });
 
   it("builds a registry from the data folders via createFolderRegistry", async () => {

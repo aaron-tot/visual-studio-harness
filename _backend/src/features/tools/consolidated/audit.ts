@@ -4,6 +4,7 @@ import { auditCreateTool } from "../builtins/audit_create";
 import { auditReadTool } from "../builtins/audit_read";
 import { auditEditTool } from "../builtins/audit_edit";
 import { auditDeleteTool } from "../builtins/audit_delete";
+import { auditMoveTool } from "../builtins/audit_move";
 import { auditPromptCreateTool } from "../builtins/audit_prompt_create";
 import { auditPromptListTool } from "../builtins/audit_prompt_list";
 import { auditPromptReadTool } from "../builtins/audit_prompt_read";
@@ -36,6 +37,7 @@ const AUDIT_ACTIONS = [
   "read",
   "edit",
   "delete",
+  "move",
   "prompt_create",
   "prompt_list",
   "prompt_read",
@@ -50,6 +52,7 @@ const ORIGINAL_TOOLS: Record<AuditAction, ToolDef> = {
   read: auditReadTool,
   edit: auditEditTool,
   delete: auditDeleteTool,
+  move: auditMoveTool,
   prompt_create: auditPromptCreateTool,
   prompt_list: auditPromptListTool,
   prompt_read: auditPromptReadTool,
@@ -62,10 +65,12 @@ const scopeSchema = z
   .describe("Scope (omit on edit/read to resolve existing doc: session→project→global)");
 
 const auditSchema = z.object({
-  action: z.enum(AUDIT_ACTIONS).describe("Operation: create, read, edit, delete, prompt_*"),
+  action: z.enum(AUDIT_ACTIONS).describe("Operation: create, read, edit, delete, move, prompt_*"),
   name: z.string().optional().describe("Audit or prompt name (slug)"),
   id: z.string().optional().describe("Prompt id (slug)"),
   scope: scopeSchema.optional(),
+  fromScope: scopeSchema.optional(),
+  toScope: scopeSchema.optional(),
   title: z.string().optional().describe("Title"),
   auditType: z.string().optional().describe("Audit category (e.g. implementation_completed, custom)"),
   endGoal: z.string().optional().describe("Question the audit answers"),

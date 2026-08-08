@@ -180,6 +180,39 @@ async function actionDelete(args: any, ctx: any) {
   };
 }
 
+async function actionMove(args: any, ctx: any) {
+  const fromScope =
+    (args.fromScope as Scope | undefined) ??
+    ((await ctx.services.findAuditScope(args.name, ctx.workspaceRoot, ctx.sessionId)) ?? undefined);
+  if (!fromScope) {
+    return {
+      title: "Move failed",
+      output: `Audit "${args.name}" not found in any scope`,
+      isError: true,
+    };
+  }
+  try {
+    const r = await ctx.services.moveAudit({
+      name: args.name,
+      fromScope,
+      toScope: args.toScope as Scope,
+      workspaceRoot: ctx.workspaceRoot,
+      sessionId: ctx.sessionId,
+    });
+    return {
+      title: "Audit moved",
+      output: `Moved audit "${args.name}" from ${fromScope} to ${args.toScope} scope.`,
+      metadata: r,
+    };
+  } catch (err) {
+    return {
+      title: "Move failed",
+      output: err instanceof Error ? err.message : String(err),
+      isError: true,
+    };
+  }
+}
+
 async function actionPromptCreate(args: any, ctx: any) {
   try {
     const result = await ctx.services.createPrompt({
@@ -303,6 +336,8 @@ export async function execute(args: any, ctx: any): Promise<any> {
       return actionEdit(args, ctx);
     case "delete":
       return actionDelete(args, ctx);
+    case "move":
+      return actionMove(args, ctx);
     case "prompt_create":
       return actionPromptCreate(args, ctx);
     case "prompt_list":

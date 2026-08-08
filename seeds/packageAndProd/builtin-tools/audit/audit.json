@@ -12,13 +12,14 @@
           "read",
           "edit",
           "delete",
+          "move",
           "prompt_create",
           "prompt_list",
           "prompt_read",
           "prompt_edit",
           "prompt_delete"
         ],
-        "description": "Operation: create, read, edit, delete, prompt_*"
+        "description": "Operation: create, read, edit, delete, move, prompt_*"
       },
       "name": {
         "type": "string",
@@ -36,6 +37,24 @@
           "session"
         ],
         "description": "Scope (omit on edit/read to resolve existing doc: session→project→global)"
+      },
+      "fromScope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Source scope (move; omit to resolve existing)"
+      },
+      "toScope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Target scope (move)"
       },
       "title": {
         "type": "string",

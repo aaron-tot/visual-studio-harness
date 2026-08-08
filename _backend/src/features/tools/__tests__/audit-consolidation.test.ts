@@ -8,6 +8,7 @@ const AUDIT_ACTIONS = [
   "read",
   "edit",
   "delete",
+  "move",
   "prompt_create",
   "prompt_list",
   "prompt_read",

@@ -38,3 +38,7 @@ Each finding:
 ## Audit prompts
 
 `prompt_create`, `prompt_list`, `prompt_read`, `prompt_edit`, `prompt_delete` manage reusable presets with `category` (`general` | `implementation`), `auditType`, `endGoal`, and `templateInstructions`.
+
+## Move
+
+`move` relocates an audit between scopes: `{ "action": "move", "name": "<slug>", "toScope": "<target>", "fromScope": "<source, optional>" }`. `fromScope` resolves automatically (session → project → global) when omitted. The target scope must be available (workspace for `project`, session id for `session`) and must not already contain the same audit name.

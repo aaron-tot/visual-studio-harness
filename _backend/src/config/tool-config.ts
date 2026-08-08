@@ -32,7 +32,7 @@ const ToolSkillSchema = z.object({
 export const ToolConfigSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
-  entry: z.string().min(1),
+  entry: z.string().regex(/^[^/\\]+$/, "entry must be a bare filename").min(1),
   inputSchema: z.record(z.unknown()),
   enabled: z.boolean(),
   permissionDefault: PermissionDefaultSchema,

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Fastify from "fastify";
@@ -69,6 +70,43 @@ describe("per-tool config/entry/skill REST", () => {
       payload: { ...READ_CONFIG, permissionDefault: "nope" },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("PUT config rejects entry path traversal", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/tools/read/config",
+      payload: { ...READ_CONFIG, entry: "../../../evil" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("PUT config rejects entry with path separators", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/tools/read/config",
+      payload: { ...READ_CONFIG, entry: "sub/index.ts" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("PUT entry cannot write outside the tool folder", async () => {
+    // Simulate a traversal entry that somehow reached disk: folder-store's
+    // schema validation skips the folder, so the entry endpoint 404s and must
+    // never write outside data/tools/builtin/read.
+    await writeFile(
+      join(dataDir, "tools", "builtin", "read", "read.json"),
+      JSON.stringify({ ...READ_CONFIG, entry: "../../../evil" }, null, 2) + "\n",
+      "utf-8"
+    );
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/tools/read/entry",
+      payload: { code: "pwned\n" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(existsSync(join(testDir, "evil"))).toBe(false);
+    expect(existsSync(join(dataDir, "evil"))).toBe(false);
   });
 
   it("GET entry returns the entry file text", async () => {

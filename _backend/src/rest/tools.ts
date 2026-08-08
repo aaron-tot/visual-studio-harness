@@ -1,6 +1,6 @@
 import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { createDefaultRegistry } from "../features/tools/index";
 import { extractToolFields } from "../features/tools/schema";
@@ -68,7 +68,7 @@ export function registerToolsRoutes(app: FastifyInstance, dataDir: string) {
     }
     const folder = await findToolFolder(dataDir, name);
     if (!folder) return reply.code(404).send({ error: `tool "${name}" not found` });
-    const code = await readIfExists(folder.entryPath);
+    const code = await readIfExists(join(folder.dir, basename(folder.config.entry)));
     return { ok: true, name, entry: folder.config.entry, code };
   });
 
@@ -84,7 +84,7 @@ export function registerToolsRoutes(app: FastifyInstance, dataDir: string) {
       return reply.code(400).send({ error: "body.code (string) is required" });
     }
     await mkdir(folder.dir, { recursive: true });
-    await writeFile(folder.entryPath, code, "utf-8");
+    await writeFile(join(folder.dir, basename(folder.config.entry)), code, "utf-8");
     return { ok: true, name, entry: folder.config.entry, code };
   });
 

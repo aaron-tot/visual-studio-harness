@@ -65,7 +65,17 @@ export function ToolConfigEditor({ name, onClose, onSaved }: Props) {
 
   const patchSkill = (partial: Partial<NonNullable<ToolConfig["skill"]>>) => {
     setConfig((c) =>
-      c ? { ...c, skill: { guide: c.skill?.guide ?? "", pushMode: c.skill?.pushMode ?? "soft", ...partial } } : c
+      c
+        ? {
+            ...c,
+            skill: {
+              ...(c.skill ?? {}),
+              guide: c.skill?.guide ?? "",
+              pushMode: c.skill?.pushMode ?? "soft",
+              ...partial,
+            },
+          }
+        : c
     );
     setDirty((d) => (d === "clean" ? "dirty" : d));
   };

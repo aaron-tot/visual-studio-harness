@@ -12,6 +12,8 @@ import { resolveEmbeddingProvider } from "./embedding/resolve";
 import type { SearchFilters, SearchResult } from "./search/types";
 import { listDocuments, openDocument, resolveDocumentByFilename } from "./service-queries";
 import { createDocument, editDocument, deleteDocument } from "./service-mutations";
+import { moveDocumentAcrossScopes } from "./service-move";
+import type { MoveDocumentParams } from "./service-move";
 import type { DocumentMeta, DocumentContent, IngestResult, CreateDocumentInput, DeleteResult } from "./types";
 
 export class KnowledgeBaseService {
@@ -217,5 +219,23 @@ export class KnowledgeBaseService {
     sessionId?: string,
   ): Promise<DeleteResult> {
     return deleteDocument(this.dataDir, scope, id, confirmed, workspaceRoot, sessionId);
+  }
+
+  /** Move a document to another scope, preserving id, chunks, and embeddings. */
+  async moveDocument(
+    fromScope: KbScope,
+    toScope: KbScope,
+    documentId: string,
+    workspaceRoot?: string,
+    sessionId?: string,
+  ) {
+    return moveDocumentAcrossScopes({
+      fromScope,
+      toScope,
+      documentId,
+      dataDir: this.dataDir,
+      workspaceRoot,
+      sessionId,
+    });
   }
 }

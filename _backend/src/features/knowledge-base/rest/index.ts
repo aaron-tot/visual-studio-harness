@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import type { KnowledgeBaseService } from "../knowledge-base-service";
 import type { KbScope } from "../db";
 import { openKnowledgeDb } from "../db";
+import { moveDocumentAcrossScopes } from "../service-move";
+import { MoveError } from "../../../rest/scope-move";
 
 export function registerKnowledgeRoutes(
   app: FastifyInstance,
@@ -191,5 +193,39 @@ export function registerKnowledgeRoutes(
     const { deleteGroup } = await import("../service-mutations");
     await deleteGroup(kbDb, params.id);
     return { ok: true };
+  });
+
+  // ── Move document across scopes ────────────────────────────────────
+  app.post<{
+    Body: {
+      documentId?: string;
+      fromScope?: string;
+      toScope?: string;
+      workspaceRoot?: string;
+      sessionId?: string;
+    };
+  }>("/api/knowledge/documents/move", async (request, reply) => {
+    const { documentId, fromScope, toScope, workspaceRoot, sessionId } = request.body || {};
+    if (!documentId?.trim()) return reply.code(400).send({ error: "documentId is required" });
+    const fromS = (fromScope as KbScope) || "global";
+    const toS = (toScope as KbScope) || "global";
+    if (!["global", "project", "session"].includes(fromS) || !["global", "project", "session"].includes(toS)) {
+      return reply.code(400).send({ error: "invalid scope" });
+    }
+    if (fromS === toS) return reply.code(400).send({ error: "from and to scopes are the same" });
+    try {
+      const result = await moveDocumentAcrossScopes({
+        fromScope: fromS,
+        toScope: toS,
+        documentId: documentId.trim(),
+        dataDir: kb.baseDataDir,
+        workspaceRoot,
+        sessionId,
+      });
+      return { ok: true, ...result };
+    } catch (err) {
+      if (err instanceof MoveError) return reply.code(err.code).send({ error: err.message });
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 }

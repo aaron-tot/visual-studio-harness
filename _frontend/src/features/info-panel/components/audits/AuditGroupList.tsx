@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import type { AuditEntry, AuditDocument } from "../../../../lib/api";
-import type { AuditGroup } from "../../types";
+import type { AuditGroup, DesignLocation, PlanScope } from "../../types";
 import { EmptyState } from "../ui";
 import { AuditCard } from "./AuditCard";
 
@@ -17,6 +17,7 @@ interface AuditGroupListProps {
   onToggleAudit: (key: string) => void;
   busy: boolean;
   onDelete: (auditName: string, location: AuditGroup["location"]) => void;
+  onMove: (auditName: string, location: DesignLocation, toScope: PlanScope) => void;
   onSave?: (auditName: string, document: AuditDocument) => void;
 }
 
@@ -26,6 +27,7 @@ function AuditRows({
   onToggleAudit,
   busy,
   onDelete,
+  onMove,
   onSave,
 }: {
   group: AuditGroup;
@@ -33,6 +35,7 @@ function AuditRows({
   onToggleAudit: (key: string) => void;
   busy: boolean;
   onDelete: (auditName: string, location: AuditGroup["location"]) => void;
+  onMove: (auditName: string, location: DesignLocation, toScope: PlanScope) => void;
   onSave?: (auditName: string, document: AuditDocument) => void;
 }) {
   return (
@@ -48,6 +51,7 @@ function AuditRows({
             busy={busy}
             onDelete={() => onDelete(audit.name, group.location)}
             location={group.location}
+            onMove={(toScope) => onMove(audit.name, group.location, toScope)}
             onSave={onSave}
           />
         );
@@ -67,6 +71,7 @@ export function AuditGroupList({
   onToggleAudit,
   busy,
   onDelete,
+  onMove,
   onSave,
 }: AuditGroupListProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -133,6 +138,7 @@ export function AuditGroupList({
             onToggleAudit={onToggleAudit}
             busy={busy}
             onDelete={onDelete}
+            onMove={onMove}
             onSave={onSave}
           />
         )}
@@ -209,6 +215,7 @@ export function AuditGroupList({
                   onToggleAudit={onToggleAudit}
                   busy={busy}
                   onDelete={onDelete}
+                  onMove={onMove}
                   onSave={onSave}
                 />
               ))}

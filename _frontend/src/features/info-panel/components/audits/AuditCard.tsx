@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Copy, ExternalLink, Trash2 } from "lucide-react";
+import { ArrowRightFromLine, ChevronDown, ChevronRight, Copy, ExternalLink, Trash2 } from "lucide-react";
 import type { AuditEntry, AuditDocument } from "../../../../lib/api";
-import type { DesignLocation } from "../../types";
+import type { DesignLocation, PlanScope } from "../../types";
 import { AuditJsonModal } from "./AuditJsonModal";
+import { MoveScopeModal } from "../MoveScopeModal";
 
 interface AuditCardProps {
   audit: AuditEntry;
@@ -10,8 +11,9 @@ interface AuditCardProps {
   onToggle: () => void;
   busy: boolean;
   onDelete: () => void;
+  onMove: (toScope: PlanScope) => void;
   onSave?: (name: string, document: AuditDocument) => void;
-  location?: DesignLocation;
+  location: DesignLocation;
 }
 
 const severityColors: Record<string, string> = {
@@ -38,9 +40,12 @@ export function AuditCard({
   onToggle,
   busy,
   onDelete,
+  onMove,
   onSave,
+  location,
 }: AuditCardProps) {
   const [showModal, setShowModal] = useState(false);
+  const [showMove, setShowMove] = useState(false);
   const m = audit.document.meta;
   const isImplCheck = m.auditType === "implementation_completed";
   const hasAssessments = m.assessments && m.assessments.length > 0;
@@ -208,6 +213,16 @@ export function AuditCard({
             </button>
             <button
               type="button"
+              className="text-[9px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-sky-700 hover:text-sky-200 transition-colors"
+              disabled={busy}
+              onClick={() => setShowMove(true)}
+              title="Move to another scope"
+            >
+              <ArrowRightFromLine size={10} className="inline mr-0.5" />
+              Move
+            </button>
+            <button
+              type="button"
               className="text-[9px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-red-700 hover:text-red-200 transition-colors"
               disabled={busy}
               onClick={onDelete}
@@ -219,6 +234,17 @@ export function AuditCard({
 
           {/* Modal */}
           {showModal && <AuditJsonModal audit={audit} onClose={() => setShowModal(false)} onSave={(name, doc) => { onSave?.(name, doc); setShowModal(false); }} />}
+          {showMove && (
+            <MoveScopeModal
+              title={`Move audit "${m.title}"`}
+              currentScope={location.scope}
+              onClose={() => setShowMove(false)}
+              onMove={(toScope) => {
+                setShowMove(false);
+                onMove(toScope);
+              }}
+            />
+          )}
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { deleteAuditViaApi, editAuditViaApi } from "../../../lib/api";
+import { deleteAuditViaApi, editAuditViaApi, moveAuditViaApi } from "../../../lib/api";
 import type { AuditDocument } from "../../../lib/api";
 import type { DesignLocation, PlanScope } from "../types";
 import { scopeApiParams } from "../lib/scope-params";
@@ -109,6 +109,26 @@ export function useAuditMutations({
     [requireLocation, paramsOf, run]
   );
 
+  const move = useCallback(
+    async (auditName: string, location: DesignLocation, toScope: PlanScope) => {
+      const blocked = requireLocation(location);
+      if (blocked) {
+        setResult(blocked);
+        return false;
+      }
+      return run(async () => {
+        await moveAuditViaApi({
+          name: auditName,
+          fromScope: location.scope,
+          toScope,
+          ...paramsOf(location),
+        });
+        setResult(`"${auditName}" moved`);
+      });
+    },
+    [requireLocation, paramsOf, run]
+  );
+
   return {
     busy,
     result,
@@ -116,5 +136,6 @@ export function useAuditMutations({
     clearResult,
     remove,
     edit,
+    move,
   };
 }

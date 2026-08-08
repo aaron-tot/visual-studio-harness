@@ -76,6 +76,7 @@ export function AuditsTab({ active, scope }: AuditsTabProps) {
           }
           busy={mutations.busy}
           onDelete={(name, loc) => void mutations.remove(name, loc)}
+          onMove={(name, loc, toScope) => void mutations.move(name, loc, toScope)}
           onSave={(name, doc) => void mutations.edit(name, doc, createLocation(scope, workspaceRoot, currentSessionId))}
         />
       </div>

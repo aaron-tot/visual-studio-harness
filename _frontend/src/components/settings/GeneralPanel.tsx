@@ -116,7 +116,7 @@ function GenerateToolSeedsButton() {
   const handleGenerate = async () => {
     if (busy) return;
     const confirmed = confirm(
-      "This will regenerate tool skill files from repo seeds, overwriting any existing tool skill files in the selected scopes (global, project, session). Continue?"
+      "This will regenerate the builtin tool skill guides (skill.md + prompt.json) in data/tools/builtin/ from repo seeds, overwriting any existing guide files. Continue?"
     );
     if (!confirmed) return;
 

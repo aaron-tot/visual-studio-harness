@@ -1,11 +1,12 @@
 /**
  * Builtin `skill` tool — self-contained ctx entry.
  * Discovers and reads skills (SKILL.md / prompt.md folders, loose .md, and
- * `.skill.md` tool-skill guides). Discovery roots come from `ctx.skillRoots`
- * when present; otherwise the entry falls back to the default `mds/_skills`
- * and `mds/_tools` roots under `ctx.dataDir`, plus `dataDir/tools` so folder
- * tool-skill guides are discoverable. All harness helpers arrive via `ctx`
- * (truncateText, agentSettings); only node:fs/node:path are imported directly.
+ * `.skill.md` tool-skill guides, plus `skill.md` inside tool folders). Discovery
+ * roots come from `ctx.skillRoots` when present; otherwise the entry falls back
+ * to the default `mds/_skills` root under `ctx.dataDir`. `dataDir/tools` is
+ * always appended so folder tool-skill guides (`data/tools/{builtin,custom}/<name>/skill.md`)
+ * are discoverable. All harness helpers arrive via `ctx` (truncateText,
+ * agentSettings); only node:fs/node:path are imported directly.
  */
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -73,8 +74,10 @@ const walkDir = async (
         const fullPath = join(dir, e.name);
         const skillMd = join(fullPath, "SKILL.md");
         const promptMd = join(fullPath, "prompt.md");
+        const toolSkillMd = join(fullPath, "skill.md");
         const hasSkillMd = existsSync(skillMd);
         const hasPromptMd = existsSync(promptMd);
+        const hasToolSkillMd = existsSync(toolSkillMd);
 
         if (hasSkillMd || hasPromptMd) {
           const tags = await readPromptJsonTags(fullPath);
@@ -87,10 +90,22 @@ const walkDir = async (
             hasPromptJson: existsSync(join(fullPath, "prompt.json")),
             tags,
           });
+        } else if (hasToolSkillMd) {
+          // Tool skill guide folder — data/tools/{builtin,custom}/<name>/skill.md.
+          // The skill.md file IS the guide; tags come from the folder's prompt.json.
+          skills.push({
+            name: e.name,
+            path: toolSkillMd,
+            depth: currentDepth,
+            root,
+            marker: "tool-skill",
+            hasPromptJson: existsSync(join(fullPath, "prompt.json")),
+            tags: await readPromptJsonTags(fullPath),
+          });
         }
         await walkDir(fullPath, currentDepth + 1, maxDepth, root, skills);
       } else if (e.isFile() && e.name.endsWith(".skill.md")) {
-        // Tool skill guide (builtin _tools/<name>/ or data/tools/<name>/).
+        // Tool skill guide (legacy builtin _tools/<name>/ or custom-tools/ layout).
         const fullPath = join(dir, e.name);
         const name = basename(e.name, ".skill.md");
         skills.push({
@@ -180,7 +195,7 @@ async function getAvailableNames(roots: string[], maxDepth: number): Promise<str
 
 /** Default skill roots when ctx.skillRoots is not set (fallback = mds dirs). */
 function defaultSkillRoots(ctx: any): string[] {
-  return [join(ctx.dataDir, "mds", "_skills"), join(ctx.dataDir, "mds", "_tools")];
+  return [join(ctx.dataDir, "mds", "_skills")];
 }
 
 export async function execute(

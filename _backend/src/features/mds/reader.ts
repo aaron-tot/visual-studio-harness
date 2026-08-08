@@ -58,7 +58,9 @@ export async function readProjectAgentsMd(rootDir: string): Promise<string> {
 
 /**
  * Read an MDS prompt: if `path` is a directory (item folder), read prompt.md inside
- * (or <dirname>.skill.md for tool-skill folders); if it's a file, read it directly.
+ * (or `<dirname>.skill.md` for legacy tool-skill folders, or `skill.md` for
+ * unified tool-folder guides at data/tools/{builtin,custom}/<name>/); if it's a
+ * file, read it directly.
  */
 async function readPromptPath(path: string): Promise<string | null> {
   try {
@@ -68,7 +70,9 @@ async function readPromptPath(path: string): Promise<string | null> {
       const name = basename(path);
       target = existsSync(join(path, "prompt.md"))
         ? join(path, "prompt.md")
-        : join(path, `${name}.skill.md`);
+        : existsSync(join(path, `${name}.skill.md`))
+          ? join(path, `${name}.skill.md`)
+          : join(path, "skill.md");
     } else {
       target = path;
     }
@@ -118,12 +122,14 @@ async function findItemInScopeByTag(scopeDir: string, tag: string): Promise<{ pa
   for (const e of entries) {
     if (!e.isDirectory()) continue;
     const full = join(scopeDir, e.name);
-    // An item folder has prompt.md OR <dirname>.skill.md (tool-skill folders).
+    // An item folder has prompt.md, <dirname>.skill.md (legacy tool-skill), OR
+    // skill.md (unified tool-folder guide at data/tools/{builtin,custom}/<name>/).
     const mdPath = join(full, "prompt.md");
     const toolMdPath = join(full, `${e.name}.skill.md`);
+    const folderSkillMd = join(full, "skill.md");
     const jsonPath = join(full, "prompt.json");
     const toolJsonPath = join(full, `${e.name}.prompt.json`);
-    const hasMd = existsSync(mdPath) || existsSync(toolMdPath);
+    const hasMd = existsSync(mdPath) || existsSync(toolMdPath) || existsSync(folderSkillMd);
     if (hasMd) {
       // Item folder — check tags (from prompt.json or <dirname>.prompt.json)
       const tagsJson = existsSync(jsonPath) ? jsonPath : toolJsonPath;
@@ -132,7 +138,12 @@ async function findItemInScopeByTag(scopeDir: string, tag: string): Promise<{ pa
         const parsed = JSON.parse(raw) as { tags?: unknown };
         const tags = Array.isArray(parsed.tags) ? parsed.tags.filter((t): t is string => typeof t === "string") : [];
         if (tags.includes(tag)) {
-          return { path: full, promptPath: existsSync(mdPath) ? mdPath : toolMdPath };
+          const promptPath = existsSync(mdPath)
+            ? mdPath
+            : existsSync(toolMdPath)
+              ? toolMdPath
+              : folderSkillMd;
+          return { path: full, promptPath };
         }
       } catch {
         // unreadable prompt.json — skip

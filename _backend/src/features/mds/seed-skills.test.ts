@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import { seedToolSkills, migrateToolSkills, TOOL_SKILL_NAMES } from "./scope";
+import { ensureDefaultMdsDirs, migrateToolSkills, TOOL_SKILL_NAMES } from "./scope";
 import { seedsDir, seedSubdirForMode } from "./paths";
 
 async function makeTempDir(): Promise<string> {
@@ -22,31 +22,48 @@ describe("seeds layout", () => {
   test("seedsDir resolves to the repo seeds directory under both modes", () => {
     const sDir = seedsDir();
     expect(sDir).toBeTruthy();
-    // dev and packageAndProd both have mds/_tools seed trees shipped in the repo
+    // dev and packageAndProd both ship builtin-tools guide seeds (skill.md + prompt.json)
     for (const mode of ["dev", "packageAndProd"]) {
-      const toolsRoot = join(sDir!, seedSubdirForMode(mode), "mds", "_tools");
-      expect(existsSync(toolsRoot)).toBe(true);
+      const seedDir = join(sDir!, seedSubdirForMode(mode), "builtin-tools", "todo");
+      expect(existsSync(join(seedDir, "skill.md"))).toBe(true);
+      expect(existsSync(join(seedDir, "prompt.json"))).toBe(true);
     }
   });
 
-  test("every TOOL_SKILL_NAMES entry has a <name>.skill.md seed in dev mode", () => {
+  test("guide-bearing builtin tools have a skill.md seed in dev mode", () => {
     const sDir = seedsDir();
-    const toolsRoot = join(sDir!, seedSubdirForMode("dev"), "mds", "_tools");
-    for (const name of TOOL_SKILL_NAMES) {
-      expect(existsSync(join(toolsRoot, name, `${name}.skill.md`))).toBe(true);
+    for (const name of ["apply_patch", "audit", "design", "graph", "knowledge", "searchLocal", "searchOnline", "task", "todo"]) {
+      const seedDir = join(sDir!, seedSubdirForMode("dev"), "builtin-tools", name);
+      expect(existsSync(join(seedDir, "skill.md")), `${name} skill.md seed`).toBe(true);
+      expect(existsSync(join(seedDir, "prompt.json")), `${name} prompt.json seed`).toBe(true);
     }
   });
 });
 
-describe("seedToolSkills", () => {
-  test("seeds builtin tool skills into _tools/<name>/ as <name>.skill.md + <name>.prompt.json", async () => {
+describe("ensureDefaultMdsDirs", () => {
+  test("no longer seeds tool skills into _tools (unified-tools: guides live in data/tools)", async () => {
     const root = await makeTempDir();
-    const toolsDir = join(root, "mds", "_tools");
-    await seedToolSkills(toolsDir, "dev");
-    // Uses the real repo seeds (seeds/dev/mds/_tools/<name>/<name>.skill.md) — assert the
-    // new folder-per-tool layout lands in the target.
-    expect(existsSync(join(toolsDir, "todo", "todo.skill.md"))).toBe(true);
-    expect(existsSync(join(toolsDir, "todo", "todo.prompt.json"))).toBe(true);
+    try {
+      const globalDir = join(root, "mds");
+      await ensureDefaultMdsDirs(globalDir, "dev");
+
+      // _tools may still be created as a reserved MDS dir, but it must NOT be
+      // populated with seeded <name>.skill.md / <name>.prompt.json files.
+      const toolsDir = join(globalDir, "_tools");
+      if (existsSync(toolsDir)) {
+        const { readdir } = await import("node:fs/promises");
+        const entries = await readdir(toolsDir, { withFileTypes: true });
+        const skillFiles = entries.filter(
+          (e) => e.isFile() && (e.name.endsWith(".skill.md") || e.name.endsWith(".prompt.json"))
+        );
+        expect(skillFiles).toEqual([]);
+      }
+
+      // The system base seeding still works.
+      expect(existsSync(join(globalDir, "_SystemBase", "systemPromptBase", "prompt.md"))).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

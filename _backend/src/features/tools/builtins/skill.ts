@@ -24,9 +24,9 @@ export function setCustomToolsSkillDir(dir: string | null) {
 }
 
 /** Discovered skill information. */
-interface SkillInfo {
+export interface SkillInfo {
   name: string;           // Folder name containing the skill marker
-  path: string;           // Absolute path to the skill folder
+  path: string;           // Absolute path to the skill folder (or the .skill.md/skill.md guide file for tool-skills)
   depth: number;          // Depth from root (0 = direct child)
   root: string;           // Root it was found under
   marker: "SKILL.md" | "prompt.md" | "loose-md" | "tool-skill";
@@ -82,8 +82,10 @@ const walkDir = async (
         const fullPath = join(dir, e.name);
         const skillMd = join(fullPath, "SKILL.md");
         const promptMd = join(fullPath, "prompt.md");
+        const toolSkillMd = join(fullPath, "skill.md");
         const hasSkillMd = existsSync(skillMd);
         const hasPromptMd = existsSync(promptMd);
+        const hasToolSkillMd = existsSync(toolSkillMd);
 
         if (hasSkillMd || hasPromptMd) {
           const tags = await readPromptJsonTags(fullPath);
@@ -96,12 +98,24 @@ const walkDir = async (
             hasPromptJson: existsSync(join(fullPath, "prompt.json")),
             tags,
           });
+        } else if (hasToolSkillMd) {
+          // Tool skill guide folder — data/tools/{builtin,custom}/<name>/skill.md.
+          // The skill.md file IS the guide; tags come from the folder's prompt.json.
+          skills.push({
+            name: e.name,
+            path: toolSkillMd,
+            depth: currentDepth,
+            root,
+            marker: "tool-skill",
+            hasPromptJson: existsSync(join(fullPath, "prompt.json")),
+            tags: await readPromptJsonTags(fullPath),
+          });
         }
         // Always recurse into subdirectories
         await walkDir(fullPath, currentDepth + 1, maxDepth, root, skills);
       } else if (e.isFile() && e.name.endsWith(".skill.md")) {
-        // Tool skill guide — builtin (_tools/<name>/) or custom (custom-tools/). The
-        // .skill.md file IS the guide.
+        // Tool skill guide — legacy builtin (_tools/<name>/) or custom
+        // (custom-tools/<name>.skill.md) layouts. The .skill.md file IS the guide.
         const fullPath = join(dir, e.name);
         const name = basename(e.name, ".skill.md");
         skills.push({
@@ -132,7 +146,13 @@ const walkDir = async (
   }
 };
 
-async function discoverSkills(roots: string[], maxDepth: number): Promise<SkillInfo[]> {
+/**
+ * Discover skills under the given roots (shared by the /api/skills REST endpoint
+ * and the compiled skill tool). Exported so the REST layer and tests use the
+ * exact same walker — a tool folder's `skill.md` guide is discovered as a
+ * `tool-skill` marker with tags from the folder's `prompt.json`.
+ */
+export async function discoverSkills(roots: string[], maxDepth: number = DEFAULT_MAX_DEPTH): Promise<SkillInfo[]> {
   const cacheKey = makeCacheKey(roots, maxDepth);
   const now = Date.now();
 
@@ -206,7 +226,20 @@ export const skillTool: ToolDef = {
     root: z.string().optional().describe("Override skillRoots — search only this root"),
   }),
   execute: async (args, ctx: import("../types").BaseToolContext) => {
-    const roots = args.root ? [args.root] : [...skillRoots, ...(customToolsSkillDir ? [customToolsSkillDir] : [])];
+    // Discovery roots: an explicit `root` wins; otherwise use whatever was
+    // wired via setSkillRoots/setCustomToolsSkillDir. When nothing was wired
+    // (the compiled builtin is superseded by the folder entry at runtime; kept
+    // consistent), fall back to generic skills under mds/_skills plus tool
+    // guides under data/tools.
+    const roots = args.root
+      ? [args.root]
+      : skillRoots.length > 0 || customToolsSkillDir
+        ? [...skillRoots, ...(customToolsSkillDir ? [customToolsSkillDir] : [])]
+        : [
+            join(ctx.dataDir, "mds", "_skills"),
+            join(ctx.dataDir, "tools", "builtin"),
+            join(ctx.dataDir, "tools", "custom"),
+          ];
     const maxDepth = args.maxDepth ?? DEFAULT_MAX_DEPTH;
     const allSkills = await discoverSkills(roots, maxDepth);
 

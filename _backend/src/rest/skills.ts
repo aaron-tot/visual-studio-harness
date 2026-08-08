@@ -1,38 +1,19 @@
 import type { FastifyInstance } from "fastify";
-import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { discoverSkills } from "../features/tools/builtins/skill";
 
 export function registerSkillsRoutes(app: FastifyInstance, dataDir: string) {
   app.get("/api/skills", async () => {
-    const names = new Set<string>();
-    // All three locations the skill tool discovers: generic skills (_skills),
-    // builtin tool skills (_tools/<name>/<name>.skill.md), custom tool skills
-    // (tools/custom/<name>/skill.md).
-    const roots = [join(dataDir, "mds", "_skills"), join(dataDir, "mds", "_tools"), join(dataDir, "tools", "custom")];
-    for (const dir of roots) {
-      if (!existsSync(dir)) continue;
-      try {
-        const entries = await readdir(dir, { withFileTypes: true });
-        for (const e of entries) {
-          if (e.isDirectory()) {
-            const inFolder = [
-              join(dir, e.name, `${e.name}.skill.md`),
-              join(dir, e.name, "skill.md"),
-              join(dir, e.name, "prompt.md"),
-              join(dir, e.name, "SKILL.md"),
-            ];
-            if (inFolder.some((p) => existsSync(p))) names.add(e.name);
-          } else if (e.isFile() && e.name.endsWith(".skill.md")) {
-            names.add(e.name.replace(/\.skill\.md$/, ""));
-          } else if (e.isFile() && e.name.endsWith(".md") && dir !== join(dataDir, "tools", "custom")) {
-            names.add(e.name.replace(/\.md$/, ""));
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-    return [...names].sort();
+    // The three locations the skill tool discovers: generic skills (_skills),
+    // builtin tool guides (tools/builtin/<name>/skill.md), custom tool guides
+    // (tools/custom/<name>/skill.md). Discovery delegates to the skill tool's
+    // walker so a tool folder's `skill.md` is surfaced as a tool-skill.
+    const roots = [
+      join(dataDir, "mds", "_skills"),
+      join(dataDir, "tools", "builtin"),
+      join(dataDir, "tools", "custom"),
+    ];
+    const skills = await discoverSkills(roots, 3);
+    return Array.from(new Set(skills.map((s) => s.name))).sort();
   });
 }

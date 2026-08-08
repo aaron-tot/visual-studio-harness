@@ -17,8 +17,6 @@ import {
   resolveMdsContext,
   copyRecursive,
   updateMdsPathPrefix,
-  seedToolSkills,
-  TOOL_SKILL_NAMES,
 } from "../features/mds/scope";
 import { seedsDir, seedSubdirForMode } from "../features/mds/paths";
 
@@ -378,59 +376,59 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
 
   /**
    * POST /api/mds/seed-skills
-   * Re-seed tool skills from repo seeds, overwriting same-named items.
-   * Body: { scopes?: ("global" | "project" | "session")[] } — defaults to all available.
+   * Re-seed builtin tool skill guides (skill.md + prompt.json) from repo seeds
+   * into data/tools/builtin/<name>/, overwriting same-named guide files. The old
+   * `_tools` per-scope seeding was removed with the unified-tools migration —
+   * tool guides now live in the tool folders (seeded on first run by
+   * seedBuiltinToolFolders; this endpoint is the explicit re-generate path).
    * Returns: { seeded: string[], overwritten: string[], errors: string[] }
    */
   app.post("/api/mds/seed-skills", async (request, reply) => {
-    const q = request.query as { sessionId?: string; workspaceRoot?: string };
-    const body = (request.body || {}) as { scopes?: ("global" | "project" | "session")[] };
-    const requestedScopes = body.scopes ?? ["global", "project", "session"];
-
-    const { resolvedDataDir, wsRoot } = await resolveMdsContext(q);
+    const { resolvedDataDir } = await resolveMdsContext(
+      request.query as { sessionId?: string; workspaceRoot?: string }
+    );
     const mode = getMode();
     const sDir = seedsDir();
     if (!sDir) {
       return reply.code(500).send({ error: "seeds directory not available" });
     }
 
-    const seedToolsDir = join(sDir, seedSubdirForMode(mode), "mds", "_tools");
+    const seedToolsDir = join(sDir, seedSubdirForMode(mode), "builtin-tools");
+    const builtinRoot = join(resolvedDataDir, "tools", "builtin");
 
     const seeded: string[] = [];
     const overwritten: string[] = [];
     const errors: string[] = [];
 
-    for (const scope of requestedScopes) {
-      const base = resolveMdsScopeDir(scope, resolvedDataDir, wsRoot || undefined, q.sessionId);
-      if (!base) continue;
+    let seedEntries;
+    try {
+      seedEntries = await readdir(seedToolsDir, { withFileTypes: true });
+    } catch {
+      seedEntries = [];
+    }
 
-      const toolsDir = join(base, "_tools");
-      await mkdir(toolsDir, { recursive: true });
+    for (const e of seedEntries) {
+      if (!e.isDirectory()) continue;
+      const name = e.name;
+      const seedMd = join(seedToolsDir, name, "skill.md");
+      if (!existsSync(seedMd)) continue; // no guide for this builtin
 
-      for (const skillName of TOOL_SKILL_NAMES) {
-        const seedSkillDir = join(seedToolsDir, skillName);
-        const seedMd = join(seedSkillDir, `${skillName}.skill.md`);
-        const seedJson = join(seedSkillDir, `${skillName}.prompt.json`);
-        if (!existsSync(seedMd)) continue;
+      const targetSkillDir = join(builtinRoot, name);
+      const targetMd = join(targetSkillDir, "skill.md");
+      const targetJson = join(targetSkillDir, "prompt.json");
+      const existed = existsSync(targetMd);
 
-        const targetSkillDir = join(toolsDir, skillName);
-        const targetMd = join(targetSkillDir, `${skillName}.skill.md`);
-        const targetJson = join(targetSkillDir, `${skillName}.prompt.json`);
-        const existed = existsSync(targetMd);
-
-        try {
-          await mkdir(targetSkillDir, { recursive: true });
-          const mdContent = await readFile(seedMd, "utf-8");
-          await writeFile(targetMd, mdContent, "utf-8");
-          if (existsSync(seedJson)) {
-            const jsonContent = await readFile(seedJson, "utf-8");
-            await writeFile(targetJson, jsonContent, "utf-8");
-          }
-          if (existed) overwritten.push(`${scope}/${skillName}`);
-          else seeded.push(`${scope}/${skillName}`);
-        } catch (err) {
-          errors.push(`${scope}/${skillName}: ${err instanceof Error ? err.message : String(err)}`);
+      try {
+        await mkdir(targetSkillDir, { recursive: true });
+        await writeFile(targetMd, await readFile(seedMd, "utf-8"), "utf-8");
+        const seedJson = join(seedToolsDir, name, "prompt.json");
+        if (existsSync(seedJson)) {
+          await writeFile(targetJson, await readFile(seedJson, "utf-8"), "utf-8");
         }
+        if (existed) overwritten.push(`builtin/${name}`);
+        else seeded.push(`builtin/${name}`);
+      } catch (err) {
+        errors.push(`builtin/${name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 

@@ -304,7 +304,7 @@ export async function runTurn(
           // subagent) now come from each tool's own `<name>.json` and are
           // injected by folderToToolDef — config.json's toolSettings is no
           // longer threaded here.
-          skillRoots: [join(dataDir, "mds", "_tools"), join(dataDir, "mds", "_skills")],
+          skillRoots: [join(dataDir, "mds", "_skills")],
           abortSignal: abortSignal ?? new AbortController().signal,
           callId, hookCtx,
           graphService,

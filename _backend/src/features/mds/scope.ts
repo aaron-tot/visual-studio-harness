@@ -169,11 +169,11 @@ export async function ensureDefaultMdsDirs(dir: string, mode: string): Promise<v
   for (const name of RESERVED_MDS_DIRS) {
     await mkdir(join(dir, name), { recursive: true });
   }
-  // Seed _skills (generic skills) + _tools (builtin tool skills) from repo seeds on
-  // first load (fresh installs only), and migrate any legacy _skills/<toolname> folders
-  // into the new _tools/<toolname> folder-per-tool layout.
-  const toolsDir = join(dir, "_tools");
-  await seedToolSkills(toolsDir, mode);
+  // Seed _skills (generic skills) from repo seeds on first load (fresh installs
+  // only). Builtin tool guides live in the tool folders (data/tools/builtin/<name>/
+  // skill.md, seeded by seedBuiltinToolFolders); the old `_tools` seeding was
+  // removed with the unified-tools migration. migrateToolSkills still cleans up
+  // any legacy `_skills/<toolname>` folders into the reserved `_tools` dir.
   await migrateToolSkills(dir);
   // Seed _SystemBase/{name}/prompt.md + prompt.json from the repo seeds when available (fresh installs only).
   // _SystemBase is a container: the prompt lives in a sub-folder, like _skills.
@@ -304,44 +304,7 @@ export function safeRelPath(rel: string | undefined): string | null {
 }
 
 /**
- * Seed the _tools directory (builtin tool skills) from repo seeds on first load
- * (fresh installs only). Each tool skill is a folder-per-tool:
- * `_tools/<name>/<name>.skill.md` + `<name>.prompt.json` (mirrors the custom-tools
- * md+json convention).
- */
-export async function seedToolSkills(toolsDir: string, mode: string): Promise<void> {
-  const sDir = seedsDir();
-  if (!sDir) return;
-
-  const seedToolsDir = join(sDir, seedSubdirForMode(mode), "mds", "_tools");
-  for (const skillName of TOOL_SKILL_NAMES) {
-    const targetSkillDir = join(toolsDir, skillName);
-    const targetMd = join(targetSkillDir, `${skillName}.skill.md`);
-    if (existsSync(targetMd)) continue; // already seeded
-
-    const seedSkillDir = join(seedToolsDir, skillName);
-    const seedMd = join(seedSkillDir, `${skillName}.skill.md`);
-    const seedJson = join(seedSkillDir, `${skillName}.prompt.json`);
-    if (!existsSync(seedMd)) continue; // no seed for this skill
-
-    try {
-      await mkdir(targetSkillDir, { recursive: true });
-      const mdContent = await readFile(seedMd, "utf-8");
-      await writeFile(targetMd, mdContent, "utf-8");
-      if (existsSync(seedJson)) {
-        const jsonContent = await readFile(seedJson, "utf-8");
-        await writeFile(join(targetSkillDir, `${skillName}.prompt.json`), jsonContent, "utf-8");
-      }
-    } catch {
-      // leave empty if seed read fails
-    }
-  }
-}
-
-/**
- * One-time migration: move legacy `_skills/<toolname>/{prompt.md,prompt.json}` folders
- * for the known tool skills into the new `_tools/<toolname>/` folder-per-tool layout
- * (`<name>.skill.md` + `<name>.prompt.json`). Skips when the target already exists.
+ * Validate a relative path: no `..`, no traversal, no empty segments. Returns normalized path or null.
  */
 export async function migrateToolSkills(dir: string): Promise<void> {
   const skillsDir = join(dir, "_skills");

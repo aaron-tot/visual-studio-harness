@@ -22,7 +22,8 @@ export function getDefaultsFromTools(tools: ToolDef[]): Record<string, Permissio
 }
 
 /**
- * Module-level registry reference. Set once at startup by createDefaultRegistry().
+ * Module-level registry reference. Set once at startup by the registry
+ * builders (createFolderRegistry / createDefaultRegistry / loadLiveToolDefs).
  * buildDefaultGlobalFile() reads permissionDefault from these tools.
  */
 let registeredTools: ToolDef[] | undefined;
@@ -44,7 +45,7 @@ export function buildDefaultGlobalFile(): PermsFile {
   if (!registeredTools) {
     throw new Error(
       "buildDefaultGlobalFile() called before setDefaultTools(). " +
-      "Call setDefaultTools(tools) in createDefaultRegistry() first."
+      "Call setDefaultTools(tools) in createFolderRegistry()/createDefaultRegistry() first."
     );
   }
   return {

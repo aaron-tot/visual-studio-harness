@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { createRegistry, type ToolRegistry } from "./registry";
 import { loadToolsFromFolders } from "./folder-store";
 import { readTool } from "./builtins/read";
@@ -128,6 +130,22 @@ export async function createFolderRegistry(
     }
   }
   return registry;
+}
+
+/**
+ * Resolve the "live" builtin tool set for perms defaulting and the perms UI
+ * listing. When `data/tools/builtin/` exists (the unified folder shape) the
+ * folder tools are used; otherwise it falls back to the compiled ToolDefs
+ * (e.g. fresh installs before the first seed, or a compiled binary with no
+ * bundled seeds). This keeps startup perms defaulting working in both shapes.
+ */
+export async function loadLiveToolDefs(dataDir: string): Promise<ToolDef[]> {
+  const builtinRoot = join(dataDir, "tools", "builtin");
+  if (existsSync(builtinRoot)) {
+    const folderTools = await loadToolsFromFolders(dataDir);
+    if (folderTools.length > 0) return folderTools;
+  }
+  return ALL_TOOLS;
 }
 
 export { createRegistry } from "./registry";

@@ -33,7 +33,8 @@ import { resolveDataDir, getMode, getPort } from "./paths";
 import { hasEmbeddedFrontend, registerEmbeddedFrontend } from "./frontendServe";
 import { createHooksSystem, setHooksSystem } from "./features/hooks";
 import { ensureGlobal } from "./features/tools/perms/store";
-import { createDefaultRegistry } from "./features/tools";
+import { setDefaultTools } from "./features/tools/perms/defaults";
+import { loadLiveToolDefs } from "./features/tools";
 import { seedBuiltinToolFolders } from "./features/tools/folder-seed";
 import { migrateLegacyCustomTools } from "./features/custom-tools/store";
 import { migrateToSqlite } from "./storage/migrate";
@@ -138,17 +139,6 @@ const LOG_REQUESTS = false;
 async function main() {
   await initLogging().catch(() => {});
 
-  // Initialize tools registry first so defaults are available for ensureGlobal
-  createDefaultRegistry();
-
-  // Spec: if global perms missing, create from template on first access.
-  try {
-    await ensureGlobal(DATA_DIR);
-  } catch (err) {
-    console.error("Failed to ensure globalPerms.json:", err);
-    throw err;
-  }
-
   // Unified tools: clone builtin tool folders from source defaults when missing.
   // Once present, the data copy is authoritative and never overwritten.
   try {
@@ -171,6 +161,23 @@ async function main() {
     }
   } catch (err) {
     console.error("Failed to migrate legacy custom tools:", err);
+  }
+
+  // Initialize perms defaults from the live tool set. Uses the folder tools
+  // (`data/tools/builtin/`) when present, falling back to the compiled builtins
+  // (fresh installs before the first seed, or compiled binaries with no seeds).
+  try {
+    setDefaultTools(await loadLiveToolDefs(DATA_DIR));
+  } catch (err) {
+    console.error("Failed to load default tool set:", err);
+  }
+
+  // Spec: if global perms missing, create from template on first access.
+  try {
+    await ensureGlobal(DATA_DIR);
+  } catch (err) {
+    console.error("Failed to ensure globalPerms.json:", err);
+    throw err;
   }
 
   // Spec: if global systemPromptBase.md missing, seed from defaults then always read disk.

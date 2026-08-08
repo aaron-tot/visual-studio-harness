@@ -2,7 +2,7 @@ import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { FastifyInstance } from "fastify";
-import { createDefaultRegistry } from "../features/tools/index";
+import { loadLiveToolDefs } from "../features/tools/index";
 import { extractToolFields } from "../features/tools/schema";
 import { listToolFolders, type ToolFolder } from "../features/tools/folder-store";
 import { ToolConfigSchema } from "../config/tool-config";
@@ -11,8 +11,7 @@ import type { ToolConfig } from "../../../_shared/types";
 
 export function registerToolsRoutes(app: FastifyInstance, dataDir: string) {
   app.get("/api/tools", async () => {
-    const registry = createDefaultRegistry();
-    const defs = registry.list();
+    const defs = await loadLiveToolDefs(dataDir);
     const builtin = defs.map((d) => ({
       name: d.name,
       description: d.description,

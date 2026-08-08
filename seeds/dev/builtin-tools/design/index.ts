@@ -1,9 +1,9 @@
 /**
  * Builtin `design` tool — self-contained ctx entry.
- * Consolidated dispatcher: create / read / edit / abandon / list.
- * Ported from builtins/design_{create,read,edit,abandon}.ts + designs_list.ts.
- * Uses ctx.services (createSpecDocument/createPlanDocument/listDesigns/
- * resolveDesignsDir) and node:fs for versioned document read/edit.
+ * Consolidated dispatcher: create / read / edit / abandon.
+ * Ported from builtins/design_{create,read,edit,abandon}.ts.
+ * Uses ctx.services (createSpecDocument/createPlanDocument/resolveDesignsDir)
+ * and node:fs for versioned document read/edit.
  */
 import { join } from "node:path";
 import { existsSync } from "node:fs";
@@ -323,38 +323,6 @@ async function actionAbandon(args: any, ctx: any) {
   };
 }
 
-async function actionList(args: any, ctx: any) {
-  const scope = (args.scope || "global") as Scope;
-  const entries = await ctx.services.listDesigns(scope, ctx.workspaceRoot, ctx.sessionId);
-  if (entries.length === 0) {
-    return {
-      title: "No designs",
-      output: `No designs found in "${scope}" scope. Use design_create to create one.`,
-      metadata: { count: 0, scope },
-    };
-  }
-  const ver = (doc: any) => doc?.meta?.version;
-  const lines = entries.map((e: any) => {
-    const sv = e.specs.map((s: any) => `v${ver(s) ?? "?"}`).join(", ") || "none";
-    const pv = e.plans.map((p: any) => `v${ver(p) ?? "?"}`).join(", ") || "none";
-    return `  ${e.name}/  (specs: ${sv}, plans: ${pv})`;
-  });
-  return {
-    title: `${entries.length} design(s) in ${scope} scope`,
-    output: lines.join("\n"),
-    metadata: {
-      count: entries.length,
-      scope,
-      designs: entries.map((e: any) => ({
-        name: e.name,
-        path: e.path,
-        specVersions: e.specs.map((s: any) => ver(s)).filter((v: any): v is number => v != null),
-        planVersions: e.plans.map((p: any) => ver(p)).filter((v: any): v is number => v != null),
-      })),
-    },
-  };
-}
-
 export async function execute(args: any, ctx: any): Promise<any> {
   const action = args.action;
   switch (action) {
@@ -366,8 +334,6 @@ export async function execute(args: any, ctx: any): Promise<any> {
       return actionEdit(args, ctx);
     case "abandon":
       return actionAbandon(args, ctx);
-    case "list":
-      return actionList(args, ctx);
   }
   return {
     title: "Invalid action",

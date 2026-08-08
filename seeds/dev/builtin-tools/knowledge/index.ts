@@ -1,7 +1,7 @@
 /**
  * Builtin `knowledge` tool — self-contained ctx entry.
  * Consolidated dispatcher: search / open / ingest / doc_create / doc_edit /
- * doc_delete / list.
+ * doc_delete.
  * Ported from builtins/knowledge_{search,open,ingest}.ts +
  * knowledge_document_{create,edit,delete}.ts. Uses ctx.services.knowledgeBase
  * (KnowledgeBaseService + openDocumentByIdOrFilename + AGENT_FILENAME_PREFIX).
@@ -169,39 +169,6 @@ async function actionDocDelete(args: any, ctx: any) {
   }
 }
 
-async function actionList(args: any, ctx: any) {
-  try {
-    const kb = new ctx.services.KnowledgeBaseService(ctx.dataDir);
-    const scope = (args.scope as Scope) || "global";
-    const docs = await kb.listDocuments(
-      scope,
-      { extension: args.extension, createdBy: args.createdBy },
-      ctx.workspaceRoot,
-      ctx.sessionId
-    );
-    if (docs.length === 0) {
-      return {
-        title: "No knowledge documents",
-        output: `No knowledge documents found in "${scope}" scope.`,
-        metadata: { count: 0, scope },
-      };
-    }
-    const lines = docs.map(
-      (d: any) =>
-        `  ID:${d.id}  ${d.filename}  (${d.extension ?? ""}, ${d.fileSize} bytes, status: ${d.status}` +
-        `${d.tags?.length ? `, tags: ${d.tags.join(", ")}` : ""}` +
-        `${d.createdBy ? `, by: ${d.createdBy}` : ""})`
-    );
-    return {
-      title: `${docs.length} knowledge document(s) in ${scope} scope`,
-      output: lines.join("\n"),
-      metadata: { count: docs.length, scope },
-    };
-  } catch (err) {
-    return gracefulError("Knowledge list unavailable", err);
-  }
-}
-
 export async function execute(args: any, ctx: any): Promise<any> {
   const action = args.action;
   switch (action) {
@@ -217,8 +184,6 @@ export async function execute(args: any, ctx: any): Promise<any> {
       return actionDocEdit(args, ctx);
     case "doc_delete":
       return actionDocDelete(args, ctx);
-    case "list":
-      return actionList(args, ctx);
   }
   return {
     title: "Invalid action",

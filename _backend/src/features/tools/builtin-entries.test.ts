@@ -485,35 +485,44 @@ describe("builtin entries (real data-folder path)", () => {
     }
   });
 
-  it("todo add->list->remove->clear round-trips through the session todos store", async () => {
+  it("todo write->read round-trips through the session todos store", async () => {
     const defs = await loadSeededTools();
     const ctx = fakeBaseCtx(dataDir, ws);
     const todo = defs.find((d) => d.name === "todo")!;
 
-    const add = await todo.execute({ action: "add", content: "hello todos" }, ctx);
-    expect(add.isError).toBeFalsy();
-    const id = add.metadata?.id as string;
-    expect(id).toBeTruthy();
+    const write = await todo.execute(
+      {
+        action: "write",
+        todos: [
+          { id: "t-1", content: "hello todos", status: "pending" },
+          { id: "t-2", content: "second item", status: "completed" },
+        ],
+      },
+      ctx
+    );
+    expect(write.isError).toBeFalsy();
+    expect(write.output).toContain("hello todos");
+    expect(write.output).toContain("1 open of 2");
 
-    const list = await todo.execute({ action: "list" }, ctx);
-    expect(list.isError).toBeFalsy();
-    expect(list.output).toContain("hello todos");
-    expect(list.metadata?.count).toBe(1);
-
-    const remove = await todo.execute({ action: "remove", id }, ctx);
-    expect(remove.isError).toBeFalsy();
-    expect(remove.metadata?.removed).toBe(true);
-
-    const afterRemove = await todo.execute({ action: "list" }, ctx);
-    expect(afterRemove.output).not.toContain("hello todos");
-    expect(afterRemove.metadata?.count).toBe(0);
-
-    const clear = await todo.execute({ action: "clear" }, ctx);
-    expect(clear.isError).toBeFalsy();
-    expect((await todo.execute({ action: "list" }, ctx)).metadata?.count).toBe(0);
+    const read = await todo.execute({ action: "read" }, ctx);
+    expect(read.isError).toBeFalsy();
+    expect(read.output).toContain("hello todos");
+    expect(read.output).toContain("second item");
   });
 
-  it("notes create->list->read->update->archive round-trips in a temp dataDir", async () => {
+  it("todo rejects the removed add/update/remove/clear/list actions as unknown", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const todo = defs.find((d) => d.name === "todo")!;
+
+    for (const action of ["add", "update", "remove", "clear", "list"]) {
+      const result = await todo.execute({ action }, ctx);
+      expect(result.isError).toBe(true);
+      expect(result.output).toContain("Unknown todo action");
+    }
+  });
+
+  it("notes create->read->update->archive round-trips in a temp dataDir", async () => {
     const defs = await loadSeededTools();
     const ctx = fakeBaseCtx(dataDir, ws);
     const notes = defs.find((d) => d.name === "notes")!;
@@ -524,10 +533,6 @@ describe("builtin entries (real data-folder path)", () => {
     );
     expect(create.isError).toBeFalsy();
     expect(create.metadata?.created).toBe(true);
-
-    const list = await notes.execute({ action: "list", scope: "global" }, ctx);
-    expect(list.isError).toBeFalsy();
-    expect(list.output).toContain("note-one");
 
     const read = await notes.execute({ action: "read", name: "note-one" }, ctx);
     expect(read.isError).toBeFalsy();
@@ -544,9 +549,13 @@ describe("builtin entries (real data-folder path)", () => {
     const archive = await notes.execute({ action: "archive", name: "note-one" }, ctx);
     expect(archive.isError).toBeFalsy();
     expect(archive.metadata?.archived).toBe(true);
+
+    const removedList = await notes.execute({ action: "list", scope: "global" }, ctx);
+    expect(removedList.isError).toBe(true);
+    expect(removedList.output).toContain("Unknown notes action");
   });
 
-  it("design create->list round-trips through ctx.services in a temp dataDir", async () => {
+  it("design create round-trips through ctx.services in a temp dataDir", async () => {
     const defs = await loadSeededTools();
     const ctx = fakeBaseCtx(dataDir, ws);
     const design = defs.find((d) => d.name === "design")!;
@@ -558,12 +567,12 @@ describe("builtin entries (real data-folder path)", () => {
     expect(created.isError).toBeFalsy();
     expect(created.metadata?.version).toBe(1);
 
-    const list = await design.execute({ action: "list", scope: "global" }, ctx);
-    expect(list.isError).toBeFalsy();
-    expect(list.output).toContain("design-one");
+    const removedList = await design.execute({ action: "list", scope: "global" }, ctx);
+    expect(removedList.isError).toBe(true);
+    expect(removedList.output).toContain("Unknown design action");
   });
 
-  it("audit create->list round-trips in a temp dataDir", async () => {
+  it("audit create round-trips in a temp dataDir", async () => {
     const defs = await loadSeededTools();
     const ctx = fakeBaseCtx(dataDir, ws);
     const audit = defs.find((d) => d.name === "audit")!;
@@ -592,9 +601,9 @@ describe("builtin entries (real data-folder path)", () => {
     expect(created.isError).toBeFalsy();
     expect(created.metadata?.created).toBe(true);
 
-    const list = await audit.execute({ action: "list", scope: "global" }, ctx);
-    expect(list.isError).toBeFalsy();
-    expect(list.output).toContain("audit-one");
+    const removedList = await audit.execute({ action: "list", scope: "global" }, ctx);
+    expect(removedList.isError).toBe(true);
+    expect(removedList.output).toContain("Unknown audit action");
   });
 
   it("graph returns a graceful error when the graph service is null", async () => {
@@ -607,7 +616,7 @@ describe("builtin entries (real data-folder path)", () => {
     expect(result.output).toContain("Graph service not available");
   });
 
-  it("knowledge returns graceful errors when the KB is unavailable and lists empty gracefully", async () => {
+  it("knowledge returns graceful errors when the KB is unavailable and rejects the removed list action", async () => {
     const defs = await loadSeededTools();
     const ctx = fakeBaseCtx(dataDir, ws);
     const knowledge = defs.find((d) => d.name === "knowledge")!;
@@ -618,10 +627,10 @@ describe("builtin entries (real data-folder path)", () => {
     expect(search.isError).toBe(true);
     expect(search.output).toContain("Knowledge Base");
 
-    // listDocuments on an empty temp dataDir returns no docs gracefully.
-    const list = await knowledge.execute({ action: "list", scope: "global" }, ctx);
-    expect(list.isError).toBeFalsy();
-    expect(list.output).toContain("No knowledge documents");
+    // The list action was never part of the consolidated dispatcher enum.
+    const removedList = await knowledge.execute({ action: "list", scope: "global" }, ctx);
+    expect(removedList.isError).toBe(true);
+    expect(removedList.output).toContain("Unknown knowledge action");
   });
 
 });

@@ -1,7 +1,7 @@
 /**
  * Builtin `audit` tool — self-contained ctx entry.
- * Consolidated dispatcher: create / read / edit / delete / prompt_* / list.
- * Ported from builtins/audit_{create,read,edit,delete,list}.ts +
+ * Consolidated dispatcher: create / read / edit / delete / prompt_*.
+ * Ported from builtins/audit_{create,read,edit,delete}.ts +
  * audit_prompt_{create,list,read,edit,delete}.ts.
  * Uses ctx.services (audits + audit-prompts) and node:fs for the read/delete paths.
  */
@@ -292,27 +292,6 @@ async function actionPromptDelete(args: any, ctx: any) {
   }
 }
 
-async function actionList(args: any, ctx: any) {
-  const scope = (args.scope || "global") as Scope;
-  const entries = await ctx.services.listAudits(scope, ctx.workspaceRoot, ctx.sessionId);
-  if (entries.length === 0) {
-    return {
-      title: "No audits",
-      output: `No audits found in "${scope}" scope.`,
-      metadata: { count: 0, scope },
-    };
-  }
-  const lines = entries.map(
-    (e: any) =>
-      `  ${e.name}  — ${e.document.meta.title} (${e.document.meta.auditType}, ${e.document.meta.totalFindings} findings)`
-  );
-  return {
-    title: `${entries.length} audit(s) in ${scope} scope`,
-    output: lines.join("\n"),
-    metadata: { count: entries.length, scope },
-  };
-}
-
 export async function execute(args: any, ctx: any): Promise<any> {
   const action = args.action;
   switch (action) {
@@ -334,8 +313,6 @@ export async function execute(args: any, ctx: any): Promise<any> {
       return actionPromptEdit(args, ctx);
     case "prompt_delete":
       return actionPromptDelete(args, ctx);
-    case "list":
-      return actionList(args, ctx);
   }
   return {
     title: "Invalid action",

@@ -1,8 +1,8 @@
 /**
  * Builtin `notes` tool — self-contained ctx entry.
- * Consolidated dispatcher: read / create / update / archive / list.
- * Ported from builtins/notes_{read,create,update,archive}.ts + notes_list.ts.
- * Uses ctx.services (createNote/updateNote/archiveNote/listNotes/resolveNotesDir)
+ * Consolidated dispatcher: read / create / update / archive.
+ * Ported from builtins/notes_{read,create,update,archive}.ts.
+ * Uses ctx.services (createNote/updateNote/archiveNote/resolveNotesDir)
  * and node:fs for the read path.
  */
 import { join } from "node:path";
@@ -88,24 +88,6 @@ async function actionArchive(args: any, ctx: any) {
   };
 }
 
-async function actionList(args: any, ctx: any) {
-  const scope = (args.scope || "global") as Scope;
-  const entries = await ctx.services.listNotes(scope, ctx.workspaceRoot, ctx.sessionId);
-  if (entries.length === 0) {
-    return {
-      title: "No notes",
-      output: `No notes found in "${scope}" scope.`,
-      metadata: { count: 0, scope },
-    };
-  }
-  const lines = entries.map((e: any) => `  ${e.name}  — ${e.title}`);
-  return {
-    title: `${entries.length} note(s) in ${scope} scope`,
-    output: lines.join("\n"),
-    metadata: { count: entries.length, scope },
-  };
-}
-
 export async function execute(args: any, ctx: any): Promise<any> {
   const action = args.action;
   switch (action) {
@@ -117,8 +99,6 @@ export async function execute(args: any, ctx: any): Promise<any> {
       return actionUpdate(args, ctx);
     case "archive":
       return actionArchive(args, ctx);
-    case "list":
-      return actionList(args, ctx);
   }
   return {
     title: "Invalid action",

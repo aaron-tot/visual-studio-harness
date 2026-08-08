@@ -45,26 +45,21 @@ const ALL_TOOLS: ToolDef[] = [
 ];
 
 /**
- * Folder-per-tool seed targets with NO compiled ToolDef entry yet: they exist
- * only as self-contained ctx entries under `seeds/{mode}/builtin-tools/<name>/`.
- * webfetch/websearch were folded into the consolidated `searchOnline` ToolDef
- * for the compiled registry, but are re-authored as standalone ctx entries.
- */
-const FOLDER_ONLY_TOOL_NAMES = ["webfetch", "websearch"] as const;
-
-/**
  * Authoritative list of builtin tool names (folder-per-tool seed targets).
  * Derived from ALL_TOOLS, filtering out non-ToolDef entries (the `makeTaskTool`
- * factory is a function, not a tool) and deduping (task appears once), plus the
- * folder-only names that have ctx entries but no compiled ToolDef.
+ * factory is a function, not a tool) and deduping (task appears once).
+ *
+ * webfetch/websearch intentionally have NO compiled ToolDef and are NOT seeded
+ * or registered: the consolidated `searchOnline` ToolDef is the single callable
+ * online tool. Their `seeds/{mode}/builtin-tools/` folders remain in the repo
+ * as content-only reference for that logic.
  */
 export const BUILTIN_TOOL_NAMES: readonly string[] = [
-  ...new Set([
-    ...ALL_TOOLS.filter((t): t is ToolDef => typeof t === "object" && t !== null).map(
+  ...new Set(
+    ALL_TOOLS.filter((t): t is ToolDef => typeof t === "object" && t !== null).map(
       (t) => t.name
-    ),
-    ...FOLDER_ONLY_TOOL_NAMES,
-  ]),
+    )
+  ),
 ];
 
 export interface CreateRegistryOptions {

@@ -1,5 +1,12 @@
 /**
- * Builtin `webfetch` tool — self-contained ctx entry.
+ * Builtin `webfetch` tool — CONTENT-ONLY ctx entry.
+ *
+ * This folder is NOT seeded or registered: webfetch was consolidated into the
+ * `searchOnline` ToolDef (fetch action), which is the single callable online
+ * tool in the compiled registry. This file documents the builtin module logic
+ * for reference only.
+ *
+ * Self-contained ctx entry.
  *
  * Fetches one known URL (markdown/text/html). Timeout comes from
  * `ctx.toolSettings?.webFetch` (SECONDS: timeoutMinSec / timeoutMaxSec /

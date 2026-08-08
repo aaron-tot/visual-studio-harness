@@ -309,7 +309,8 @@ describe("builtin entries (real data-folder path)", () => {
     const byName = new Map(defs.map((d) => [d.name, d]));
 
     // skill / customTool / task / agent_change have their own folders.
-    // websearch + webfetch were consolidated into searchOnline (action dispatch).
+    // websearch + webfetch were consolidated into searchOnline (action dispatch);
+    // their seed folders are content-only and never registered.
     for (const name of ["skill", "customTool", "task", "agent_change", "searchOnline"]) {
       const def = byName.get(name);
       expect(def, `${name} should be loaded`).toBeDefined();
@@ -473,38 +474,4 @@ describe("builtin entries (real data-folder path)", () => {
     expect(unknown.output).toContain("Unknown searchOnline action");
   });
 
-  it("loads the re-authored webfetch + websearch entries from real seeds with callable execute", async () => {
-    const defs = await loadSeededTools();
-    const byName = new Map(defs.map((d) => [d.name, d]));
-
-    for (const name of ["webfetch", "websearch"]) {
-      const def = byName.get(name);
-      expect(def, `${name} should be loaded`).toBeDefined();
-      expect(typeof def!.execute, `${name} execute callable`).toBe("function");
-    }
-  });
-
-  it("webfetch returns a graceful error for missing/invalid URLs without hitting the network", async () => {
-    const defs = await loadSeededTools();
-    const ctx = fakeBaseCtx(dataDir, ws);
-    const webfetch = defs.find((d) => d.name === "webfetch")!;
-
-    const noUrl = await webfetch.execute({}, ctx);
-    expect(noUrl.isError).toBe(true);
-    expect(noUrl.output).toContain("url is required");
-
-    const badUrl = await webfetch.execute({ url: "not-a-url" }, ctx);
-    expect(badUrl.isError).toBe(true);
-    expect(badUrl.output).toContain("must start with http");
-  });
-
-  it("websearch returns a graceful error for invalid args without hitting the network", async () => {
-    const defs = await loadSeededTools();
-    const ctx = fakeBaseCtx(dataDir, ws);
-    const websearch = defs.find((d) => d.name === "websearch")!;
-
-    const noQuery = await websearch.execute({}, ctx);
-    expect(noQuery.isError).toBe(true);
-    expect(noQuery.output).toContain("query is required");
-  });
 });

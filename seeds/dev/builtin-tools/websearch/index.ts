@@ -1,5 +1,12 @@
 /**
- * Builtin `websearch` tool — self-contained ctx entry.
+ * Builtin `websearch` tool — CONTENT-ONLY ctx entry.
+ *
+ * This folder is NOT seeded or registered: websearch was consolidated into the
+ * `searchOnline` ToolDef (search action), which is the single callable online
+ * tool in the compiled registry. This file documents the builtin module logic
+ * for reference only.
+ *
+ * Self-contained ctx entry.
  *
  * Searches the web by query via the search-provider registry with fallback
  * chain + batch rotation, identical to the `search` path of the consolidated

@@ -1,0 +1,35 @@
+{
+  "name": "webfetch",
+  "description": "Fetch one known URL (markdown/text/html). Use websearch when no URL.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Fully-formed http(s) URL"
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "markdown",
+          "text",
+          "html"
+        ],
+        "description": "markdown (default), text, or html"
+      },
+      "timeout": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "description": "Timeout in seconds (default/config in settings)"
+      }
+    },
+    "required": [
+      "url"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

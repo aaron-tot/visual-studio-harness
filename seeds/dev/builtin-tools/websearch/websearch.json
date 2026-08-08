@@ -1,0 +1,54 @@
+{
+  "name": "websearch",
+  "description": "Search the web by query when you have no URL. Supports multiple providers with automatic fallback on rate limits. See skill:websearch.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Search query"
+      },
+      "numResults": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Number of results"
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "fast",
+          "deep"
+        ],
+        "description": "Search depth: auto, fast, or deep"
+      },
+      "livecrawl": {
+        "type": "string",
+        "enum": [
+          "fallback",
+          "preferred"
+        ],
+        "description": "Live crawl: fallback or preferred"
+      },
+      "contextMaxCharacters": {
+        "type": "integer",
+        "minimum": 500,
+        "maximum": 50000,
+        "description": "Max context chars for LLM"
+      },
+      "provider": {
+        "type": "string",
+        "description": "Force specific provider by id"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

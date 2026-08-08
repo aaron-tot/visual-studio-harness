@@ -71,6 +71,8 @@ import {
   createSpecDocument,
   createPlanDocument,
   listDesigns,
+  findDesignScope,
+  moveDesign,
   type DesignsScope,
   type DesignEntry,
   type CreateSpecParams,
@@ -271,6 +273,14 @@ export interface ToolServices {
     workspaceRoot?: string,
     sessionId?: string
   ) => string | null;
+  findDesignScope: (
+    name: string,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => Promise<import("../../rest/plans").DesignsScope | null>;
+  moveDesign: (
+    params: Omit<import("../../rest/plans").MoveDesignParams, "dataDir">
+  ) => Promise<{ fromPath: string; toPath: string }>;
 
   // ── agents ─────────────────────────────────────────────────────────
   listAgents: () => Promise<AgentFile[]>;
@@ -440,6 +450,9 @@ export function resolveToolCtx(
         listDesigns(baseCtx.dataDir, scope, workspaceRoot, sessionId),
       resolveDesignsDir: (scope, workspaceRoot, sessionId) =>
         resolveDesignsDir(baseCtx.dataDir, scope, workspaceRoot, sessionId),
+      findDesignScope: (name, workspaceRoot, sessionId) =>
+        findDesignScope(name, baseCtx.dataDir, workspaceRoot, sessionId),
+      moveDesign: (params) => moveDesign({ ...params, dataDir: baseCtx.dataDir }),
       // agents
       listAgents: () => listAgents(baseCtx.dataDir),
       // knowledge base

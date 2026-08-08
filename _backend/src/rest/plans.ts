@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { SpecDocument, PlanDocument, SpecPlanPart, CreatedBy } from "../../../../_shared/types";
+import { moveScopedDir, MoveError } from "./scope-move";
 
 /** Recursively ensure every SpecPlanPart has a `parts` array. */
 function ensurePartsArray(p: SpecPlanPart): SpecPlanPart {
@@ -240,6 +241,62 @@ export async function listDesigns(dataDir: string, scope: DesignsScope = "global
   return results.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Locate which scope holds a design by name (session → project → global). */
+export async function findDesignScope(
+  name: string,
+  dataDir: string,
+  workspaceRoot?: string,
+  sessionId?: string,
+): Promise<DesignsScope | null> {
+  const candidates: DesignsScope[] = [];
+  if (sessionId) candidates.push("session");
+  if (workspaceRoot) candidates.push("project");
+  candidates.push("global");
+  for (const scope of candidates) {
+    const dir = resolveDesignsDir(dataDir, scope, workspaceRoot, sessionId);
+    if (dir && existsSync(join(dir, name))) return scope;
+  }
+  return null;
+}
+
+export interface MoveDesignParams {
+  name: string;
+  fromScope: DesignsScope;
+  toScope: DesignsScope;
+  dataDir: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}
+
+export async function moveDesign(
+  params: MoveDesignParams,
+): Promise<{ fromPath: string; toPath: string }> {
+  const fromDir = resolveDesignsDir(params.dataDir, params.fromScope, params.workspaceRoot, params.sessionId);
+  const toDir = resolveDesignsDir(params.dataDir, params.toScope, params.workspaceRoot, params.sessionId);
+  if (!fromDir) throw new MoveError(`source scope "${params.fromScope}" not available`, 400);
+  if (!toDir) throw new MoveError(`target scope "${params.toScope}" not available`, 400);
+  const r = await moveScopedDir({ name: params.name, fromDir, toDir });
+  const files = (await readdir(r.toPath)).filter((f) => SPEC_RE.test(f) || PLAN_RE.test(f));
+  for (const f of files) {
+    const fp = join(r.toPath, f);
+    try {
+      const doc = JSON.parse(await readFile(fp, "utf-8")) as {
+        meta?: { updatedAt?: string; createdMeta?: { workspace?: string; session?: string } };
+      };
+      if (doc.meta) {
+        doc.meta.updatedAt = new Date().toISOString();
+        if (!doc.meta.createdMeta) doc.meta.createdMeta = {};
+        doc.meta.createdMeta.workspace = params.toScope === "project" ? params.workspaceRoot || "" : "";
+        doc.meta.createdMeta.session = params.toScope === "session" ? params.sessionId || "" : "";
+      }
+      await writeFile(fp, JSON.stringify(doc, null, 2) + "\n");
+    } catch {
+      // skip unparseable version files
+    }
+  }
+  return r;
+}
+
 export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
   app.get("/api/plans", async (request) => {
     const q = request.query as { scope?: string; workspaceRoot?: string; sessionId?: string };
@@ -432,4 +489,30 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
       return { ok: true, path: fp, version };
     }
   );
+
+  app.post<{
+    Body: {
+      name: string;
+      fromScope?: string;
+      toScope?: string;
+      workspaceRoot?: string;
+      sessionId?: string;
+    };
+  }>("/api/plans/move", async (request, reply) => {
+    const { name, fromScope, toScope, workspaceRoot, sessionId } = request.body;
+    if (!name?.trim()) return reply.code(400).send({ error: "name is required" });
+    const fs_ = (fromScope as DesignsScope) || "global";
+    const ts = (toScope as DesignsScope) || "global";
+    if (!["global", "project", "session"].includes(fs_) || !["global", "project", "session"].includes(ts)) {
+      return reply.code(400).send({ error: "invalid scope" });
+    }
+    if (fs_ === ts) return reply.code(400).send({ error: "from and to scopes are the same" });
+    try {
+      const result = await moveDesign({ name: name.trim(), fromScope: fs_, toScope: ts, dataDir, workspaceRoot, sessionId });
+      return { ok: true, ...result };
+    } catch (err) {
+      if (err instanceof MoveError) return reply.code(err.code).send({ error: err.message });
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
 }

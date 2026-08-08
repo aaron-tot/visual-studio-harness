@@ -88,6 +88,39 @@ async function actionArchive(args: any, ctx: any) {
   };
 }
 
+async function actionMove(args: any, ctx: any) {
+  const fromScope =
+    (args.fromScope as Scope | undefined) ??
+    ((await ctx.services.findNoteScope(args.name, ctx.workspaceRoot, ctx.sessionId)) ?? undefined);
+  if (!fromScope) {
+    return {
+      title: "Move failed",
+      output: `Note "${args.name}" not found in any scope`,
+      isError: true,
+    };
+  }
+  try {
+    const r = await ctx.services.moveNote({
+      name: args.name,
+      fromScope,
+      toScope: args.toScope as Scope,
+      workspaceRoot: ctx.workspaceRoot,
+      sessionId: ctx.sessionId,
+    });
+    return {
+      title: "Note moved",
+      output: `Moved note "${args.name}" from ${fromScope} to ${args.toScope} scope.`,
+      metadata: r,
+    };
+  } catch (err) {
+    return {
+      title: "Move failed",
+      output: err instanceof Error ? err.message : String(err),
+      isError: true,
+    };
+  }
+}
+
 export async function execute(args: any, ctx: any): Promise<any> {
   const action = args.action;
   switch (action) {
@@ -99,6 +132,8 @@ export async function execute(args: any, ctx: any): Promise<any> {
       return actionUpdate(args, ctx);
     case "archive":
       return actionArchive(args, ctx);
+    case "move":
+      return actionMove(args, ctx);
   }
   return {
     title: "Invalid action",

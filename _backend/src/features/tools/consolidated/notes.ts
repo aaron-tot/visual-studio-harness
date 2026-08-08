@@ -4,6 +4,7 @@ import { notesCreateTool } from "../builtins/notes_create";
 import { notesReadTool } from "../builtins/notes_read";
 import { notesUpdateTool } from "../builtins/notes_update";
 import { notesArchiveTool } from "../builtins/notes_archive";
+import { notesMoveTool } from "../builtins/notes_move";
 
 /**
  * Consolidated `notes` tool.
@@ -26,6 +27,7 @@ const NOTES_ACTIONS = [
   "create",
   "update",
   "archive",
+  "move",
 ] as const;
 
 export type NotesAction = (typeof NOTES_ACTIONS)[number];
@@ -35,14 +37,17 @@ const ORIGINAL_TOOLS: Record<NotesAction, ToolDef> = {
   create: notesCreateTool,
   update: notesUpdateTool,
   archive: notesArchiveTool,
+  move: notesMoveTool,
 };
 
 const notesSchema = z.object({
-  action: z.enum(NOTES_ACTIONS).describe("Operation: read, create, update, archive"),
+  action: z.enum(NOTES_ACTIONS).describe("Operation: read, create, update, archive, move"),
   name: z.string().optional().describe("Note name"),
   title: z.string().optional().describe("Title"),
   body: z.string().optional().describe("Body"),
   scope: z.enum(["global", "project", "session"]).optional().describe("Scope"),
+  fromScope: z.enum(["global", "project", "session"]).optional().describe("Source scope (move)"),
+  toScope: z.enum(["global", "project", "session"]).optional().describe("Target scope (move)"),
 });
 
 export const notesTool: ToolDef = {

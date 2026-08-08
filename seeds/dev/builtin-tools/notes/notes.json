@@ -11,9 +11,10 @@
           "read",
           "create",
           "update",
-          "archive"
+          "archive",
+          "move"
         ],
-        "description": "Operation: read, create, update, archive"
+        "description": "Operation: read, create, update, archive, move"
       },
       "name": {
         "type": "string",
@@ -35,6 +36,24 @@
           "session"
         ],
         "description": "Scope"
+      },
+      "fromScope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Source scope (move; omit to resolve existing)"
+      },
+      "toScope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Target scope (move)"
       }
     },
     "required": [

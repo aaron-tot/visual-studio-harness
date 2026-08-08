@@ -11,9 +11,10 @@
           "create",
           "read",
           "edit",
-          "abandon"
+          "abandon",
+          "move"
         ],
-        "description": "Operation: create, read, edit, abandon"
+        "description": "Operation: create, read, edit, abandon, move"
       },
       "name": {
         "type": "string",
@@ -92,6 +93,24 @@
       "successor": {
         "type": "string",
         "description": "Replacement design name"
+      },
+      "fromScope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Source scope (move; omit to resolve existing)"
+      },
+      "toScope": {
+        "type": "string",
+        "enum": [
+          "global",
+          "project",
+          "session"
+        ],
+        "description": "Target scope (move)"
       }
     },
     "required": [

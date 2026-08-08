@@ -323,6 +323,39 @@ async function actionAbandon(args: any, ctx: any) {
   };
 }
 
+async function actionMove(args: any, ctx: any) {
+  const fromScope =
+    (args.fromScope as Scope | undefined) ??
+    ((await ctx.services.findDesignScope(args.name, ctx.workspaceRoot, ctx.sessionId)) ?? undefined);
+  if (!fromScope) {
+    return {
+      title: "Move failed",
+      output: `Design "${args.name}" not found in any scope`,
+      isError: true,
+    };
+  }
+  try {
+    const r = await ctx.services.moveDesign({
+      name: args.name,
+      fromScope,
+      toScope: args.toScope as Scope,
+      workspaceRoot: ctx.workspaceRoot,
+      sessionId: ctx.sessionId,
+    });
+    return {
+      title: "Design moved",
+      output: `Moved design "${args.name}" from ${fromScope} to ${args.toScope} scope.`,
+      metadata: r,
+    };
+  } catch (err) {
+    return {
+      title: "Move failed",
+      output: err instanceof Error ? err.message : String(err),
+      isError: true,
+    };
+  }
+}
+
 export async function execute(args: any, ctx: any): Promise<any> {
   const action = args.action;
   switch (action) {
@@ -334,6 +367,8 @@ export async function execute(args: any, ctx: any): Promise<any> {
       return actionEdit(args, ctx);
     case "abandon":
       return actionAbandon(args, ctx);
+    case "move":
+      return actionMove(args, ctx);
   }
   return {
     title: "Invalid action",

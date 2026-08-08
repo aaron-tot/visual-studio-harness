@@ -4,7 +4,7 @@ import { designTool } from "../consolidated/design";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-const DESIGN_ACTIONS = ["create", "read", "edit", "abandon"];
+const DESIGN_ACTIONS = ["create", "read", "edit", "abandon", "move"];
 
 // Create a temp directory for each test run
 let testDataDir: string;

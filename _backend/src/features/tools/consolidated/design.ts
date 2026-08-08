@@ -4,6 +4,7 @@ import { designCreateTool } from "../builtins/design_create";
 import { designReadTool } from "../builtins/design_read";
 import { designEditTool } from "../builtins/design_edit";
 import { designAbandonTool } from "../builtins/design_abandon";
+import { designMoveTool } from "../builtins/design_move";
 
 /**
  * Consolidated `design` tool.
@@ -17,11 +18,12 @@ import { designAbandonTool } from "../builtins/design_abandon";
  *   read    - Read a spec or plan document          (design_read)
  *   edit    - Edit a spec/plan (replace or patch)   (design_edit)
  *   abandon - Mark a design as abandoned            (design_abandon)
+ *   move    - Move a design to another scope        (design_move)
  *
  * Schema is a flat object: `action` is the only required field; all other
  * params are optional and shared across the sub-commands, each defined once.
  */
-const DESIGN_ACTIONS = ["create", "read", "edit", "abandon"] as const;
+const DESIGN_ACTIONS = ["create", "read", "edit", "abandon", "move"] as const;
 
 export type DesignAction = (typeof DESIGN_ACTIONS)[number];
 
@@ -30,10 +32,11 @@ const ORIGINAL_TOOLS: Record<DesignAction, ToolDef> = {
   read: designReadTool,
   edit: designEditTool,
   abandon: designAbandonTool,
+  move: designMoveTool,
 };
 
 const designSchema = z.object({
-  action: z.enum(DESIGN_ACTIONS).describe("Operation: create, read, edit, abandon"),
+  action: z.enum(DESIGN_ACTIONS).describe("Operation: create, read, edit, abandon, move"),
   name: z.string().optional().describe("Design directory name"),
   type: z.enum(["spec", "plan"]).optional().describe("Document type"),
   version: z.number().int().positive().optional().describe("Version"),
@@ -102,6 +105,8 @@ const designSchema = z.object({
     .describe("Partial doc to merge (RFC 7396) (object or valid JSON object string)"),
   reason: z.string().optional().describe("Abandon reason"),
   successor: z.string().optional().describe("Replacement design name"),
+  fromScope: z.enum(["global", "project", "session"]).optional().describe("Source scope (move)"),
+  toScope: z.enum(["global", "project", "session"]).optional().describe("Target scope (move)"),
 });
 
 export const designTool: ToolDef = {

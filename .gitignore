@@ -7,6 +7,7 @@ test-results/
 testing/test-results/
 scripts/generated/
 .superpowers/
+.superpowers/*
 .agentHarness/
 .momiji/
 .opencode/

@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { HookContext } from "../hooks/types";
-import type { ThinkingEffort, ToolSettings } from "../../../../_shared/types";
+import type { SearchProviderConfig, ThinkingEffort, ToolSettings } from "../../../../_shared/types";
 import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
 
 export type PermissionMode = "allow" | "ask" | "deny";
@@ -73,8 +73,24 @@ export interface BaseToolContext {
   hookCtx?: HookContext;
   /** Workspace graph service (may be null if not initialized) */
   graphService?: WorkspaceGraphService | null;
-  /** Per-tool timeout/limit settings from config.json, injected at turn start */
+  /**
+   * Per-tool timeout/limit settings. Folder tools get these injected from
+   * their own `<name>.json` by `folderToToolDef`; other paths may thread
+   * config.json-level settings here.
+   */
   toolSettings?: ToolSettings;
+  /**
+   * When true, the tool may access outside-workspace paths without asking
+   * (explicit deny/ask in perms files still take precedence). Injected from
+   * the tool's own `<name>.json` (`ToolConfig.externalAccess`).
+   */
+  externalAccess?: boolean;
+  /**
+   * Per-tool search providers, injected from the tool's own `<name>.json`
+   * (`ToolConfig.searchProviders`). Read by the searchOnline entry in
+   * preference to the global SearchProviderRegistry.
+   */
+  searchProviders?: SearchProviderConfig[];
   /** Provider name (displayName) of the LLM that invoked this tool */
   providerName?: string;
   /** Model name (modelName) of the LLM that invoked this tool */

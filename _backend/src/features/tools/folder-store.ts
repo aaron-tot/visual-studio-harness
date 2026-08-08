@@ -20,7 +20,10 @@ import { runFd } from "./host/fd";
 import { runRipgrep } from "./host/ripgrep";
 import { findSymbols, readSymbolRange } from "./host/symbols";
 import { runInPersistentBash } from "./host/pty-session";
-import { getSearchProviderRegistry } from "./host/search-provider-registry";
+import {
+  SearchProviderRegistry,
+  getSearchProviderRegistry,
+} from "./host/search-provider-registry";
 import {
   resolveNotesDir,
   allPossibleNotesDirs,
@@ -80,7 +83,7 @@ import { getSessionTodosJson, setSessionTodosJson } from "../sessions/db";
 import { localISOString } from "../../utils/datetime";
 import { customToolToToolDef, loadCustomToolDefs } from "../custom-tools/store";
 import type { BaseToolContext, ToolDef, ToolResult } from "./types";
-import type { ToolConfig } from "../../../../_shared/types";
+import type { SearchProviderConfig, ToolConfig, ToolSettings } from "../../../../_shared/types";
 
 export type ToolFolderKind = "builtin" | "custom";
 
@@ -301,6 +304,11 @@ export interface ToolCtx extends BaseToolContext {
     timeoutMs: number;
   }) => Promise<{ output: string; exitCode: number | null }>;
   getSearchProviderRegistry: typeof getSearchProviderRegistry;
+  /** Build a fresh SearchProviderRegistry from a provider list (for per-tool searchProviders). */
+  newSearchProviderRegistry: (providers: SearchProviderConfig[]) => SearchProviderRegistry;
+  /** Per-tool settings injected from the tool's own `<name>.json`. */
+  externalAccess?: boolean;
+  searchProviders?: SearchProviderConfig[];
   /** Format constants/helpers. */
   DEFAULT_GREP_MAX_MATCHES: number;
   clipLine: typeof clipLine;
@@ -360,6 +368,11 @@ export function resolveToolCtx(
         abortSignal: baseCtx.abortSignal,
       }),
     getSearchProviderRegistry,
+    newSearchProviderRegistry: (providers) => {
+      const reg = new SearchProviderRegistry();
+      reg.setAll(providers);
+      return reg;
+    },
     // ── format constants/helpers ─────────────────────────────────────
     DEFAULT_GREP_MAX_MATCHES,
     clipLine,
@@ -435,6 +448,57 @@ export function resolveToolCtx(
 
 type EntryExecute = (args: unknown, ctx: unknown) => Promise<unknown>;
 
+/**
+ * Map a tool's own name to the `ToolSettings` key its entry reads from the ctx.
+ * bash reads `ctx.toolSettings?.bash`; searchOnline/webfetch read `?.webFetch`.
+ */
+const TOOL_SETTINGS_KEY_BY_TOOL_NAME: Record<string, keyof ToolSettings> = {
+  bash: "bash",
+  searchOnline: "webFetch",
+  webfetch: "webFetch",
+};
+
+/**
+ * Convert a ToolConfig's `timeouts` into a `ToolSettings`-compatible object
+ * keyed by the tool name, so each entry reads its OWN folder's settings via
+ * `ctx.toolSettings?.<key>`. Returns undefined when the tool has no timeouts
+ * or no known settings key.
+ */
+export function toolSettingsFromConfig(config: ToolConfig): ToolSettings | undefined {
+  const key = TOOL_SETTINGS_KEY_BY_TOOL_NAME[config.name];
+  const t = config.timeouts;
+  if (!key || !t) return undefined;
+  if (key === "bash") {
+    return {
+      bash: {
+        timeoutMinMs: t.minMs,
+        timeoutMaxMs: t.maxMs,
+        timeoutDefaultMs: t.defaultMs,
+      },
+    };
+  }
+  return {
+    webFetch: {
+      timeoutMinSec: t.minSec,
+      timeoutMaxSec: t.maxSec,
+      timeoutDefaultSec: t.defaultSec,
+    },
+  };
+}
+
+/**
+ * Stamp the tool's own per-tool settings onto the ctx from its `<name>.json`.
+ * Folder settings are authoritative over any config.json-level values the
+ * runtime may still thread in.
+ */
+export function applyToolConfigSettings(ctx: ToolCtx, config: ToolConfig): void {
+  const ts = toolSettingsFromConfig(config);
+  if (ts) ctx.toolSettings = { ...(ctx.toolSettings ?? {}), ...ts };
+  if (config.externalAccess !== undefined) ctx.externalAccess = config.externalAccess;
+  if (config.searchProviders?.length) ctx.searchProviders = config.searchProviders;
+  if (config.subagent) ctx.subagent = config.subagent;
+}
+
 /** Convert a folder + entry into a ToolDef whose execute bridges to the ctx model. */
 export function folderToToolDef(
   folder: ToolFolder,
@@ -447,6 +511,7 @@ export function folderToToolDef(
     permissionDefault: folder.config.permissionDefault,
     execute: async (args: unknown, baseCtx: BaseToolContext): Promise<ToolResult> => {
       const ctx = resolveToolCtx(baseCtx, folder.config.name);
+      applyToolConfigSettings(ctx, folder.config);
       try {
         return normalizeToolResult(folder.config.name, await execute(args, ctx));
       } catch (err) {

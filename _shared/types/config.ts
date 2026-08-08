@@ -230,10 +230,13 @@ export interface KnowledgeBaseConfig {
 
 export interface ConfigFile {
   providers: ProviderConfig[];
+  /** @deprecated Search providers now live in `tools/builtin/searchOnline/searchOnline.json` (`ToolConfig.searchProviders`). Kept so existing configs still load. */
   searchProviders?: SearchProviderConfig[];
   knowledge?: KnowledgeBaseConfig;
   agents?: Record<string, AgentSettings>;
+  /** @deprecated Subagent settings now live in `tools/builtin/task/task.json` (`ToolConfig.subagent`). Kept so existing configs still load. */
   subagent?: SubagentToolSettings;
+  /** @deprecated Per-tool timeout settings now live in each tool's own `<name>.json` (`ToolConfig.timeouts`). Kept so existing configs still load. */
   toolSettings?: ToolSettings;
   systemPromptJoiners?: SystemPromptJoiners;
   additionalSystemInfo?: AdditionalSystemInfoSettings;
@@ -305,8 +308,19 @@ export interface ToolConfig {
   enabled: boolean;
   /** Default permission mode when the tool is first invoked. */
   permissionDefault: "allow" | "ask" | "deny";
-  /** Per-invocation timeout bounds (ms). */
-  timeouts?: { minMs?: number; maxMs?: number; defaultMs?: number };
+  /**
+   * Per-invocation timeout bounds for this tool. Units are per-tool:
+   * ms-based tools (bash) read minMs/maxMs/defaultMs; second-based tools
+   * (searchOnline/webfetch) read minSec/maxSec/defaultSec.
+   */
+  timeouts?: {
+    minMs?: number;
+    maxMs?: number;
+    defaultMs?: number;
+    minSec?: number;
+    maxSec?: number;
+    defaultSec?: number;
+  };
   /** When true, the tool may make external network calls. */
   externalAccess?: boolean;
   /** Subagent-specific scheduling options. */

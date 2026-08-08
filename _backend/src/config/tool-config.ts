@@ -9,6 +9,9 @@ const ToolTimeoutsSchema = z.object({
   minMs: z.number().int().nonnegative().optional(),
   maxMs: z.number().int().positive().optional(),
   defaultMs: z.number().int().positive().optional(),
+  minSec: z.number().int().nonnegative().optional(),
+  maxSec: z.number().int().positive().optional(),
+  defaultSec: z.number().int().positive().optional(),
 });
 
 const ToolSubagentSchema = z.object({

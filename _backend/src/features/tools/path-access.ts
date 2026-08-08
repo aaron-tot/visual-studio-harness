@@ -36,6 +36,12 @@ export async function resolveAccessiblePath(
   }
 
   if (mode === "ask") {
+    // Tool-level externalAccess (from the tool's own `<name>.json`) grants
+    // outside-workspace access without prompting. Explicit perms files still
+    // take precedence: `deny` above hard-blocks, `allow` falls through below.
+    if (ctx.externalAccess === true) {
+      return c.abs;
+    }
     const ok = await ctx.askPermission(externalKey, {
       path: userPath,
       absolutePath: c.abs,

@@ -179,10 +179,13 @@ export const SearchProviderConfigSchema = z.object({
 
 export const ConfigFileSchema = z.object({
   providers: z.array(ProviderConfigSchema),
+  /** @deprecated Search providers now live in each tool's `<name>.json` (`ToolConfig.searchProviders`). Kept so existing configs still load. */
   searchProviders: z.array(SearchProviderConfigSchema).default([]),
   knowledge: KnowledgeBaseConfigSchema.optional(),
   agents: z.record(AgentSettingsSchema).default({}),
+  /** @deprecated Subagent settings now live in `task.json` (`ToolConfig.subagent`). Kept so existing configs still load. */
   subagent: SubagentToolSettingsSchema.optional(),
+  /** @deprecated Per-tool timeout settings now live in each tool's own `<name>.json` (`ToolConfig.timeouts`). Kept so existing configs still load. */
   toolSettings: ToolSettingsSchema.optional(),
   db: DbConfigSchema.optional(),
   mcpServers: z.array(McpServerConfigSchema).default([]).optional(),

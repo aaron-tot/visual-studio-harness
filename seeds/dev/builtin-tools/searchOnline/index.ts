@@ -172,7 +172,13 @@ async function runSearch(
     };
   }
 
-  const registry = ctx.getSearchProviderRegistry();
+  // Prefer the tool's own searchProviders (from searchOnline.json, injected on
+  // the ctx by folderToToolDef); fall back to the global registry singleton.
+  const providers = ctx.searchProviders;
+  const registry =
+    providers && providers.length
+      ? ctx.newSearchProviderRegistry(providers)
+      : ctx.getSearchProviderRegistry();
   const options: SearchCallOptions = {
     query,
     type: typeof args.type === "string" ? args.type : "auto",

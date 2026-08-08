@@ -300,7 +300,10 @@ export async function runTurn(
       ? await registry.toFilteredAiSdkTools((callId) => ({
           sessionId, turnId: traceTurnId, workspaceRoot, dataDir,
           providerName, modelName,
-          toolSettings: config.toolSettings,
+          // Per-tool settings (timeouts, externalAccess, searchProviders,
+          // subagent) now come from each tool's own `<name>.json` and are
+          // injected by folderToToolDef — config.json's toolSettings is no
+          // longer threaded here.
           skillRoots: [join(dataDir, "mds", "_tools"), join(dataDir, "mds", "_skills")],
           abortSignal: abortSignal ?? new AbortController().signal,
           callId, hookCtx,

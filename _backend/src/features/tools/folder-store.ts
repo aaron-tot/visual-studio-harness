@@ -6,7 +6,79 @@ import { readToolConfig } from "../../config/tool-config";
 import { schemaToZod } from "../custom-tools/store";
 import { classifyPath, resolveWorkspacePath, SandboxError } from "./sandbox";
 import { resolveAccessiblePath } from "./path-access";
-import { formatNumberedLines, truncateText } from "./format";
+import {
+  DEFAULT_GREP_MAX_MATCHES,
+  clipLine,
+  countOccurrences,
+  formatNumberedLines,
+  truncateText,
+} from "./format";
+import { atomicWriteFile } from "./host/atomic-write";
+import { applyPatchText } from "./host/patch";
+import { findClosestMatch, formatSuggestion } from "./host/fuzzy-match";
+import { runFd } from "./host/fd";
+import { runRipgrep } from "./host/ripgrep";
+import { findSymbols, readSymbolRange } from "./host/symbols";
+import { runInPersistentBash } from "./host/pty-session";
+import { getSearchProviderRegistry } from "./host/search-provider-registry";
+import {
+  resolveNotesDir,
+  allPossibleNotesDirs,
+  findNoteDirByName,
+  listNotes,
+  createNote,
+  updateNote,
+  archiveNote,
+  type NotesScope,
+  type NoteEntry,
+  type CreateNoteParams,
+  type UpdateNoteParams,
+  type ArchiveNoteParams,
+} from "../../rest/notes";
+import {
+  resolveAuditsDir,
+  readAuditDocument,
+  listAudits,
+  createAudit,
+  findAuditScope,
+  editAudit,
+  deleteAudit,
+  type AuditScope,
+  type AuditEntry,
+  type CreateAuditParams,
+} from "../../rest/audits";
+import {
+  resolveAuditPromptsDir,
+  readPromptFile,
+  seedPromptsIfNeeded,
+  listPromptEntries,
+  createPrompt,
+  readPrompt,
+  editPrompt,
+  deletePrompt,
+  type AuditPromptEntry,
+  type CreatePromptParams,
+} from "../../rest/audit-prompts";
+import type { AuditPrompt } from "../../../../_shared/types/audit";
+import {
+  resolveDesignsDir,
+  createSpecDocument,
+  createPlanDocument,
+  listDesigns,
+  type DesignsScope,
+  type DesignEntry,
+  type CreateSpecParams,
+  type CreatePlanParams,
+} from "../../rest/plans";
+import { listAgents, type AgentFile } from "../agents/rest";
+import { KnowledgeBaseService } from "../knowledge-base/knowledge-base-service";
+import { openDocumentByIdOrFilename } from "../knowledge-base/service-queries";
+import { AGENT_FILENAME_PREFIX } from "../knowledge-base/constants";
+import type { KbScope } from "../knowledge-base/db";
+import { getSessionMetaPublic } from "../../storage/session";
+import { getSessionTodosJson, setSessionTodosJson } from "../sessions/db";
+import { localISOString } from "../../utils/datetime";
+import { customToolToToolDef, loadCustomToolDefs } from "../custom-tools/store";
 import type { BaseToolContext, ToolDef, ToolResult } from "./types";
 import type { ToolConfig } from "../../../../_shared/types";
 
@@ -98,6 +170,111 @@ function resolveEntryExecute(
   );
 }
 
+/**
+ * Services exposed to tool entries via `ctx.services`.
+ * `dataDir`-bound: every function that needs the runtime data dir already
+ * has it injected, so entries (which cannot import harness internals) never
+ * pass it themselves.
+ */
+export interface ToolServices {
+  // ── notes ──────────────────────────────────────────────────────────
+  resolveNotesDir: (
+    scope: NotesScope | undefined,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => string | null;
+  allPossibleNotesDirs: () => string[];
+  findNoteDirByName: (name: string) => Promise<string | null>;
+  listNotes: (
+    scope?: NotesScope,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => Promise<NoteEntry[]>;
+  createNote: (params: Omit<CreateNoteParams, "dataDir">) => Promise<{ path: string }>;
+  updateNote: (params: Omit<UpdateNoteParams, "dataDir">) => Promise<{ path: string }>;
+  archiveNote: (params: Omit<ArchiveNoteParams, "dataDir">) => Promise<{ archivedPath: string }>;
+
+  // ── audits ─────────────────────────────────────────────────────────
+  resolveAuditsDir: (
+    scope: AuditScope | undefined,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => string | null;
+  readAuditDocument: typeof readAuditDocument;
+  listAudits: (
+    scope?: AuditScope,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => Promise<AuditEntry[]>;
+  createAudit: (params: Omit<CreateAuditParams, "dataDir">) => Promise<{ path: string }>;
+  findAuditScope: (
+    name: string,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => Promise<AuditScope | null>;
+  editAudit: (
+    params: Omit<CreateAuditParams, "dataDir">
+  ) => Promise<{ path: string; scope: AuditScope }>;
+  deleteAudit: (
+    name: string,
+    scope?: AuditScope,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => Promise<void>;
+
+  // ── audit prompts ──────────────────────────────────────────────────
+  createPrompt: (
+    params: CreatePromptParams
+  ) => Promise<{ prompt: AuditPrompt; path: string }>;
+  editPrompt: (
+    id: string,
+    updates: Parameters<typeof editPrompt>[2]
+  ) => Promise<{ prompt: AuditPrompt; path: string } | null>;
+  deletePrompt: (id: string) => Promise<boolean>;
+  readPrompt: (id: string) => Promise<{ prompt: AuditPrompt; path: string } | null>;
+  readPromptFile: typeof readPromptFile;
+  listPromptEntries: () => Promise<AuditPromptEntry[]>;
+  resolveAuditPromptsDir: () => string;
+  seedPromptsIfNeeded: () => Promise<void>;
+
+  // ── plans ──────────────────────────────────────────────────────────
+  createSpecDocument: (
+    params: Omit<CreateSpecParams, "dataDir">
+  ) => Promise<{ path: string; planDir: string; version: number }>;
+  createPlanDocument: (
+    params: Omit<CreatePlanParams, "dataDir">
+  ) => Promise<{ path: string; planDir: string; version: number }>;
+  listDesigns: (
+    scope?: DesignsScope,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => Promise<DesignEntry[]>;
+  resolveDesignsDir: (
+    scope: DesignsScope | undefined,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => string | null;
+
+  // ── agents ─────────────────────────────────────────────────────────
+  listAgents: () => Promise<AgentFile[]>;
+
+  // ── knowledge base ─────────────────────────────────────────────────
+  KnowledgeBaseService: typeof KnowledgeBaseService;
+  openDocumentByIdOrFilename: (
+    scope: KbScope,
+    idOrFilename: string,
+    maxChars?: number,
+    workspaceRoot?: string,
+    sessionId?: string
+  ) => ReturnType<typeof openDocumentByIdOrFilename>;
+  AGENT_FILENAME_PREFIX: string;
+
+  // ── storage / sessions ─────────────────────────────────────────────
+  getSessionMetaPublic: (id: string) => ReturnType<typeof getSessionMetaPublic>;
+  getSessionTodosJson: (id: string) => string | null;
+  setSessionTodosJson: (id: string, todosJson: string) => void;
+}
+
 /** The harness-provided `ctx` passed to every folder tool entry. */
 export interface ToolCtx extends BaseToolContext {
   toolName: string;
@@ -109,6 +286,32 @@ export interface ToolCtx extends BaseToolContext {
   /** Formatting helpers. */
   formatNumberedLines: typeof formatNumberedLines;
   truncateText: typeof truncateText;
+  /** Host helpers (kept flat so entries don't have to dig into namespaces). */
+  atomicWriteFile: typeof atomicWriteFile;
+  applyPatchText: typeof applyPatchText;
+  findClosestMatch: typeof findClosestMatch;
+  formatSuggestion: typeof formatSuggestion;
+  runFd: typeof runFd;
+  runRipgrep: typeof runRipgrep;
+  findSymbols: typeof findSymbols;
+  readSymbolRange: typeof readSymbolRange;
+  runInPersistentBash: (opts: {
+    cwd: string;
+    command: string;
+    timeoutMs: number;
+  }) => Promise<{ output: string; exitCode: number | null }>;
+  getSearchProviderRegistry: typeof getSearchProviderRegistry;
+  /** Format constants/helpers. */
+  DEFAULT_GREP_MAX_MATCHES: number;
+  clipLine: typeof clipLine;
+  countOccurrences: typeof countOccurrences;
+  /** Datetime helper. */
+  localISOString: typeof localISOString;
+  /** Custom-tools store helpers. */
+  customToolToToolDef: typeof customToolToToolDef;
+  loadCustomToolDefs: typeof loadCustomToolDefs;
+  /** Rest / knowledge / storage services (dataDir-bound). */
+  services: ToolServices;
   /**
    * Extension points for later tasks (todo store, skill roots, subagent bridges).
    * Kept optional so they can be wired without circular imports.
@@ -128,6 +331,8 @@ export function resolveToolCtx(
   toolName: string,
   extensions?: Partial<ToolCtx>
 ): ToolCtx {
+  // Audit prompts live under a dataDir-derived directory; bind it once.
+  const promptsDir = () => resolveAuditPromptsDir(baseCtx.dataDir);
   const ctx: ToolCtx = {
     ...baseCtx,
     toolName,
@@ -139,6 +344,91 @@ export function resolveToolCtx(
       resolveAccessiblePath({ ...baseCtx, toolName }, userPath),
     formatNumberedLines,
     truncateText,
+    // ── host helpers (flat) ──────────────────────────────────────────
+    atomicWriteFile,
+    applyPatchText,
+    findClosestMatch,
+    formatSuggestion,
+    runFd,
+    runRipgrep,
+    findSymbols,
+    readSymbolRange,
+    runInPersistentBash: (opts) =>
+      runInPersistentBash({
+        ...opts,
+        sessionId: baseCtx.sessionId,
+        abortSignal: baseCtx.abortSignal,
+      }),
+    getSearchProviderRegistry,
+    // ── format constants/helpers ─────────────────────────────────────
+    DEFAULT_GREP_MAX_MATCHES,
+    clipLine,
+    countOccurrences,
+    localISOString,
+    customToolToToolDef,
+    loadCustomToolDefs,
+    // ── services (dataDir-bound) ─────────────────────────────────────
+    services: {
+      // notes
+      resolveNotesDir: (scope, workspaceRoot, sessionId) =>
+        resolveNotesDir(baseCtx.dataDir, scope, workspaceRoot, sessionId),
+      allPossibleNotesDirs: () => allPossibleNotesDirs(baseCtx.dataDir),
+      findNoteDirByName: (name) => findNoteDirByName(baseCtx.dataDir, name),
+      listNotes: (scope, workspaceRoot, sessionId) =>
+        listNotes(baseCtx.dataDir, scope, workspaceRoot, sessionId),
+      createNote: (params) => createNote({ ...params, dataDir: baseCtx.dataDir }),
+      updateNote: (params) => updateNote({ ...params, dataDir: baseCtx.dataDir }),
+      archiveNote: (params) => archiveNote({ ...params, dataDir: baseCtx.dataDir }),
+      // audits
+      resolveAuditsDir: (scope, workspaceRoot, sessionId) =>
+        resolveAuditsDir(baseCtx.dataDir, scope, workspaceRoot, sessionId),
+      readAuditDocument,
+      listAudits: (scope, workspaceRoot, sessionId) =>
+        listAudits(baseCtx.dataDir, scope, workspaceRoot, sessionId),
+      createAudit: (params) => createAudit({ ...params, dataDir: baseCtx.dataDir }),
+      findAuditScope: (name, workspaceRoot, sessionId) =>
+        findAuditScope(name, baseCtx.dataDir, workspaceRoot, sessionId),
+      editAudit: (params) => editAudit({ ...params, dataDir: baseCtx.dataDir }),
+      deleteAudit: (name, scope, workspaceRoot, sessionId) =>
+        deleteAudit(name, baseCtx.dataDir, scope, workspaceRoot, sessionId),
+      // audit prompts
+      createPrompt: (params) => createPrompt(promptsDir(), params),
+      editPrompt: (id, updates) => editPrompt(promptsDir(), id, updates),
+      deletePrompt: (id) => deletePrompt(promptsDir(), id),
+      readPrompt: (id) => readPrompt(promptsDir(), id),
+      readPromptFile,
+      listPromptEntries: () => listPromptEntries(promptsDir()),
+      resolveAuditPromptsDir: promptsDir,
+      seedPromptsIfNeeded: () => seedPromptsIfNeeded(promptsDir()),
+      // plans
+      createSpecDocument: (params) =>
+        createSpecDocument({ ...params, dataDir: baseCtx.dataDir }),
+      createPlanDocument: (params) =>
+        createPlanDocument({ ...params, dataDir: baseCtx.dataDir }),
+      listDesigns: (scope, workspaceRoot, sessionId) =>
+        listDesigns(baseCtx.dataDir, scope, workspaceRoot, sessionId),
+      resolveDesignsDir: (scope, workspaceRoot, sessionId) =>
+        resolveDesignsDir(baseCtx.dataDir, scope, workspaceRoot, sessionId),
+      // agents
+      listAgents: () => listAgents(baseCtx.dataDir),
+      // knowledge base
+      KnowledgeBaseService,
+      openDocumentByIdOrFilename: (scope, idOrFilename, maxChars, workspaceRoot, sessionId) =>
+        openDocumentByIdOrFilename(
+          baseCtx.dataDir,
+          scope,
+          idOrFilename,
+          maxChars,
+          workspaceRoot,
+          sessionId
+        ),
+      AGENT_FILENAME_PREFIX,
+      // storage / sessions
+      getSessionMetaPublic: (id) => getSessionMetaPublic(baseCtx.dataDir, id),
+      getSessionTodosJson: (id) => getSessionTodosJson(id, baseCtx.dataDir),
+      setSessionTodosJson: (id, todosJson) =>
+        setSessionTodosJson(id, todosJson, baseCtx.dataDir),
+    },
   };
   return extensions ? Object.assign(ctx, extensions) : ctx;
 }

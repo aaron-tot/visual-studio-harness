@@ -4,12 +4,13 @@
  * Usage:
  *   bun run scripts/build-installer.ts --target=bun-linux-x64-modern [--seed='{"mcps":[],"providers":[],"agents":[],"mds":[]}']
  *
- * Output: data/package/VSH_v1.0.0-{target-short}-installer
+ * Output: data/package/VSH_v{version}-{target-short}-installer
  */
 
 import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { VERSION } from "../_shared/version";
 
 const ROOT = join(import.meta.dir, "..");
 const PROJECT = join(ROOT, "..");
@@ -23,7 +24,7 @@ const seedFlag = process.argv.find(a => a.startsWith("--seed="));
 const seedArg = seedFlag ? seedFlag.split("=")[1] : "{}";
 const targetShort = target === "bun" ? "" : target.replace(/^bun-/, "") + "-";
 
-const portableName = `VSH_v1.0.0-${targetShort}`;
+const portableName = `VSH_v${VERSION}-${targetShort}`;
 const portablePath = join(PACKAGE_DIR, portableName);
 
 async function generateSeededData(): Promise<string> {
@@ -174,7 +175,7 @@ export const VEC0_SO_FILENAME = "vec0.so";
     await generateSeededData();
   }
 
-  const installerName = `VSH_v1.0.0-${targetShort}installer`;
+  const installerName = `VSH_v${VERSION}-${targetShort}installer`;
   const installerPath = join(PACKAGE_DIR, installerName);
 
   if (existsSync(installerPath)) {

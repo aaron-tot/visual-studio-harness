@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { ChevronDown, Globe, FolderOpen, Layers } from "lucide-react";
+import { ChevronDown, Globe, FolderOpen, Layers, Settings2 } from "lucide-react";
 import {
   getTools,
   getGlobalPerms,
@@ -18,6 +18,7 @@ import { PermModeSelect } from "./PermModeSelect";
 import { SearchProvidersPanel } from "./SearchProvidersPanel";
 import { SubagentSettingsCard } from "./SubagentSettingsCard";
 import { BashToolSettingsCard } from "./BashToolSettingsCard";
+import { ToolConfigEditor } from "./ToolConfigEditor";
 
 type PermLayer = "global" | "workspace" | "session";
 
@@ -117,6 +118,7 @@ export function ToolsPanel({ sessionId }: Props) {
   const [openSettings, setOpenSettings] = useState<Record<string, boolean>>({});
   const [openExt, setOpenExt] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState<string | null>(null);
+  const [editTool, setEditTool] = useState<string | null>(null);
 
   const lp = useLayerPerms(layer, sessionId, workspaceRoot);
 
@@ -253,7 +255,16 @@ export function ToolsPanel({ sessionId }: Props) {
                   />
                   {tool.name}
                 </div>
-                <div onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    title={`Edit ${tool.name} config`}
+                    aria-label={`Edit ${tool.name} config`}
+                    className="rounded p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800"
+                    onClick={() => setEditTool(tool.name)}
+                  >
+                    <Settings2 size={13} />
+                  </button>
                   <PermModeSelect
                     allowEmpty={isLayer}
                     emptyLabel="inherit"
@@ -382,6 +393,13 @@ export function ToolsPanel({ sessionId }: Props) {
           {layer === "global" ? "Reset global perms" : `Clear ${LAYER_LABELS[layer].toLowerCase()} perms`}
         </button>
       </div>
+
+      {editTool && (
+        <ToolConfigEditor
+          name={editTool}
+          onClose={() => setEditTool(null)}
+        />
+      )}
     </div>
   );
 }

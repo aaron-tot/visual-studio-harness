@@ -232,7 +232,7 @@ async function main() {
   registerPermsRoutes(app, DATA_DIR);
   registerOpenUrlRoutes(app);
   registerMdsRoutes(app, DATA_DIR);
-  registerToolsRoutes(app);
+  registerToolsRoutes(app, DATA_DIR);
   registerSkillsRoutes(app, DATA_DIR);
   registerAgentsRoutes(app, DATA_DIR);
   registerPlansRoutes(app, DATA_DIR);

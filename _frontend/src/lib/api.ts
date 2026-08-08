@@ -462,6 +462,81 @@ export function getTools() {
   return fetchJson<{ tools: ToolMeta[] }>(`${BASE}/tools`);
 }
 
+export interface ToolConfig {
+  name: string;
+  description: string;
+  entry: string;
+  inputSchema: Record<string, unknown>;
+  enabled: boolean;
+  permissionDefault: "allow" | "ask" | "deny";
+  timeouts?: {
+    minMs?: number;
+    maxMs?: number;
+    defaultMs?: number;
+    minSec?: number;
+    maxSec?: number;
+    defaultSec?: number;
+  };
+  externalAccess?: boolean;
+  subagent?: {
+    slotBusyPolicy?: string;
+    pollIntervalSec?: number;
+    waitTimeoutSec?: number;
+  };
+  searchProviders?: unknown[];
+  skill?: {
+    guide: string;
+    pushMode: "soft" | "hard" | "custom";
+    id?: string;
+    tags?: string[];
+    customPushText?: string;
+  };
+}
+
+export interface ToolConfigFile {
+  ok: boolean;
+  kind: "builtin" | "custom";
+  config: ToolConfig;
+  dir: string;
+}
+
+export function getToolConfig(name: string) {
+  return fetchJson<ToolConfigFile>(`${BASE}/tools/${encodeURIComponent(name)}/config`);
+}
+
+export function putToolConfig(name: string, config: ToolConfig) {
+  return fetchJson<{ ok: boolean; config: ToolConfig }>(
+    `${BASE}/tools/${encodeURIComponent(name)}/config`,
+    { method: "PUT", body: JSON.stringify(config) }
+  );
+}
+
+export function getToolEntry(name: string) {
+  return fetchJson<{ ok: boolean; name: string; entry: string; code: string }>(
+    `${BASE}/tools/${encodeURIComponent(name)}/entry`
+  );
+}
+
+export function putToolEntry(name: string, code: string) {
+  return fetchJson<{ ok: boolean; name: string; entry: string; code: string }>(
+    `${BASE}/tools/${encodeURIComponent(name)}/entry`,
+    { method: "PUT", body: JSON.stringify({ code }) }
+  );
+}
+
+export function getToolSkill(name: string) {
+  return fetchJson<{ ok: boolean; name: string; skill: string }>(
+    `${BASE}/tools/${encodeURIComponent(name)}/skill`
+  );
+}
+
+export function putToolSkill(name: string, skill: string) {
+  return fetchJson<{ ok: boolean; name: string; skill: string }>(
+    `${BASE}/tools/${encodeURIComponent(name)}/skill`,
+    { method: "PUT", body: JSON.stringify({ skill }) }
+  );
+}
+
 export interface CustomTool {
   name: string;
   description: string;

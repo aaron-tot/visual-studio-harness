@@ -5,6 +5,7 @@ import {
   createPlanViaApi,
   createSpecViaApi,
   deleteIdeaViaApi,
+  moveDesignViaApi,
 } from "../../../lib/api";
 import type { DesignLocation, DocMode, PlanScope } from "../types";
 import { scopeApiParams } from "../lib/scope-params";
@@ -197,6 +198,26 @@ export function usePlanMutations({
     [requireLocation, paramsOf, run]
   );
 
+  const move = useCallback(
+    async (designName: string, location: DesignLocation, toScope: PlanScope) => {
+      const blocked = requireLocation(location);
+      if (blocked) {
+        setResult(blocked);
+        return false;
+      }
+      return run(async () => {
+        await moveDesignViaApi({
+          name: designName,
+          fromScope: location.scope,
+          toScope,
+          ...paramsOf(location),
+        });
+        setResult(`"${designName}" moved`);
+      });
+    },
+    [requireLocation, paramsOf, run]
+  );
+
   return {
     busy,
     result,
@@ -207,6 +228,7 @@ export function usePlanMutations({
     abandon,
     archiveIdea,
     deleteIdea,
+    move,
     /** Location used for new creates under the active tab */
     createTarget: createLocation(scope, workspaceRoot, sessionId),
   };

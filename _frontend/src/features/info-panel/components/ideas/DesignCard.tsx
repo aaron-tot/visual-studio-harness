@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
-import { ChevronDown, ChevronRight, Copy, FileJson, Folder, Trash2 } from "lucide-react";
-import type { PlanEntry, DocMode, DesignLocation, InjectSub } from "../../types";
+import { ArrowRightFromLine, ChevronDown, ChevronRight, Copy, FileJson, Folder, Trash2 } from "lucide-react";
+import type { PlanEntry, DocMode, DesignLocation, InjectSub, PlanScope } from "../../types";
 import { countPartsProgress } from "../../lib/plan-status";
 import { scopeApiParams } from "../../lib/scope-params";
 import { updateDocViaApi } from "../../../../lib/api";
@@ -8,6 +8,7 @@ import { PanelButton } from "../ui";
 import { PlanActions } from "./PlanActions";
 import { DesignJsonModal } from "./DesignJsonModal";
 import { AbandonForm } from "./AbandonForm";
+import { MoveScopeModal } from "../MoveScopeModal";
 
 interface DesignCardProps {
   plan: PlanEntry;
@@ -24,6 +25,7 @@ interface DesignCardProps {
   onCancelAbandon: () => void;
   onConfirmAbandon: () => void;
   onAddVersion: (mode: DocMode) => void;
+  onMove: (toScope: PlanScope) => void;
   isInjected: (mode: DocMode, sub: InjectSub) => boolean;
   onToggleInject: (mode: DocMode, sub: InjectSub) => void;
   onResult: (msg: string) => void;
@@ -48,6 +50,7 @@ export function DesignCard({
   onCancelAbandon,
   onConfirmAbandon,
   onAddVersion,
+  onMove,
   isInjected,
   onToggleInject,
   onResult,
@@ -59,6 +62,7 @@ export function DesignCard({
   const [editingDoc, setEditingDoc] = useState<{ type: "spec" | "plan"; version: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [showJson, setShowJson] = useState(false);
+  const [showMove, setShowMove] = useState(false);
 
   const handleEdit = useCallback((type: "spec" | "plan", version: number) => {
     setEditingDoc({ type, version });
@@ -161,6 +165,16 @@ export function DesignCard({
         >
           <Trash2 size={12} />
         </button>
+        <button
+          type="button"
+          className="text-[9px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-sky-700 hover:text-sky-200 transition-colors shrink-0"
+          disabled={busy}
+          onClick={(e) => { e.stopPropagation(); setShowMove(true); }}
+          title="Move to another scope"
+        >
+          <ArrowRightFromLine size={10} className="inline mr-0.5" />
+          Move
+        </button>
       </div>
 
       {/* Expanded body */}
@@ -233,6 +247,19 @@ export function DesignCard({
           location={location}
           onRefresh={onRefresh}
           onResult={onResult}
+        />
+      )}
+
+      {/* Move to scope modal */}
+      {showMove && (
+        <MoveScopeModal
+          title={`Move design "${plan.name}"`}
+          currentScope={location.scope}
+          onClose={() => setShowMove(false)}
+          onMove={(toScope) => {
+            setShowMove(false);
+            onMove(toScope);
+          }}
         />
       )}
     </div>

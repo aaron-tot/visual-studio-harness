@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import type { PlanEntry } from "../../../../lib/api";
-import type { DesignGroup, DesignLocation, DocMode, InjectSub } from "../../types";
+import type { DesignGroup, DesignLocation, DocMode, InjectSub, PlanScope } from "../../types";
 import { planExpandKey } from "../../types";
 import { EmptyState } from "../ui";
 import { DesignCard } from "./DesignCard";
@@ -28,6 +28,7 @@ interface DesignGroupListProps {
   onDelete: (planName: string, location: DesignLocation) => void;
   onArchive: (planName: string, location: DesignLocation) => void;
   onAddVersion: (planName: string, mode: DocMode, location: DesignLocation) => void;
+  onMove: (planName: string, location: DesignLocation, toScope: PlanScope) => void;
   isInjected: (planName: string, mode: DocMode, sub: InjectSub) => boolean;
   onToggleInject: (plan: PlanEntry, mode: DocMode, sub: InjectSub) => void;
   onResult: (msg: string) => void;
@@ -50,6 +51,7 @@ function PlanRows({
   onDelete,
   onArchive,
   onAddVersion,
+  onMove,
   isInjected,
   onToggleInject,
   onResult,
@@ -71,6 +73,7 @@ function PlanRows({
   onDelete: (planName: string, location: DesignLocation) => void;
   onArchive: (planName: string, location: DesignLocation) => void;
   onAddVersion: (planName: string, mode: DocMode, location: DesignLocation) => void;
+  onMove: (planName: string, location: DesignLocation, toScope: PlanScope) => void;
   isInjected: (planName: string, mode: DocMode, sub: InjectSub) => boolean;
   onToggleInject: (plan: PlanEntry, mode: DocMode, sub: InjectSub) => void;
   onResult: (msg: string) => void;
@@ -100,6 +103,7 @@ function PlanRows({
               onDelete={() => onDelete(plan.name, group.location)}
               onArchive={() => onArchive(plan.name, group.location)}
               onAddVersion={(mode) => onAddVersion(plan.name, mode, group.location)}
+              onMove={(toScope) => onMove(plan.name, group.location, toScope)}
               isInjected={(mode, sub) => isInjected(plan.name, mode, sub)}
               onToggleInject={(mode, sub) => onToggleInject(plan, mode, sub)}
               onResult={onResult}
@@ -134,6 +138,7 @@ export function DesignGroupList({
   onDelete,
   onArchive,
   onAddVersion,
+  onMove,
   isInjected,
   onToggleInject,
   onResult,
@@ -214,6 +219,7 @@ export function DesignGroupList({
           onDelete={onDelete}
           onArchive={onArchive}
           onAddVersion={onAddVersion}
+          onMove={onMove}
           isInjected={isInjected}
           onToggleInject={onToggleInject}
           onResult={onResult}
@@ -306,6 +312,7 @@ export function DesignGroupList({
                   onDelete={onDelete}
                   onArchive={onArchive}
                   onAddVersion={onAddVersion}
+                  onMove={onMove}
                   isInjected={isInjected}
                   onToggleInject={onToggleInject}
                   onResult={onResult}

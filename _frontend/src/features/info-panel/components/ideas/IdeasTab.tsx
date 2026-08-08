@@ -165,6 +165,7 @@ export function IdeasTab({ active, scope }: IdeasTabProps) {
           onAddVersion={(name, mode, loc) =>
             void mutations.addVersion(name, mode, loc)
           }
+          onMove={(name, loc, toScope) => void mutations.move(name, loc, toScope)}
           isInjected={isInjected}
           onToggleInject={toggleInject}
           onResult={mutations.setResult}

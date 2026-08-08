@@ -474,4 +474,154 @@ describe("builtin entries (real data-folder path)", () => {
     expect(unknown.output).toContain("Unknown searchOnline action");
   });
 
+  it("loads the re-authored consolidated dispatchers with callable execute", async () => {
+    const defs = await loadSeededTools();
+    const byName = new Map(defs.map((d) => [d.name, d]));
+
+    for (const name of ["design", "notes", "audit", "graph", "knowledge", "todo"]) {
+      const def = byName.get(name);
+      expect(def, `${name} should be loaded`).toBeDefined();
+      expect(typeof def!.execute, `${name} execute callable`).toBe("function");
+    }
+  });
+
+  it("todo add->list->remove->clear round-trips through the session todos store", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const todo = defs.find((d) => d.name === "todo")!;
+
+    const add = await todo.execute({ action: "add", content: "hello todos" }, ctx);
+    expect(add.isError).toBeFalsy();
+    const id = add.metadata?.id as string;
+    expect(id).toBeTruthy();
+
+    const list = await todo.execute({ action: "list" }, ctx);
+    expect(list.isError).toBeFalsy();
+    expect(list.output).toContain("hello todos");
+    expect(list.metadata?.count).toBe(1);
+
+    const remove = await todo.execute({ action: "remove", id }, ctx);
+    expect(remove.isError).toBeFalsy();
+    expect(remove.metadata?.removed).toBe(true);
+
+    const afterRemove = await todo.execute({ action: "list" }, ctx);
+    expect(afterRemove.output).not.toContain("hello todos");
+    expect(afterRemove.metadata?.count).toBe(0);
+
+    const clear = await todo.execute({ action: "clear" }, ctx);
+    expect(clear.isError).toBeFalsy();
+    expect((await todo.execute({ action: "list" }, ctx)).metadata?.count).toBe(0);
+  });
+
+  it("notes create->list->read->update->archive round-trips in a temp dataDir", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const notes = defs.find((d) => d.name === "notes")!;
+
+    const create = await notes.execute(
+      { action: "create", name: "note-one", title: "Note One", body: "hello body", scope: "global" },
+      ctx
+    );
+    expect(create.isError).toBeFalsy();
+    expect(create.metadata?.created).toBe(true);
+
+    const list = await notes.execute({ action: "list", scope: "global" }, ctx);
+    expect(list.isError).toBeFalsy();
+    expect(list.output).toContain("note-one");
+
+    const read = await notes.execute({ action: "read", name: "note-one" }, ctx);
+    expect(read.isError).toBeFalsy();
+    expect(read.output).toContain("hello body");
+
+    const update = await notes.execute(
+      { action: "update", name: "note-one", body: "updated body" },
+      ctx
+    );
+    expect(update.isError).toBeFalsy();
+    const readAgain = await notes.execute({ action: "read", name: "note-one" }, ctx);
+    expect(readAgain.output).toContain("updated body");
+
+    const archive = await notes.execute({ action: "archive", name: "note-one" }, ctx);
+    expect(archive.isError).toBeFalsy();
+    expect(archive.metadata?.archived).toBe(true);
+  });
+
+  it("design create->list round-trips through ctx.services in a temp dataDir", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const design = defs.find((d) => d.name === "design")!;
+
+    const created = await design.execute(
+      { action: "create", name: "design-one", type: "spec", goal: "build X", scope: "global" },
+      ctx
+    );
+    expect(created.isError).toBeFalsy();
+    expect(created.metadata?.version).toBe(1);
+
+    const list = await design.execute({ action: "list", scope: "global" }, ctx);
+    expect(list.isError).toBeFalsy();
+    expect(list.output).toContain("design-one");
+  });
+
+  it("audit create->list round-trips in a temp dataDir", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const audit = defs.find((d) => d.name === "audit")!;
+
+    const created = await audit.execute(
+      {
+        action: "create",
+        name: "audit-one",
+        title: "Audit One",
+        auditType: "general_audit",
+        endGoal: "Check overall quality",
+        summary: "Everything looks fine",
+        findings: [
+          {
+            severity: "low",
+            title: "Minor nit",
+            description: "Small issue",
+            recommendation: "Fix it",
+            category: "style",
+          },
+        ],
+        scope: "global",
+      },
+      ctx
+    );
+    expect(created.isError).toBeFalsy();
+    expect(created.metadata?.created).toBe(true);
+
+    const list = await audit.execute({ action: "list", scope: "global" }, ctx);
+    expect(list.isError).toBeFalsy();
+    expect(list.output).toContain("audit-one");
+  });
+
+  it("graph returns a graceful error when the graph service is null", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const graph = defs.find((d) => d.name === "graph")!;
+
+    const result = await graph.execute({ action: "status" }, ctx);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("Graph service not available");
+  });
+
+  it("knowledge returns graceful errors when the KB is unavailable and lists empty gracefully", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const knowledge = defs.find((d) => d.name === "knowledge")!;
+
+    // KB service is not configured in this test env — search must not throw or
+    // hit the network; it returns an error result instead.
+    const search = await knowledge.execute({ action: "search", query: "example" }, ctx);
+    expect(search.isError).toBe(true);
+    expect(search.output).toContain("Knowledge Base");
+
+    // listDocuments on an empty temp dataDir returns no docs gracefully.
+    const list = await knowledge.execute({ action: "list", scope: "global" }, ctx);
+    expect(list.isError).toBeFalsy();
+    expect(list.output).toContain("No knowledge documents");
+  });
+
 });

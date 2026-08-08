@@ -63,7 +63,7 @@ const notesMoveChecked = notesSchema.superRefine((val, ctx) => {
 
 export const notesTool: ToolDef = {
   name: "notes",
-  description: "Create, read, update, and archive user notes. Set 'action' to pick the operation.",
+  description: "Create, read, update, archive, and move user notes. Set 'action' to pick the operation.",
   permissionDefault: "allow",
   inputSchema: notesMoveChecked,
   execute: async (args, ctx) => {

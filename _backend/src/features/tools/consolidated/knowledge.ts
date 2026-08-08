@@ -11,7 +11,7 @@ import { knowledgeDocumentMoveTool } from "../builtins/knowledge_document_move";
 /**
  * Consolidated `knowledge` tool.
  *
- * Replaces the 6 individual knowledge_* tools with a single registered tool
+ * Replaces the 7 individual knowledge_* tools with a single registered tool
  * that dispatches on a required `action` enum. Every sub-command forwards to
  * the original tool implementation, so behavior is identical to before.
  *

@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { createDocument } from "./service-mutations";
 import { moveDocumentAcrossScopes } from "./service-move";
 import { openKnowledgeDb, closeAllKnowledgeDbs } from "./db";
-import { knowledgeDocuments, knowledgeChunks, knowledgeRelationships } from "./schema";
+import { knowledgeDocuments, knowledgeChunks, knowledgeDocumentVersions, knowledgeRelationships } from "./schema";
 import { eq, or } from "drizzle-orm";
 import { MoveError } from "../../rest/scope-move";
 
@@ -51,6 +51,13 @@ describe("moveDocumentAcrossScopes", () => {
 
     const chunks = dst!.db.select().from(knowledgeChunks).where(eq(knowledgeChunks.documentId, doc.id)).all();
     expect(chunks.length).toBeGreaterThan(0);
+
+    const versions = dst!.db.select().from(knowledgeDocumentVersions).where(eq(knowledgeDocumentVersions.documentId, doc.id)).all();
+    expect(versions.length).toBeGreaterThan(0);
+    const fts = dst!.sqlite.query("SELECT count(*) AS c FROM knowledge_fts WHERE document_id = ?").get(doc.id) as { c: number };
+    expect(fts.c).toBe(chunks.length);
+    const srcChunks = src!.db.select().from(knowledgeChunks).where(eq(knowledgeChunks.documentId, doc.id)).all();
+    expect(srcChunks).toEqual([]);
   });
 
   it("throws MoveError(409) when target scope already has the filename", async () => {
@@ -124,5 +131,17 @@ describe("moveDocumentAcrossScopes", () => {
     expect(rels[0].id).toBe("rel-e-e");
     expect(rels[0].sourceDocumentId).toBe(a.id);
     expect(rels[0].targetDocumentId).toBe(a.id);
+  });
+
+  it("throws MoveError(404) when the source document does not exist", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "vsh-kb-move-"));
+    roots.push(dataDir);
+    try {
+      await moveDocumentAcrossScopes({ fromScope: "global", toScope: "session", documentId: "does-not-exist", dataDir, sessionId: "s1" });
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(MoveError);
+      expect((e as MoveError).code).toBe(404);
+    }
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Builtin `knowledge` tool — self-contained ctx entry.
  * Consolidated dispatcher: search / open / ingest / doc_create / doc_edit /
- * doc_delete.
+ * doc_delete / move.
  * Ported from builtins/knowledge_{search,open,ingest}.ts +
  * knowledge_document_{create,edit,delete}.ts. Uses ctx.services.knowledgeBase
  * (KnowledgeBaseService + openDocumentByIdOrFilename + AGENT_FILENAME_PREFIX).

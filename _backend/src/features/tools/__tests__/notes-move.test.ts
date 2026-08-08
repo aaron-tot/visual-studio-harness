@@ -60,5 +60,7 @@ describe("notes move action", () => {
     await writeFile(join(dir, "note.json"), JSON.stringify({ title: "T", body: "B", meta: {} }));
     const res = await notesMoveTool.execute({ name: "sess-note", toScope: "global" }, baseCtx(dataDir));
     expect(res.isError).toBeFalsy();
+    expect(res.output).toContain("from session to global");
+    expect(existsSync(join(dataDir, "notes", "sess-note", "note.json"))).toBe(true);
   });
 });

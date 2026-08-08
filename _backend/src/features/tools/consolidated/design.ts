@@ -9,7 +9,7 @@ import { designMoveTool } from "../builtins/design_move";
 /**
  * Consolidated `design` tool.
  *
- * Replaces the 4 individual design_* tools with a single registered tool that
+ * Replaces the 5 individual design_* tools with a single registered tool that
  * dispatches on a required `action` enum. Every sub-command forwards to the
  * original tool implementation, so behavior is identical to before.
  *
@@ -123,7 +123,7 @@ const designMoveChecked = designSchema.superRefine((val, ctx) => {
 export const designTool: ToolDef = {
   name: "design",
   description:
-    "Create, read, edit, and abandon spec/plan design documents. Set 'action' to pick the operation. " +
+    "Create, read, edit, abandon, and move spec/plan design documents. Set 'action' to pick the operation. " +
     "Parameters content, document, and patch accept JSON objects or valid JSON object strings. " +
     "See skill:design for the document structure and skill:design-edit for patch semantics.",
   permissionDefault: "allow",

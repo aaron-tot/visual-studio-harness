@@ -1,11 +1,6 @@
 import { useState } from "react";
 import type { PlanScope } from "../types";
-
-const SCOPE_LABELS: Record<PlanScope, string> = {
-  global: "Global",
-  project: "Project",
-  session: "Session",
-};
+import { scopeLabel } from "../lib/scope-params";
 
 interface MoveScopeModalProps {
   title: string;
@@ -26,7 +21,7 @@ export function MoveScopeModal({ title, currentScope, onClose, onMove }: MoveSco
       >
         <h3 className="text-sm font-medium text-zinc-100 mb-3">{title}</h3>
         <p className="text-xs text-zinc-500 mb-3">
-          Move this item from "{SCOPE_LABELS[currentScope]}" scope to another scope. The target
+          Move this item from "{scopeLabel(currentScope)}" scope to another scope. The target
           scope must be available (workspace for Project, session id for Session) and must not
           already contain an item with the same name.
         </p>
@@ -41,7 +36,7 @@ export function MoveScopeModal({ title, currentScope, onClose, onMove }: MoveSco
                   target === s ? "bg-zinc-700 text-zinc-100" : "bg-zinc-800 text-zinc-400"
                 }`}
               >
-                {SCOPE_LABELS[s]}
+                {scopeLabel(s)}
               </button>
             ))}
         </div>

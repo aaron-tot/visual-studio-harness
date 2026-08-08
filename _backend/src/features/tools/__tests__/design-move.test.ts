@@ -60,5 +60,7 @@ describe("design move action", () => {
     await writeFile(join(dir, "planV1.json"), JSON.stringify({ meta: { version: 1 } }));
     const res = await designMoveTool.execute({ name: "sess-design", toScope: "global" }, baseCtx(dataDir));
     expect(res.isError).toBeFalsy();
+    expect(res.output).toContain("from session to global");
+    expect(existsSync(join(dataDir, "designs", "sess-design", "planV1.json"))).toBe(true);
   });
 });

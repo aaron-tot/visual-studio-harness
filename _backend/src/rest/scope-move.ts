@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { rm } from "node:fs/promises";
+import { rename, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { copyRecursive } from "../features/mds/scope";
 
@@ -32,7 +32,14 @@ export async function moveScopedDir(
   if (existsSync(to)) {
     throw new MoveError(`target already exists: "${params.name}"`, 409);
   }
-  await copyRecursive(from, to);
+  const tmp = join(params.toDir, `.${params.name}.tmp-${process.pid}`);
+  try {
+    await copyRecursive(from, tmp);
+    await rename(tmp, to);
+  } catch (err) {
+    await rm(tmp, { recursive: true, force: true });
+    throw err;
+  }
   await rm(from, { recursive: true, force: true });
   return { fromPath: from, toPath: to };
 }

@@ -55,4 +55,17 @@ describe("moveScopedDir", () => {
       expect((e as MoveError).code).toBe(409);
     }
   });
+
+  it("cleans up the temp dir and leaves no partial target when the copy fails", async () => {
+    const root = await tmpRoot();
+    const fromDir = join(root, "from");
+    await mkdir(join(fromDir, "doc"), { recursive: true });
+    await writeFile(join(fromDir, "doc", "a.txt"), "x");
+    const toDir = join(root, "to");
+    await writeFile(toDir, "i am a file, not a dir");
+    await expect(moveScopedDir({ name: "doc", fromDir, toDir })).rejects.toThrow();
+    const leftovers = await (await import("node:fs/promises")).readdir(root);
+    expect(leftovers.filter((f) => f.includes(".tmp-"))).toEqual([]);
+    expect(existsSync(join(fromDir, "doc", "a.txt"))).toBe(true); // source intact
+  });
 });

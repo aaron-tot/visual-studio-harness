@@ -12,7 +12,7 @@ const roots: string[] = [];
 
 afterAll(async () => {
   closeAllKnowledgeDbs();
-  setKbService(null as any); // restore pristine default (uninitialized) so sibling tests see "service not initialized"
+  setKbService(null); // restore pristine default (uninitialized) so sibling tests see "service not initialized"
   for (const r of roots) await rm(r, { recursive: true, force: true });
 });
 
@@ -32,7 +32,7 @@ describe("knowledge move action", () => {
   });
 
   it("move tool errors when KB service not initialized", async () => {
-    setKbService(null as any);
+    setKbService(null);
     const res = await knowledgeDocumentMoveTool.execute(
       { documentId: "abc", toScope: "session" },
       { dataDir: "/tmp", sessionId: "s1", workspaceRoot: "/tmp" } as any,

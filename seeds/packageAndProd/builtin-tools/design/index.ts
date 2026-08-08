@@ -1,6 +1,6 @@
 /**
  * Builtin `design` tool — self-contained ctx entry.
- * Consolidated dispatcher: create / read / edit / abandon.
+ * Consolidated dispatcher: create / read / edit / abandon / move.
  * Ported from builtins/design_{create,read,edit,abandon}.ts.
  * Uses ctx.services (createSpecDocument/createPlanDocument/resolveDesignsDir)
  * and node:fs for versioned document read/edit.

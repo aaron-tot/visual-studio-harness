@@ -1,6 +1,6 @@
 /**
  * Builtin `notes` tool — self-contained ctx entry.
- * Consolidated dispatcher: read / create / update / archive.
+ * Consolidated dispatcher: read / create / update / archive / move.
  * Ported from builtins/notes_{read,create,update,archive}.ts.
  * Uses ctx.services (createNote/updateNote/archiveNote/resolveNotesDir)
  * and node:fs for the read path.

@@ -14,7 +14,7 @@ const KNOWLEDGE_ACTIONS = [
 ];
 
 describe("knowledge tool consolidation", () => {
-  it("registers a single consolidated 'knowledge' tool instead of 6 individual knowledge tools", () => {
+  it("registers a single consolidated 'knowledge' tool instead of 7 individual knowledge tools", () => {
     const registry = createDefaultRegistry();
     const names = registry.list().map((t) => t.name);
 

@@ -2,6 +2,7 @@ import { describe, it, expect, afterAll } from "bun:test";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { auditTool } from "../consolidated/audit";
 import { auditMoveTool } from "../builtins/audit_move";
 
@@ -61,5 +62,7 @@ describe("audit move action", () => {
     await writeFile(join(dir, "audit.json"), JSON.stringify({ meta: { id: "sess-audit", scope: "session" }, findings: [] }));
     const res = await auditMoveTool.execute({ name: "sess-audit", toScope: "global" }, baseCtx(dataDir));
     expect(res.isError).toBeFalsy();
+    expect(res.output).toContain("from session to global");
+    expect(existsSync(join(dataDir, "audits", "sess-audit", "audit.json"))).toBe(true);
   });
 });

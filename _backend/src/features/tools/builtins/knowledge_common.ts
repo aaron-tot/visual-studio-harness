@@ -2,7 +2,8 @@ import { KnowledgeBaseService } from "../../knowledge-base/knowledge-base-servic
 
 let kbService: KnowledgeBaseService | null = null;
 
-export function setKbService(service: KnowledgeBaseService): void {
+/** Test hook — pass `null` to reset to the pristine (uninitialized) default. */
+export function setKbService(service: KnowledgeBaseService | null): void {
   kbService = service;
 }
 

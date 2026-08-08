@@ -191,8 +191,8 @@ export interface ToolServices {
     workspaceRoot?: string,
     sessionId?: string
   ) => string | null;
-  allPossibleNotesDirs: () => string[];
-  findNoteDirByName: (name: string) => Promise<string | null>;
+  allPossibleNotesDirs: (sessionId?: string, workspaceRoot?: string) => string[];
+  findNoteDirByName: (name: string, sessionId?: string, workspaceRoot?: string) => Promise<string | null>;
   listNotes: (
     scope?: NotesScope,
     workspaceRoot?: string,
@@ -409,8 +409,10 @@ export function resolveToolCtx(
       // notes
       resolveNotesDir: (scope, workspaceRoot, sessionId) =>
         resolveNotesDir(baseCtx.dataDir, scope, workspaceRoot, sessionId),
-      allPossibleNotesDirs: () => allPossibleNotesDirs(baseCtx.dataDir),
-      findNoteDirByName: (name) => findNoteDirByName(baseCtx.dataDir, name),
+      allPossibleNotesDirs: (sessionId, workspaceRoot) =>
+        allPossibleNotesDirs(baseCtx.dataDir, sessionId, workspaceRoot),
+      findNoteDirByName: (name, sessionId, workspaceRoot) =>
+        findNoteDirByName(baseCtx.dataDir, name, sessionId, workspaceRoot),
       listNotes: (scope, workspaceRoot, sessionId) =>
         listNotes(baseCtx.dataDir, scope, workspaceRoot, sessionId),
       createNote: (params) => createNote({ ...params, dataDir: baseCtx.dataDir }),

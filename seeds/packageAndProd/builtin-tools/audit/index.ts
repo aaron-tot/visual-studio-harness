@@ -1,6 +1,6 @@
 /**
  * Builtin `audit` tool — self-contained ctx entry.
- * Consolidated dispatcher: create / read / edit / delete / prompt_*.
+ * Consolidated dispatcher: create / read / edit / delete / move / prompt_*.
  * Ported from builtins/audit_{create,read,edit,delete}.ts +
  * audit_prompt_{create,list,read,edit,delete}.ts.
  * Uses ctx.services (audits + audit-prompts) and node:fs for the read/delete paths.

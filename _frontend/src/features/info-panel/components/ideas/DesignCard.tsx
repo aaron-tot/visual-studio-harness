@@ -100,7 +100,8 @@ export function DesignCard({
   const progress = countPartsProgress(plan);
 
   return (
-    <div className={abandoned ? "opacity-60" : undefined}>
+    <>
+      <div className={abandoned ? "opacity-60" : undefined}>
       {/* Header row */}
       <div
         className={`w-full flex items-center gap-1 pr-3 py-1.5 hover:bg-zinc-900 transition-colors group cursor-pointer ${
@@ -250,7 +251,7 @@ export function DesignCard({
         />
       )}
 
-      {/* Move to scope modal */}
+      {/* Move to scope modal — sibling of the card div so abandoned opacity-60 does not apply */}
       {showMove && (
         <MoveScopeModal
           title={`Move design "${plan.name}"`}
@@ -262,6 +263,7 @@ export function DesignCard({
           }}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }

@@ -14,7 +14,7 @@ import { auditPromptDeleteTool } from "../builtins/audit_prompt_delete";
 /**
  * Consolidated `audit` tool.
  *
- * Replaces the 9 individual audit_* tools with a single registered tool that
+ * Replaces the 10 individual audit_* tools with a single registered tool that
  * dispatches on a required `action` enum. Every sub-command forwards to the
  * original tool implementation, so behavior is identical to before.
  *
@@ -23,6 +23,7 @@ import { auditPromptDeleteTool } from "../builtins/audit_prompt_delete";
  *   read          - Read a full audit document JSON by name            (audit_read)
  *   edit          - Overwrite an existing audit document on disk       (audit_edit)
  *   delete        - Delete an audit document by name                   (audit_delete)
+ *   move          - Move an audit to another scope                     (audit_move)
  *   prompt_create - Create a reusable audit prompt preset              (audit_prompt_create)
  *   prompt_list   - List all audit prompt presets                      (audit_prompt_list)
  *   prompt_read   - Read a specific audit prompt preset by id          (audit_prompt_read)

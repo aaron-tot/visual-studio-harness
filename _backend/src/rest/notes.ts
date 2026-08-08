@@ -24,12 +24,17 @@ export function resolveNotesDir(
   }
 }
 
-/** All possible notes directories for a given dataDir (used for fallback search). */
-export function allPossibleNotesDirs(dataDir: string, sessionId?: string): string[] {
-  const dirs = [join(dataDir, "notes")];
+/** All possible notes directories for a given dataDir (session → project → global). */
+export function allPossibleNotesDirs(
+  dataDir: string,
+  sessionId?: string,
+  workspaceRoot?: string,
+): string[] {
+  const dirs: string[] = [];
   if (sessionId) dirs.push(join(dataDir, "session", sessionId, "notes"));
-  // legacy pre-session-hash fallback
-  dirs.push(join(dataDir, "session", "notes"));
+  if (workspaceRoot) dirs.push(join(resolve(workspaceRoot), ".agentHarness", "notes"));
+  dirs.push(join(dataDir, "notes"));
+  dirs.push(join(dataDir, "session", "notes")); // legacy pre-session-hash fallback
   return dirs;
 }
 
@@ -38,8 +43,9 @@ export async function findNoteDirByName(
   dataDir: string,
   name: string,
   sessionId?: string,
+  workspaceRoot?: string,
 ): Promise<string | null> {
-  for (const dir of allPossibleNotesDirs(dataDir, sessionId)) {
+  for (const dir of allPossibleNotesDirs(dataDir, sessionId, workspaceRoot)) {
     const nd = join(dir, name);
     if (existsSync(nd)) return nd;
   }
@@ -105,7 +111,7 @@ export async function listNotes(
   sessionId?: string
 ): Promise<NoteEntry[]> {
   // Search all possible notes directories
-  const allDirs = allPossibleNotesDirs(dataDir, sessionId);
+  const allDirs = allPossibleNotesDirs(dataDir, sessionId, workspaceRoot);
   const results: NoteEntry[] = [];
 
   for (const dir of allDirs) {
@@ -197,7 +203,7 @@ export async function updateNote(params: UpdateNoteParams): Promise<{ path: stri
   let fp = join(nd, "note.json");
   if (!existsSync(fp)) {
     // Fallback: search all possible notes directories
-    const foundDir = await findNoteDirByName(params.dataDir, params.name, params.sessionId);
+    const foundDir = await findNoteDirByName(params.dataDir, params.name, params.sessionId, params.workspaceRoot);
     if (!foundDir) {
       throw new Error("note not found");
     }
@@ -238,7 +244,7 @@ export async function archiveNote(params: ArchiveNoteParams): Promise<{ archived
   }
   let nd = join(notesDir, params.name);
   if (!existsSync(nd)) {
-    const foundDir = await findNoteDirByName(params.dataDir, params.name, params.sessionId);
+    const foundDir = await findNoteDirByName(params.dataDir, params.name, params.sessionId, params.workspaceRoot);
     if (!foundDir) {
       throw new Error("note not found");
     }

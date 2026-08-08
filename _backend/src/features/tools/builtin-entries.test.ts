@@ -303,4 +303,173 @@ describe("builtin entries (real data-folder path)", () => {
     expect(result.isError).toBe(true);
     expect(result.output).toContain("file not found");
   });
+
+  it("loads the complex re-authored builtins from real seeds with callable execute", async () => {
+    const defs = await loadSeededTools();
+    const byName = new Map(defs.map((d) => [d.name, d]));
+
+    // skill / customTool / task / agent_change have their own folders.
+    // websearch + webfetch were consolidated into searchOnline (action dispatch).
+    for (const name of ["skill", "customTool", "task", "agent_change", "searchOnline"]) {
+      const def = byName.get(name);
+      expect(def, `${name} should be loaded`).toBeDefined();
+      expect(typeof def!.execute, `${name} execute callable`).toBe("function");
+    }
+  });
+
+  it("customTool create->list->read->delete round-trips in a temp dataDir", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const ct = defs.find((d) => d.name === "customTool")!;
+
+    const create = await ct.execute(
+      {
+        action: "create",
+        name: "hello_util",
+        description: "says hi",
+        code: "return 'hi ' + args.who;",
+      },
+      ctx
+    );
+    expect(create.isError).toBeFalsy();
+    expect(create.output).toContain("created successfully");
+
+    const list = await ct.execute({ action: "list" }, ctx);
+    expect(list.isError).toBeFalsy();
+    expect(list.output).toContain("hello_util");
+
+    const read = await ct.execute({ action: "read", name: "hello_util" }, ctx);
+    expect(read.isError).toBeFalsy();
+    expect(read.output).toContain("says hi");
+    expect(read.output).toContain("hello_util");
+
+    const update = await ct.execute(
+      { action: "update", name: "hello_util", description: "says hello" },
+      ctx
+    );
+    expect(update.isError).toBeFalsy();
+    expect(update.output).toContain("updated successfully");
+
+    const readAgain = await ct.execute({ action: "read", name: "hello_util" }, ctx);
+    expect(readAgain.output).toContain("says hello");
+
+    const del = await ct.execute({ action: "delete", name: "hello_util" }, ctx);
+    expect(del.isError).toBeFalsy();
+    expect(del.output).toContain("deleted successfully");
+
+    const listAfter = await ct.execute({ action: "list" }, ctx);
+    expect(listAfter.output).not.toContain("hello_util");
+  });
+
+  it("customTool rejects invalid names/unknown actions gracefully", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const ct = defs.find((d) => d.name === "customTool")!;
+
+    const badName = await ct.execute(
+      { action: "create", name: "bad name!", description: "x", code: "return 1;" },
+      ctx
+    );
+    expect(badName.isError).toBe(true);
+    expect(badName.output).toContain("invalid name");
+
+    const badAction = await ct.execute({ action: "explode" }, ctx);
+    expect(badAction.isError).toBe(true);
+    expect(badAction.output).toContain("unknown action");
+  });
+
+  it("skill list and read resolve a temp skill file under the default ctx skill roots", async () => {
+    await mkdir(join(dataDir, "mds", "_skills", "my-skill"), { recursive: true });
+    await writeFile(
+      join(dataDir, "mds", "_skills", "my-skill", "SKILL.md"),
+      "# My Skill\n\nHelpful guidance.\n"
+    );
+
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const skill = defs.find((d) => d.name === "skill")!;
+
+    const list = await skill.execute({ mode: "list" }, ctx);
+    expect(list.isError).toBeFalsy();
+    expect(list.output).toContain("my-skill");
+
+    const read = await skill.execute({ name: "my-skill" }, ctx);
+    expect(read.isError).toBeFalsy();
+    expect(read.output).toContain("# My Skill");
+
+    const missing = await skill.execute({ name: "does-not-exist" }, ctx);
+    expect(missing.isError).toBe(true);
+    expect(missing.output).toContain("not found");
+  });
+
+  it("skill list mode returns an error when no skill is named for content mode", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const skill = defs.find((d) => d.name === "skill")!;
+
+    const result = await skill.execute({ mode: "content" }, ctx);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("'name' is required");
+  });
+
+  it("agent_change returns a graceful error when only one agent exists", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const ac = defs.find((d) => d.name === "agent_change")!;
+
+    const result = await ac.execute({ suggestedAgent: "x", reason: "y" }, ctx);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("Only one agent configuration exists");
+  });
+
+  it("task returns graceful errors for missing args and when the subagent bridge is absent", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const task = defs.find((d) => d.name === "task")!;
+
+    const missingArgs = await task.execute({}, ctx);
+    expect(missingArgs.isError).toBe(true);
+    expect(missingArgs.output).toContain("required");
+
+    // Full args, but the ctx.subagent bridge is not wired in this test env:
+    // must return an error result rather than throw or hit the network.
+    const noBridge = await task.execute(
+      { agent_name: "main", description: "probe", prompt: "do nothing" },
+      ctx
+    );
+    expect(noBridge.isError).toBe(true);
+    expect(noBridge.output).toContain("not available");
+  });
+
+  it("searchOnline search returns a graceful error without hitting the network when no providers are registered", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const searchOnline = defs.find((d) => d.name === "searchOnline")!;
+
+    const noQuery = await searchOnline.execute({ action: "search" }, ctx);
+    expect(noQuery.isError).toBe(true);
+    expect(noQuery.output).toContain("query is required");
+
+    const noProviders = await searchOnline.execute({ action: "search", query: "example" }, ctx);
+    expect(noProviders.isError).toBe(true);
+    expect(noProviders.output).toContain("Unknown error");
+  });
+
+  it("searchOnline fetch returns a graceful error for missing/invalid URLs", async () => {
+    const defs = await loadSeededTools();
+    const ctx = fakeBaseCtx(dataDir, ws);
+    const searchOnline = defs.find((d) => d.name === "searchOnline")!;
+
+    const noUrl = await searchOnline.execute({ action: "fetch" }, ctx);
+    expect(noUrl.isError).toBe(true);
+    expect(noUrl.output).toContain("url is required");
+
+    const badUrl = await searchOnline.execute({ action: "fetch", url: "not-a-url" }, ctx);
+    expect(badUrl.isError).toBe(true);
+    expect(badUrl.output).toContain("must start with http");
+
+    const unknown = await searchOnline.execute({ action: "bogus" }, ctx);
+    expect(unknown.isError).toBe(true);
+    expect(unknown.output).toContain("Unknown searchOnline action");
+  });
 });

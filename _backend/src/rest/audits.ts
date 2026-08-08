@@ -1,9 +1,10 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { join, resolve } from "node:path";
-import { readdir, readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { AuditDocument } from "../../../_shared/types/audit";
 import { mkdirDurable, writeFileDurable } from "../utils/fs";
+import { moveScopedDir, MoveError } from "./scope-move";
 
 export type AuditScope = "global" | "project" | "session";
 
@@ -197,6 +198,34 @@ export async function deleteAudit(
   await rm(nd, { recursive: true, force: true });
 }
 
+export interface MoveAuditParams {
+  name: string;
+  fromScope: AuditScope;
+  toScope: AuditScope;
+  dataDir: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}
+
+export async function moveAudit(
+  params: MoveAuditParams,
+): Promise<{ fromPath: string; toPath: string; scope: AuditScope }> {
+  const fromDir = resolveAuditsDir(params.dataDir, params.fromScope, params.workspaceRoot, params.sessionId);
+  const toDir = resolveAuditsDir(params.dataDir, params.toScope, params.workspaceRoot, params.sessionId);
+  if (!fromDir) throw new MoveError(`source scope "${params.fromScope}" not available`, 400);
+  if (!toDir) throw new MoveError(`target scope "${params.toScope}" not available`, 400);
+  const r = await moveScopedDir({ name: params.name, fromDir, toDir });
+  const fp = join(r.toPath, "audit.json");
+  try {
+    const doc = JSON.parse(await readFile(fp, "utf-8")) as { meta?: Record<string, unknown> };
+    if (doc.meta && typeof doc.meta === "object") doc.meta.scope = params.toScope;
+    await writeFile(fp, JSON.stringify(doc, null, 2) + "\n");
+  } catch {
+    // missing/unparseable audit.json — leave as-is
+  }
+  return { ...r, scope: params.toScope };
+}
+
 function validateScope(
   scope: string | undefined,
   workspaceRoot: string | undefined,
@@ -340,5 +369,31 @@ export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
     }
     await deleteAudit(name, dataDir, result.sc, workspaceRoot, sessionId);
     return { ok: true };
+  });
+
+  app.post<{
+    Body: {
+      name: string;
+      fromScope?: string;
+      toScope?: string;
+      workspaceRoot?: string;
+      sessionId?: string;
+    };
+  }>("/api/audits/move", async (request, reply) => {
+    const { name, fromScope, toScope, workspaceRoot, sessionId } = request.body;
+    if (!name?.trim()) return reply.code(400).send({ error: "name is required" });
+    const fs_ = (fromScope as AuditScope) || "global";
+    const ts = (toScope as AuditScope) || "global";
+    if (!["global", "project", "session"].includes(fs_) || !["global", "project", "session"].includes(ts)) {
+      return reply.code(400).send({ error: "invalid scope" });
+    }
+    if (fs_ === ts) return reply.code(400).send({ error: "from and to scopes are the same" });
+    try {
+      const result = await moveAudit({ name: name.trim(), fromScope: fs_, toScope: ts, dataDir, workspaceRoot, sessionId });
+      return { ok: true, ...result };
+    } catch (err) {
+      if (err instanceof MoveError) return reply.code(err.code).send({ error: err.message });
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 }

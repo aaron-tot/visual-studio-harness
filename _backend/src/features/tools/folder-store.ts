@@ -46,6 +46,7 @@ import {
   findAuditScope,
   editAudit,
   deleteAudit,
+  moveAudit,
   type AuditScope,
   type AuditEntry,
   type CreateAuditParams,
@@ -224,6 +225,9 @@ export interface ToolServices {
     workspaceRoot?: string,
     sessionId?: string
   ) => Promise<void>;
+  moveAudit: (
+    params: Omit<import("../../rest/audits").MoveAuditParams, "dataDir">
+  ) => Promise<{ fromPath: string; toPath: string; scope: import("../../rest/audits").AuditScope }>;
 
   // ── audit prompts ──────────────────────────────────────────────────
   createPrompt: (
@@ -404,6 +408,7 @@ export function resolveToolCtx(
       editAudit: (params) => editAudit({ ...params, dataDir: baseCtx.dataDir }),
       deleteAudit: (name, scope, workspaceRoot, sessionId) =>
         deleteAudit(name, baseCtx.dataDir, scope, workspaceRoot, sessionId),
+      moveAudit: (params) => moveAudit({ ...params, dataDir: baseCtx.dataDir }),
       // audit prompts
       createPrompt: (params) => createPrompt(promptsDir(), params),
       editPrompt: (id, updates) => editPrompt(promptsDir(), id, updates),

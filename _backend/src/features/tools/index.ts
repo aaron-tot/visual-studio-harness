@@ -1,4 +1,5 @@
 import { createRegistry, type ToolRegistry } from "./registry";
+import { loadToolsFromFolders } from "./folder-store";
 import { readTool } from "./builtins/read";
 import { writeTool } from "./builtins/write";
 import { editTool } from "./builtins/edit";
@@ -77,10 +78,54 @@ export function createDefaultRegistry(
   return registry;
 }
 
+/**
+ * Build a registry from the data folders (`data/tools/{builtin,custom}/<name>/`).
+ * Additive during migration: `createDefaultRegistry` (compiled builtins) is unchanged;
+ * the run-turn call site switches to this once builtins are re-authored + cloned.
+ */
+export async function createFolderRegistry(
+  dataDir: string,
+  opts?: CreateRegistryOptions,
+  agents?: Record<string, AgentSettings>
+): Promise<ToolRegistry> {
+  const folderTools = await loadToolsFromFolders(dataDir);
+  setDefaultTools(folderTools);
+  const registry = createRegistry();
+  const exclude = new Set(opts?.exclude ?? []);
+  for (const t of folderTools) {
+    if (exclude.has(t.name)) {
+      continue;
+    }
+    if (t.name === "task") {
+      registry.register(makeTaskTool(agents));
+    } else {
+      registry.register(t);
+    }
+  }
+  if (opts?.extraTools) {
+    for (const t of opts.extraTools) {
+      if (!exclude.has(t.name)) {
+        registry.register(t);
+      }
+    }
+  }
+  return registry;
+}
+
 export { createRegistry } from "./registry";
 export type { ToolRegistry } from "./registry";
 export type { ToolDef, BaseToolContext, ExtendedToolContext, ToolResult } from "./types";
 export { isStopTurnResult } from "./types";
+export {
+  listToolFolders,
+  loadToolEntry,
+  loadToolsFromFolders,
+  resolveToolCtx,
+  folderToToolDef,
+  normalizeToolResult,
+  type ToolFolder,
+  type ToolCtx,
+} from "./folder-store";
 export { getWorkspaceRoot, resolveWorkspacePath, classifyPath } from "./sandbox";
 export { resolveAccessiblePath, EXTERNAL_DIRECTORY_PREFIX } from "./path-access";
 export { toolsEnabled, toolsTrusted } from "./permissions";

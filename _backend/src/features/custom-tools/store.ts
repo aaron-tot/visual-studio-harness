@@ -121,9 +121,9 @@ function buildEffectiveDescription(tool: CustomTool): string {
 }
 
 /**
- * Convert a CustomTool JSON Schema to a Zod schema for use as a ToolDef.inputSchema.
+ * Convert a JSON Schema to a Zod schema for use as a ToolDef.inputSchema.
  */
-function schemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
+export function schemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
   if (schema?.type === "object" && schema?.properties && typeof schema.properties === "object") {
     const required = Array.isArray(schema.required) ? schema.required as string[] : [];
     const shape: Record<string, z.ZodTypeAny> = {};

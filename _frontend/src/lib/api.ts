@@ -11,7 +11,8 @@ import type {
   AgentSettings,
   TurnStepRawDetail,
   TurnRawCapture,
-} from "../../_shared/types";
+  AppInfo,
+} from "@shared/types";
 
 const BASE = "/api";
 
@@ -759,10 +760,8 @@ export function getGraphExports(filePath: string, workspaceRoot?: string) {
   return fetchJson<GraphExportRecord[]>(`${BASE}/workspace-graph/exports?${qs}`);
 }
 
-export interface AppInfo {
-  buildTimestamp: string | null;
-  installedAt: string | null;
-}
+// AppInfo now comes from _shared/types/app-info
+import { type AppInfo } from "../../../_shared/types";
 
 export function updateDocViaApi(body: {
   name: string;

@@ -3,6 +3,7 @@ import { TestingV3Tab } from "../../features/info-panel/components/testing-v3/Te
 import { useProximityPanel } from "../../hooks/useProximityPanel";
 import { ProximityRail } from "./ProximityRail";
 import { getAppInfo, runMasterTest, getMasterTestResult, type AppInfo, type MasterTestResult } from "../../lib/api";
+import { FULL_VERSION } from "@shared/version";
 
 interface SidebarProps {
   search: string;
@@ -109,7 +110,7 @@ export function Sidebar({ search }: SidebarProps) {
       >
         <TestingV3Tab search={search} />
         <div className="mt-auto px-3 py-2 text-[10px] text-zinc-600 select-none relative group/version flex items-center gap-1.5">
-          <span>0.0.1-alpha (Pre-Release)</span>
+          <span>{appInfo?.version ? `${appInfo.version} (${import.meta.env.DEV ? "Dev" : "Prod"})` : FULL_VERSION}</span>
           {import.meta.env.DEV && (
             <button
               onClick={async () => {
@@ -169,16 +170,27 @@ export function Sidebar({ search }: SidebarProps) {
           )}
           <div className="hidden group-hover/version:block absolute bottom-full left-0 mb-1 z-50 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[10px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
             {import.meta.env.DEV ? (
-              <div>Dev</div>
+              <>
+                <div>Dev</div>
+                <div>Version: {FULL_VERSION}</div>
+              </>
             ) : appInfo?.installedAt ? (
               <>
+                {appInfo?.version && (
+                  <div>Version: {appInfo.version}</div>
+                )}
                 {appInfo?.buildTimestamp && (
                   <div>Packed: {formatDateTime(appInfo.buildTimestamp)}</div>
                 )}
                 <div>Installed: {formatDateTime(appInfo.installedAt)}</div>
               </>
             ) : (
-              <div>Prod (Unpackaged)</div>
+              <>
+                {appInfo?.version && (
+                  <div>Version: {appInfo.version}</div>
+                )}
+                <div>Prod (Unpackaged)</div>
+              </>
             )}
           </div>
         </div>

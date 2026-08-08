@@ -7,3 +7,4 @@ export * from "./types/plan";
 export * from "./types/research";
 export * from "./types/trace";
 export * from "./types/step-batch";
+export * from "./types/app-info";

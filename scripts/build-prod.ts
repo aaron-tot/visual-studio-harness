@@ -15,6 +15,7 @@
 import { readdir, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { join, relative, extname, dirname } from "node:path";
 import { existsSync } from "node:fs";
+import { VERSION } from "../_shared/version";
 
 const ROOT = join(import.meta.dir, ".."); // repoSource/
 const PROJECT = join(ROOT, ".."); // Visual Studio Harness/ (parent — data/ lives here)
@@ -197,7 +198,7 @@ export const VEC0_SO_FILENAME = "vec0.so";
 
   // Derive output filename with target + type
   const targetShort = target === "bun" ? "" : target.replace(/^bun-/, "") + "-";
-  const outputName = `VSH_v1.0.0-${targetShort}${buildType}`;
+  const outputName = `VSH_v${VERSION}-${targetShort}${buildType}`;
   const outputPath = join(process.env.PACKAGE_DIR || PACKAGE_DIR, outputName);
 
   // 3. Compile standalone binary into data/prod/
@@ -221,6 +222,8 @@ export const VEC0_SO_FILENAME = "vec0.so";
       `process.env.BUILD_TYPE="${buildType}"`,
       "--define",
       `process.env.BUILD_TIMESTAMP="${new Date().toISOString()}"`,
+      "--define",
+      `process.env.APP_VERSION="${VERSION}"`,
     ],
     ROOT
   );

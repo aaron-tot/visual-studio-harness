@@ -294,16 +294,17 @@ async function main() {
     app.get("/api/reload-signal", async () => ({ startedAt: STARTED_AT }));
   }
 
-  // App info: build timestamp (baked in at compile time) + install timestamp (written by installer)
+  // App info: build timestamp (baked in at compile time) + install timestamp (written by installer) + version
   app.get("/api/app-info", async () => {
     const buildTimestamp: string | undefined = (process.env as Record<string, string | undefined>).BUILD_TIMESTAMP;
+    const appVersion: string | undefined = (process.env as Record<string, string | undefined>).APP_VERSION;
     let installedAt: string | null = null;
     try {
       const raw = await readFile(join(DATA_DIR, "install-info.json"), "utf-8");
       const parsed = JSON.parse(raw);
       installedAt = parsed.installedAt ?? null;
     } catch { /* file missing in dev or first run */ }
-    return { buildTimestamp: buildTimestamp ?? null, installedAt };
+    return { buildTimestamp: buildTimestamp ?? null, installedAt, version: appVersion ?? null };
   });
 
   // Open a folder in the OS file manager

@@ -5,6 +5,7 @@ import {
   knowledgeCreateDocument,
   knowledgeDeleteDocument,
   knowledgeIngest,
+  moveKnowledgeDocumentViaApi,
 } from "../../lib/api";
 import type {
   KnowledgeDocumentMeta,
@@ -23,6 +24,11 @@ interface KnowledgeState {
   search: (query: string, opts?: { limit?: number; mode?: string; scope?: "global" | "project" | "session" }) => Promise<void>;
   createDocument: (body: { filename: string; content: string; tags?: string[]; scope: "global" | "project" | "session" }) => Promise<void>;
   deleteDocument: (id: string, opts: { scope: "global" | "project" | "session"; confirmed?: boolean }) => Promise<void>;
+  moveDocument: (
+    id: string,
+    fromScope: "global" | "project" | "session",
+    toScope: "global" | "project" | "session",
+  ) => Promise<void>;
   ingest: (scope: "global" | "project" | "session") => Promise<void>;
   uploadFiles: (files: File[], scope: "global" | "project" | "session") => Promise<void>;
 }
@@ -80,6 +86,16 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
     try {
       await knowledgeIngest(scope);
       await get().fetchDocuments(scope);
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+    }
+  },
+
+  moveDocument: async (id, fromScope, toScope) => {
+    set({ loading: true, error: null });
+    try {
+      await moveKnowledgeDocumentViaApi({ documentId: id, fromScope, toScope });
+      await get().fetchDocuments(fromScope);
     } catch (err: any) {
       set({ error: err.message, loading: false });
     }

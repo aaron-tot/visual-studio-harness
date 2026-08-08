@@ -4,6 +4,7 @@ import { EmptyState } from "../info-panel/components/ui";
 import { FileText } from "lucide-react";
 import type { PlanScope } from "../info-panel/types";
 import { knowledgeOpenDocument, knowledgeGetEmbeddings } from "../../lib/api";
+import { MoveScopeModal } from "../info-panel/components/MoveScopeModal";
 
 export function KnowledgeTab({ scope }: { scope: PlanScope }) {
   const {
@@ -16,6 +17,7 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
     fetchDocuments,
     search,
     deleteDocument,
+    moveDocument,
     ingest,
     uploadFiles,
   } = useKnowledgeStore();
@@ -24,6 +26,7 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
   const [query, setQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [detailDocId, setDetailDocId] = useState<string | null>(null);
+  const [moveDocId, setMoveDocId] = useState<{ id: string; scope: "global" | "project" | "session" } | null>(null);
 
   useEffect(() => {
     fetchDocuments(scope);
@@ -155,6 +158,13 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
                   >
                     &times;
                   </button>
+                  <button
+                    onClick={() => setMoveDocId({ id: doc.id, scope })}
+                    className="text-zinc-600 hover:text-sky-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-zinc-700/50"
+                    title="Move to another scope"
+                  >
+                    &rarr;
+                  </button>
                 </div>
               </div>
             ))}
@@ -186,6 +196,18 @@ export function KnowledgeTab({ scope }: { scope: PlanScope }) {
             </div>
           </div>
         </div>
+      )}
+
+      {moveDocId && (
+        <MoveScopeModal
+          title={`Move document "${moveDocId.id}"`}
+          currentScope={moveDocId.scope}
+          onClose={() => setMoveDocId(null)}
+          onMove={(toScope) => {
+            void moveDocument(moveDocId.id, moveDocId.scope, toScope);
+            setMoveDocId(null);
+          }}
+        />
       )}
     </div>
   );

@@ -703,6 +703,19 @@ export function deleteIdeaViaApi(body: { name: string; scope?: string; workspace
   });
 }
 
+export function moveDesignViaApi(body: {
+  name: string;
+  fromScope?: string;
+  toScope: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; fromPath: string; toPath: string }>(`${BASE}/plans/move`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export interface McpConnectionStatus {
   name: string;
   transport: string;
@@ -934,6 +947,19 @@ export function deleteNoteViaApi(body: {
   });
 }
 
+export function moveNoteViaApi(body: {
+  name: string;
+  fromScope?: string;
+  toScope: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; fromPath: string; toPath: string }>(`${BASE}/notes/move`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 // ── Audits ─────────────────────────────────────────────────────────
 
 import type { AuditDocument } from "../../_shared/types/audit";
@@ -1001,6 +1027,19 @@ export function editAuditViaApi(body: {
 }) {
   return fetchJson<{ ok: boolean; path: string }>(`${BASE}/audits/edit`, {
     method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function moveAuditViaApi(body: {
+  name: string;
+  fromScope?: string;
+  toScope: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{ ok: boolean; fromPath: string; toPath: string }>(`${BASE}/audits/move`, {
+    method: "POST",
     body: JSON.stringify(body),
   });
 }
@@ -1262,6 +1301,25 @@ export function knowledgeDeleteDocument(id: string, body?: { scope?: string; con
     `${BASE}/knowledge/documents/${id}`,
     { method: "DELETE", body: JSON.stringify(body ?? {}) }
   );
+}
+
+export function moveKnowledgeDocumentViaApi(body: {
+  documentId: string;
+  fromScope?: string;
+  toScope: string;
+  workspaceRoot?: string;
+  sessionId?: string;
+}) {
+  return fetchJson<{
+    ok: boolean;
+    documentId: string;
+    filename: string;
+    fromPath: string;
+    toPath: string;
+  }>(`${BASE}/knowledge/documents/move`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function knowledgeIngest(scope?: string) {

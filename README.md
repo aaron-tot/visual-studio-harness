@@ -1010,6 +1010,7 @@ The current priority is stabilizing the existing foundation **and** expanding fu
 - Cache usage visibility
 - Agent execution history
 - Audit systems
+- Code diff view — see agent file changes as side-by-side diffs
 
 ## Knowledge Systems
 

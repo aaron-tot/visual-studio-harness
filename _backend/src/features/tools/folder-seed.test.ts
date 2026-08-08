@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import { seedBuiltinToolFolders, setSeedRootForTest } from "./folder-seed";
+import { seedBuiltinToolFolders, setSeedRootForTest, setCopyFailureForTest } from "./folder-seed";
 import { BUILTIN_TOOL_NAMES } from "./index";
 import { seedsDir, seedSubdirForMode } from "../mds/paths";
 
@@ -20,6 +20,7 @@ describe("folder seed", () => {
   afterEach(async () => {
     await rm(testDir, { recursive: true, force: true });
     setSeedRootForTest(undefined);
+    setCopyFailureForTest(undefined);
   });
 
   it("clones a folder for every builtin into a fresh data dir", async () => {
@@ -152,5 +153,63 @@ describe("folder seed", () => {
       expect(existsSync(join(seedDir, "skill.md"))).toBe(true);
       expect(existsSync(join(seedDir, "prompt.json"))).toBe(true);
     }
+  });
+
+  it("clones skill.md and prompt.json for guide-bearing tools", async () => {
+    const cloned = await seedBuiltinToolFolders(dataDir, "dev");
+    expect(cloned).toBe(BUILTIN_TOOL_NAMES.length);
+
+    for (const name of ["todo", "audit"]) {
+      const dir = join(dataDir, "tools", "builtin", name);
+      expect(existsSync(join(dir, `${name}.json`))).toBe(true);
+      expect(existsSync(join(dir, "index.ts"))).toBe(true);
+      expect(existsSync(join(dir, "skill.md"))).toBe(true);
+      expect(existsSync(join(dir, "prompt.json"))).toBe(true);
+    }
+  });
+
+  it("recovers from a partial clone: failed copy leaves no folder, next seed clones it", async () => {
+    // Fake seed tree containing ONLY "todo", so the returned count is easy to
+    // reason about. The seed has several files; make the copy fail on one of
+    // them (skill.md) so a clone starts partway before dying.
+    const fakeSeeds = join(testDir, "fake-seeds", seedSubdirForMode("dev"));
+    const seedTodo = join(fakeSeeds, "builtin-tools", "todo");
+    await mkdir(seedTodo, { recursive: true });
+    await writeFile(
+      join(seedTodo, "todo.json"),
+      JSON.stringify({
+        name: "todo",
+        description: "Fake todo",
+        entry: "index.ts",
+        inputSchema: { type: "object", properties: {} },
+        enabled: true,
+        permissionDefault: "allow",
+      })
+    );
+    await writeFile(join(seedTodo, "index.ts"), "export async function execute() {}\n");
+    await writeFile(join(seedTodo, "skill.md"), "# fake todo skill\n");
+    await writeFile(
+      join(seedTodo, "prompt.json"),
+      JSON.stringify({ prompt: "fake todo prompt" })
+    );
+    setSeedRootForTest(join(testDir, "fake-seeds"));
+    setCopyFailureForTest("skill.md");
+
+    // First run: the copy fails partway. It is non-fatal (no throw) and the
+    // failed tool is not counted as cloned.
+    const first = await seedBuiltinToolFolders(dataDir, "dev");
+    expect(first).toBe(0);
+    // No partial folder is left behind for the next boot to trust.
+    expect(existsSync(join(dataDir, "tools", "builtin", "todo"))).toBe(false);
+
+    // Second run (failure gone): the folder clones cleanly.
+    setCopyFailureForTest(undefined);
+    const second = await seedBuiltinToolFolders(dataDir, "dev");
+    expect(second).toBe(1);
+    const clonedDir = join(dataDir, "tools", "builtin", "todo");
+    expect(existsSync(join(clonedDir, "todo.json"))).toBe(true);
+    expect(existsSync(join(clonedDir, "index.ts"))).toBe(true);
+    expect(existsSync(join(clonedDir, "skill.md"))).toBe(true);
+    expect(existsSync(join(clonedDir, "prompt.json"))).toBe(true);
   });
 });

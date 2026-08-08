@@ -1,10 +1,12 @@
-import { mkdir, readdir, copyFile } from "node:fs/promises";
+import { mkdir, readdir, copyFile, rename, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { BUILTIN_TOOL_NAMES } from "./index";
 import { seedsDir, seedSubdirForMode } from "../mds/paths";
 
 let seedRootOverride: string | null | undefined;
+
+let copyFailureForTest: string | null | undefined;
 
 /**
  * Override the seed root for tests (e.g. a temp dir with a partial
@@ -14,6 +16,15 @@ let seedRootOverride: string | null | undefined;
  */
 export function setSeedRootForTest(root?: string | null): void {
   seedRootOverride = root;
+}
+
+/**
+ * Test hook: when set to a file name, copyTree throws while copying a file
+ * entry with that name, simulating a mid-copy failure. Pass nothing
+ * (undefined) to clear the hook and fall back to real copying.
+ */
+export function setCopyFailureForTest(fileName?: string | null): void {
+  copyFailureForTest = fileName;
 }
 
 function resolveSeedRoot(): string | null {
@@ -46,10 +57,16 @@ export async function seedBuiltinToolFolders(dataDir: string, mode: string): Pro
     const targetDir = join(builtinRoot, name);
     if (existsSync(targetDir)) continue; // never overwrite an existing data copy
 
+    // Copy into a temp sibling then atomically rename into place, so a
+    // mid-copy failure never leaves a partial folder that a later boot would
+    // treat as authoritative. On failure the temp dir is removed.
+    const tmpDir = join(builtinRoot, `.${name}.tmp-${process.pid}`);
     try {
-      await copyTree(seedDir, targetDir);
+      await copyTree(seedDir, tmpDir);
+      await rename(tmpDir, targetDir);
       cloned++;
     } catch (err) {
+      await rm(tmpDir, { recursive: true, force: true });
       // A failed clone shouldn't take down startup — skip + report.
       console.error(
         `[seed] Failed to clone builtin tool folder '${name}': ${
@@ -71,6 +88,9 @@ async function copyTree(srcDir: string, destDir: string): Promise<void> {
     if (entry.isDirectory()) {
       await copyTree(src, dest);
     } else if (entry.isFile()) {
+      if (copyFailureForTest === entry.name) {
+        throw new Error(`[test] simulated copy failure for '${entry.name}'`);
+      }
       await copyFile(src, dest);
     }
   }

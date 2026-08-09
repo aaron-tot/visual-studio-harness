@@ -443,6 +443,19 @@ export async function putSessionModelConfig(sessionId: string, config: SessionMo
   );
 }
 
+export async function getSessionDraftInput(sessionId: string) {
+  return fetchJson<{ draft: string }>(
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}/draft`
+  );
+}
+
+export async function putSessionDraftInput(sessionId: string, draft: string) {
+  return fetchJson<{ ok: boolean; draft: string }>(
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}/draft`,
+    { method: "PUT", body: JSON.stringify({ draft }) }
+  );
+}
+
 export interface ToolFieldInfo {
   name: string;
   type: string;

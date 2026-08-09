@@ -28,6 +28,8 @@ export const sessions = sqliteTable("sessions", {
   sessionPermsJson: text("session_perms_json"),
   /** When true, session appears starred/flagged in the session list. */
   starred: integer("starred", { mode: "boolean" }).notNull().default(false),
+  /** Unsent chat input draft for this session. */
+  draftInput: text("draft_input"),
 
   // Optional cached aggregates (SoT = SUM of steps via turns)
   cachedInputTokens: integer("cached_input_tokens"),

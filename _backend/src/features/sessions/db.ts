@@ -79,6 +79,7 @@ export function updateSessionFields(
     todosJson?: string | null;
     modelConfigJson?: string | null;
     sessionPermsJson?: string | null;
+    draftInput?: string | null;
   },
   dataDir?: string
 ): SessionMeta | null {
@@ -127,6 +128,7 @@ export function updateSessionFields(
   if (fields.todosJson !== undefined) patch.todosJson = fields.todosJson;
   if (fields.modelConfigJson !== undefined) patch.modelConfigJson = fields.modelConfigJson;
   if (fields.sessionPermsJson !== undefined) patch.sessionPermsJson = fields.sessionPermsJson;
+  if (fields.draftInput !== undefined) patch.draftInput = fields.draftInput;
 
   db.update(sessions).set(patch).where(eq(sessions.id, id)).run();
   return getSession(id, dataDir);
@@ -205,6 +207,24 @@ export function setSessionPermsJson(
   dataDir?: string
 ): void {
   updateSessionFields(id, { sessionPermsJson }, dataDir);
+}
+
+export function getSessionDraftInput(id: string, dataDir?: string): string | null {
+  const db = dbFor(dataDir);
+  const row = db
+    .select({ draftInput: sessions.draftInput })
+    .from(sessions)
+    .where(eq(sessions.id, id))
+    .get();
+  return row?.draftInput ?? null;
+}
+
+export function setSessionDraftInput(
+  id: string,
+  draftInput: string,
+  dataDir?: string
+): void {
+  updateSessionFields(id, { draftInput }, dataDir);
 }
 
 export function archiveSession(id: string, dataDir?: string): SessionMeta | null {

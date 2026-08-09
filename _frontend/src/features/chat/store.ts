@@ -13,6 +13,8 @@ import {
   getSession,
   getTurns,
   getEffectiveContextConfig,
+  getSessionDraftInput,
+  putSessionDraftInput,
 } from "../../lib/api";
 import type { SessionConfig } from "../../../_shared/types";
 import { chatDebug } from "./debug";
@@ -24,6 +26,28 @@ import {
   incrementEpoch,
   loadSessionEpoch,
 } from "./session-hydrate";
+
+// ── Draft input persistence (debounced) ──────────────────────────────────────
+let _draftSaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
+const DRAFT_SAVE_DEBOUNCE_MS = 400;
+
+function saveDraftDebounced(sessionId: string, content: string) {
+  if (_draftSaveTimeoutId) clearTimeout(_draftSaveTimeoutId);
+  _draftSaveTimeoutId = setTimeout(() => {
+    _draftSaveTimeoutId = null;
+    if (!sessionId) return;
+    putSessionDraftInput(sessionId, content).catch((err) => {
+      console.error("[draft] save failed:", err);
+    });
+  }, DRAFT_SAVE_DEBOUNCE_MS);
+}
+
+function clearDraftSaveTimeout() {
+  if (_draftSaveTimeoutId) {
+    clearTimeout(_draftSaveTimeoutId);
+    _draftSaveTimeoutId = null;
+  }
+}
 
 // ── Streaming timeout safety net ──────────────────────────────────────────
 // Prevents "Thinking" from hanging forever if error/done events are lost
@@ -44,14 +68,6 @@ export function touchStreamTimeout(): void {
     chatDebug("stream-timeout", "force-stopping after 60s inactivity");
     store.failStreaming("Request timed out — no response from server. Please check the backend and try again.", { category: "network" });
   }, STREAM_TIMEOUT_MS);
-}
-
-/** Clear the streaming timeout when streaming ends. */
-function clearStreamTimeout(): void {
-  if (_streamTimeoutId) {
-    clearTimeout(_streamTimeoutId);
-    _streamTimeoutId = null;
-  }
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -116,7 +132,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setInspectedTurnId: (turnId) => set({ inspectedTurnId: turnId }),
-  stageChatInput: (content) => set({ stagedChatInput: content }),
+  stageChatInput: (content) => {
+    set({ stagedChatInput: content });
+    const sid = get().sessionId;
+    if (sid) saveDraftDebounced(sid, content);
+  },
 
   loadSession: async (id) => {
     const epoch = incrementEpoch();
@@ -137,6 +157,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       _textSeq: 0,
       _reasonIdx: 0,
       streamingStartTime: null,
+      stagedChatInput: "",
     });
 
     wsClient.send({ type: "request_session_state", sessionId: id, requestId });
@@ -153,6 +174,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     } catch {
     }
+
+    // Load draft input for this session
+    try {
+      const { draft } = await getSessionDraftInput(id);
+      if (epoch === loadSessionEpoch) {
+        set({ stagedChatInput: draft ?? "" });
+      }
+    } catch { /* ignore */ }
 
     // Load context config (effective: session > project > global)
     try {
@@ -190,7 +219,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       _pendingModelName: config.modelName,
       _pendingProviderName: config.providerName,
       streamingStartTime: startTime,
+      stagedChatInput: "",
     });
+    // Clear persisted draft for this session
+    if (sessionId) {
+      clearDraftSaveTimeout();
+      putSessionDraftInput(sessionId, "").catch((err) => console.error("[draft] clear failed:", err));
+    }
     chatDebug("store", "sendMessage -> streaming=true", { sessionId, agentName: config.agentName });
     touchStreamTimeout();
     const { contextFirstTurnNumber: ctxTn } = get();
@@ -210,6 +245,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearMessages: () => {
     clearStreamTimeout();
+    clearDraftSaveTimeout();
     useSessionViewStore.getState().setCurrentSession(null);
     resetHydrateState();
     set({

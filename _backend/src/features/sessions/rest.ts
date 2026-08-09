@@ -38,6 +38,8 @@ import {
   setSessionTodosJson,
   getSessionModelConfigJson,
   setSessionModelConfigJson,
+  getSessionDraftInput,
+  setSessionDraftInput,
   insertSummaryRange,
   getLatestSummaryRange,
   getLatestSummaryRangeBefore,
@@ -111,6 +113,25 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const todos = Array.isArray(body.todos) ? body.todos : [];
     setSessionTodosJson(id, JSON.stringify(todos), dataDir);
     return { ok: true, todos };
+  });
+
+  /** Session draft input — stored on sessions.draft_input in SQLite. */
+  app.get("/api/sessions/:id/draft", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const session = await getSession(dataDir, id);
+    if (!session) return reply.code(404).send({ error: "session not found" });
+    const draft = getSessionDraftInput(id, dataDir);
+    return { draft: draft ?? "" };
+  });
+
+  app.put("/api/sessions/:id/draft", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const session = await getSession(dataDir, id);
+    if (!session) return reply.code(404).send({ error: "session not found" });
+    const body = (request.body || {}) as { draft?: string };
+    const draft = typeof body.draft === "string" ? body.draft : "";
+    setSessionDraftInput(id, draft, dataDir);
+    return { ok: true, draft };
   });
 
   /** Per-session model config — sessions.model_config_json in SQLite.

@@ -209,12 +209,19 @@ export function ToolCallCard({
       style={{ color: color.border.replace("#", "color-mix(in srgb, ") + " 70%, white)" } as React.CSSProperties}
     >
       {/* Header — always visible, toggles main collapse */}
-      <button
-        type="button"
+      <div
         data-collapsible="true"
         data-collapsible-level="main"
         data-collapsible-state={mainOpen ? "open" : "closed"}
         onClick={() => setMainOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setMainOpen((o) => !o);
+          }
+        }}
+        role="button"
+        tabIndex={0}
         className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-zinc-800/40 rounded-lg transition-colors cursor-pointer"
       >
         <div className="flex items-center gap-2 min-w-0">
@@ -253,7 +260,7 @@ export function ToolCallCard({
             {color.label}
           </span>
         </div>
-      </button>
+      </div>
 
       {/* Expanded body */}
       {mainOpen && (

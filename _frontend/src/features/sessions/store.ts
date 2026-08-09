@@ -207,3 +207,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     await get().saveLayout(workspaceRoot, dissolve(cur));
   },
 }));
+export function startNewChat() {
+  useChatStore.getState().startNewChat();
+}

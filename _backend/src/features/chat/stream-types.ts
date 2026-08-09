@@ -61,8 +61,15 @@ export interface StreamChatOptions {
   streamRetryErrorName?: string;
   /** Maximum number of retries for the streamRetryErrorName error */
   streamRetryMaxAttempts?: number;
-  /** Base retry backoff in ms (exponential: delayMs * 2^attempt). Defaults to 2000. */
-  streamRetryDelayMs?: number;
+  /** Enable automatic retry on provider errors */
+  streamRetryEnabled?: boolean;
+  /** Time window for retry rate limiting */
+  streamRetryWindowValue?: number;
+  streamRetryWindowUnit?: "seconds" | "minutes" | "hours";
+  /** Base delay in ms before first retry */
+  streamRetryBaseDelayMs?: number;
+  /** Additional delay per retry (ms). 0 = no progressive increase. */
+  streamRetryProgressiveDelayMs?: number;
 }
 
 export interface StreamChatResult {

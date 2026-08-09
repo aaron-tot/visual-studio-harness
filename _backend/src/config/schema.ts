@@ -223,6 +223,15 @@ export const ConfigFileSchema = z.object({
   contextMaxTurns: z.number().int().positive().optional(),
   /** Error message string that should trigger a streaming retry (case-insensitive substring match) */
   streamRetryErrorName: z.string().default("Streaming response failed"),
-  /** Maximum number of retries for the streamRetryErrorName error (default: 3) */
+  /** Enable automatic retry on provider errors (5xx, timeout, network, etc.) */
+  streamRetryEnabled: z.boolean().default(true),
+  /** Maximum number of retries for provider errors (default: 3) */
   streamRetryMaxAttempts: z.number().int().min(0).default(3),
+  /** Time window for retry rate limiting */
+  streamRetryWindowValue: z.number().int().positive().default(1),
+  streamRetryWindowUnit: z.enum(["seconds", "minutes", "hours"]).default("minutes"),
+  /** Base delay in ms before first retry */
+  streamRetryBaseDelayMs: z.number().int().min(0).default(2000),
+  /** Additional delay per retry (ms). 0 = no progressive increase. With 3000: 2s, 5s, 8s, 11s... */
+  streamRetryProgressiveDelayMs: z.number().int().min(0).default(3000),
 });

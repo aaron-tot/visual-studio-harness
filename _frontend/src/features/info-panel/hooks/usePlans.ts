@@ -34,6 +34,7 @@ export function usePlans({
     if (!enabled) return;
     setLoading(true);
     setError(null);
+    setGroups([]);
     try {
       if (scope === "global") {
         const designs = await listPlans({ scope: "global" });

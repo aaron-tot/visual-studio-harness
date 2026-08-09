@@ -1,17 +1,64 @@
 export interface StreamRetryConfig {
   /** Number of retries attempted after the initial failure (total attempts = maxAttempts + 1). */
   maxAttempts: number;
-  /** Base delay in ms before the first retry; subsequent retries use exponential backoff (delayMs * 2^attempt). */
-  delayMs: number;
+  /** Base delay in ms before the first retry. */
+  baseDelayMs: number;
+  /** Additional delay per retry (ms). 0 = no progressive increase.
+   *  Example: baseDelayMs=2000, progressiveDelayMs=3000 -> 2s, 5s, 8s, 11s... */
+  progressiveDelayMs: number;
   /** Error message substring (case-insensitive) that triggers a retry. */
   errorName: string;
+  /** Time window for retry rate limiting */
+  windowValue: number;
+  windowUnit: "seconds" | "minutes" | "hours";
 }
 
 export const DEFAULT_STREAM_RETRY_CONFIG: StreamRetryConfig = {
   maxAttempts: 3,
-  delayMs: 2000,
+  baseDelayMs: 2000,
+  progressiveDelayMs: 3000,
   errorName: "Streaming response failed",
+  windowValue: 1,
+  windowUnit: "minutes",
 };
+
+const WINDOW_MS: Record<string, number> = {
+  seconds: 1000,
+  minutes: 60000,
+  hours: 3600000,
+};
+
+/** Calculate delay for a given attempt (0-indexed) with progressive increase. */
+export function calculateRetryDelay(attempt: number, baseDelayMs: number, progressiveDelayMs: number): number {
+  return baseDelayMs + attempt * progressiveDelayMs;
+}
+
+/** Check if we can retry within the rate limit window (mirrors auto-continue logic). */
+export function canRetryInWindow(
+  map: Map<string, number[]>,
+  key: string,
+  maxAttempts: number,
+  windowValue: number,
+  windowUnit: "seconds" | "minutes" | "hours"
+): boolean {
+  const windowMs = windowValue * (WINDOW_MS[windowUnit] ?? 60000);
+  const now = Date.now();
+  let attempts = map.get(key) ?? [];
+  attempts = attempts.filter((t) => now - t < windowMs);
+  if (attempts.length === 0) {
+    map.delete(key);
+    return true;
+  }
+  map.set(key, attempts);
+  return attempts.length < maxAttempts;
+}
+
+/** Record a retry attempt for rate limiting. */
+export function recordRetryAttempt(map: Map<string, number[]>, key: string): void {
+  const attempts = map.get(key) ?? [];
+  attempts.push(Date.now());
+  map.set(key, attempts);
+}
 
 export function getRetryableLabel(err: unknown, errorName?: string): string | null {
   if (!err) return null;

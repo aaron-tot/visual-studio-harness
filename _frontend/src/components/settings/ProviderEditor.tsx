@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Check, X, Loader2 } from "lucide-react";
+import { Check, X, Loader2, Eye, EyeOff } from "lucide-react";
 import { useConfigStore } from "../../stores/config";
 import { fetchProviderModels } from "../../lib/api";
 
@@ -14,6 +14,7 @@ export function ProviderEditor({ providerIndex }: ProviderEditorProps) {
   const [displayName, setDisplayName] = useState(provider?.displayName || "");
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl || "");
   const [apiKey, setApiKey] = useState(provider?.apiKey || "");
+  const [showApiKey, setShowApiKey] = useState(false);
   const [status, setStatus] = useState<"idle" | "connecting" | "success" | "error">("idle");
 
   useEffect(() => {
@@ -92,14 +93,25 @@ export function ProviderEditor({ providerIndex }: ProviderEditorProps) {
 
       <div className="space-y-2">
         <label className="text-xs text-zinc-400">API Key (optional)</label>
-        <input
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          onBlur={save}
-          type="password"
-          placeholder="Optional"
-          className="w-full rounded bg-zinc-800 border border-zinc-700 px-3 py-1.5 text-sm"
-        />
+        <div className="relative">
+          <input
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            onBlur={save}
+            type={showApiKey ? "text" : "password"}
+            placeholder="Optional"
+            className="w-full rounded bg-zinc-800 border border-zinc-700 px-3 py-1.5 pr-9 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => setShowApiKey((v) => !v)}
+            tabIndex={-1}
+            title={showApiKey ? "Hide API key" : "Show API key"}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        </div>
       </div>
 
       <button

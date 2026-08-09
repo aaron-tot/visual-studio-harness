@@ -85,24 +85,41 @@ export function computeToolGroups(
     tools.sort((a, b) => a.seq - b.seq);
   }
 
+  // Sorted ascending step indices so the "next step after this one" lookup
+  // works even when indices are non-contiguous (gaps, retries, aborted steps).
+  const sortedIndices = [...stepsByIndex.keys()].sort((a, b) => a - b);
+
+  const findNextStepIndex = (currentIndex: number): number | null => {
+    for (const idx of sortedIndices) {
+      if (idx > currentIndex) return idx;
+    }
+    return null;
+  };
+
   const groups: ToolGroup[] = [];
   for (const [stepId, tools] of toolsByStep.entries()) {
     const step = stepsById.get(stepId);
-    if (!step) continue;
-    const nextStep = stepsByIndex.get(step.stepIndex + 1) ?? null;
-    const cacheHit = computeCacheHit(nextStep) ?? defaultCacheHit(step.stepIndex + 1);
+    // A tool whose stepId doesn't resolve to a known step (e.g. missing/orphaned
+    // step row) should still be shown rather than silently dropped. Fall back to
+    // the group's first tool sequence for a stable label ordering.
+    const resolvedStep = step ?? {
+      stepIndex: tools.length > 0 ? tools[0].seq : 0,
+    } as StepSummary;
+    const nextIdx = findNextStepIndex(resolvedStep.stepIndex);
+    const nextStep = nextIdx != null ? stepsByIndex.get(nextIdx) ?? null : null;
+    const cacheHit = computeCacheHit(nextStep) ?? defaultCacheHit(resolvedStep.stepIndex + 1);
 
     groups.push({
       stepId,
-      stepIndex: step.stepIndex,
+      stepIndex: resolvedStep.stepIndex,
       tools,
       isParallel: tools.length > 1,
       cacheHit,
       hasNextStep: nextStep != null,
       groupLabel:
         tools.length > 1
-          ? `Parallel Step #${step.stepIndex + 1} (${tools.length} tools)`
-          : `Step #${step.stepIndex + 1}`,
+          ? `Parallel Step #${resolvedStep.stepIndex + 1} (${tools.length} tools)`
+          : `Step #${resolvedStep.stepIndex + 1}`,
     });
   }
 

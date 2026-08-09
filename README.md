@@ -43,7 +43,7 @@ It runs locally (Bun + React), stores data in SQLite + JSON next to the binary, 
 
 | Capability | Status | Description |
 |------------|--------|-------------|
-| [Multi-Agent Orchestration](docs/features/agents.md) | ✅ Functional | Delegate work to isolated subagents with configurable concurrency and runtime controls. |
+| [Multi-Agent Orchestration](docs/features/agents.md) | 🚧 non-Functional | Delegate work to isolated subagents with configurable concurrency and runtime controls. |
 | [Structured Design Docs (MDS)](docs/features/mds.md) | ✅ Functional | Versioned specs, plans, research, audits, notes — scoped global/workspace/session. |
 | [Knowledge Base](docs/features/knowledge-base.md) | ✅ Functional | Local semantic search via sqlite-vec embeddings with ingestion, versioning, metadata extraction. |
 | [Web Interface](docs/features/web-interface.md) | ✅ Functional | Chat, file explorer, design manager, knowledge tab, research, sessions, settings. |
@@ -53,7 +53,7 @@ It runs locally (Bun + React), stores data in SQLite + JSON next to the binary, 
 | [MCP Client](docs/features/mcp.md) | ✅ Functional | Connect external MCP servers (stdio/HTTP/SSE), tools prefixed as `server_tool`. |
 | [MCP Server](docs/features/mcp.md#mcp-server-planned) | 🚧 Planned | Toggleable server exposing harness tools as `vsh_<tool>` for external control. |
 | [Hooks System](docs/features/hooks.md) | ✅ Functional | Event-driven lifecycle hooks for session, turn, tool, delegation, file, config events. |
-| [Session Management](docs/features/sessions.md) | ✅ Functional | JSON+SQLite persistence, summarization, context windows, streaming, usage tracking. |
+| [Session Management](docs/features/sessions.md) | 🚧 Incomplete | JSON+SQLite persistence, summarization, context windows, streaming, usage tracking. |
 | [Workspace Intelligence](docs/features/workspace-intelligence.md) | ✅ Functional | Symbol index, references, file watcher, TypeScript parsing, manifest generation. |
 
 ---

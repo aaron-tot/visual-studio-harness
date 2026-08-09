@@ -1,4 +1,5 @@
-import type { ModelMessage, PrepareStepFunction, ToolSet } from "ai";
+import { tool, type ModelMessage, type PrepareStepFunction, type ToolSet } from "ai";
+import { z } from "zod";
 import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
 import { buildAdditionalSystemInfoBlock } from "../system-prompt/builder";
 
@@ -11,6 +12,37 @@ export function isAdditionalSystemInfoResult(m: ModelMessage): boolean {
   const c = m.content;
   if (!Array.isArray(c)) return false;
   return c.some((p) => (p as any)?.type === "tool-result" && (p as any)?.toolName === ADDITIONAL_SYSTEM_INFO_TOOL);
+}
+
+/**
+ * Build the no-op `additional_system_info` tool. It is registered in the AI SDK
+ * `tools` map so the SDK accepts the fabricated tool-call emitted by `prepareStep`
+ * instead of throwing `NoSuchToolError`. It performs no work (it is never meant to
+ * be run for real value); it exists purely so the SDK can resolve parse the call.
+ */
+export function buildAdditionalSystemInfoTool() {
+  return tool({
+    description: "Internal context marker; not a real tool. Ignore and never invoke.",
+    parameters: z.object({}),
+    execute: async () => ({}),
+  });
+}
+
+/**
+ * Returns a tools map that always includes the registered no-op
+ * `additional_system_info` tool alongside the real tools.
+ */
+export function withAdditionalSystemInfoTool<TOOLS extends ToolSet>(tools: TOOLS): ToolSet {
+  return { ...tools, [ADDITIONAL_SYSTEM_INFO_TOOL]: buildAdditionalSystemInfoTool() };
+}
+
+/**
+ * The real tool names (everything except the fabricated `additional_system_info`).
+ * Used as `activeTools` so the no-op stays out of the model's request while still
+ * being registered for SDK tool-call parsing.
+ */
+export function realToolNames(tools: ToolSet): string[] {
+  return Object.keys(tools).filter((n) => n !== ADDITIONAL_SYSTEM_INFO_TOOL);
 }
 
 export interface PerStepRebuildContext {
@@ -27,7 +59,7 @@ export interface PerStepRebuildContext {
   additionalSystemInfoSections?: readonly string[];
   /** When true, a timestamp is appended so content always changes each step. */
   additionalSystemInfoIncludeTime?: boolean;
-  /** When true, ALWAYS emit an injection at the end of every step regardless of
+  /** When true, ALWAYS emit an injection at the end of the batch regardless of
    *  whether the content changed (bypasses the emit-on-change comparison). The
    *  enabled `sections` still apply. */
   additionalSystemInfoAlways?: boolean;
@@ -51,14 +83,15 @@ export interface PerStepRebuildContext {
 }
 
 /**
- * The injection is built+compared+emitted at the END of each step (after its
- * tools have run), so it reflects the changes that step caused and is attributed
- * to that step. `prepareStep` (start of the next step) only CARRIES the pending
- * injection from the previous step's end into the outgoing request.
- */
+* The injection is built+compared+emitted at the END of the batch's final step
+  * (after its tools have run) — once per batch, not per intermediate step — so it
+  * reflects the changes that step caused and is attributed to that step.
+  * `prepareStep` (start of the next step) only CARRIES the pending injection from
+  * the previous step's end into the outgoing request.
+  */
 export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
   prepareStep: PrepareStepFunction<ToolSet>;
-  emitAtStepEnd: (stepNumber: number) => Promise<void>;
+  emitAtStepEnd: (stepNumber: number, isFinalStep?: boolean) => Promise<void>;
 } {
   return {
     prepareStep: async ({ messages }) => {
@@ -89,8 +122,11 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
       return {};
     },
 
-    emitAtStepEnd: async (stepNumber) => {
+    emitAtStepEnd: async (stepNumber, isFinalStep = true) => {
       if (ctx.noSystemPrompt) return;
+      // Emit only once per batch of tool steps, at the batch's final step —
+      // intermediate steps (more tool calls to follow) must not inject.
+      if (isFinalStep === false) return;
       const content = await buildAdditionalSystemInfoBlock({
         dataDir: ctx.dataDir,
         workspaceRoot: ctx.workspaceRoot,

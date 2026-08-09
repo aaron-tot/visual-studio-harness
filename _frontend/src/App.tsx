@@ -44,6 +44,7 @@ function App() {
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const clearMessages = useChatStore((s) => s.clearMessages);
+  const startNewChat = useChatStore((s) => s.startNewChat);
   const sessionId = useChatStore((s) => s.sessionId);
   const subagentConfigPrompt = useChatStore((s) => s.subagentConfigPrompt);
   const setSubagentConfigPrompt = useChatStore((s) => s.setSubagentConfigPrompt);
@@ -56,9 +57,8 @@ function App() {
     wsClient.connect();
     return () => wsClient.disconnect();
   }, [fetchConfig]);
-
   const handleNewChat = () => {
-    clearMessages();
+    startNewChat();
   };
 
   const openSettings = (tab: SettingsTab = "providers") => {

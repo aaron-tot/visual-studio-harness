@@ -50,8 +50,8 @@ export interface SkillMdConfig {
   tag?: string;
   /** Scope to limit tag search. If omitted, all scopes are searched. */
   scope?: "global" | "project" | "session";
-  /** How the skill is attached to the agent. Default: "inject". */
-  attachmentMode?: "inject" | "hard" | "soft";
+  /** How the skill is attached to the agent. REQUIRED — no default. */
+  attachmentMode: "inject" | "hard" | "soft";
 }
 
 export interface AgentSettings {
@@ -283,6 +283,15 @@ export interface ConfigFile {
   streamRetryErrorName?: string;
   /** Maximum number of retries for the streamRetryErrorName error. */
   streamRetryMaxAttempts?: number;
+  /** Enable automatic retry on provider errors (5xx, timeout, network, etc.) */
+  streamRetryEnabled?: boolean;
+  /** Time window for retry rate limiting */
+  streamRetryWindowValue?: number;
+  streamRetryWindowUnit?: "seconds" | "minutes" | "hours";
+  /** Base delay in ms before first retry */
+  streamRetryBaseDelayMs?: number;
+  /** Additional delay per retry (ms). 0 = no progressive increase. With 3000: 2s, 5s, 8s, 11s... */
+  streamRetryProgressiveDelayMs?: number;
 
   /** Permission request timeout configuration */
   permissionRequestTimeoutEnabled?: boolean;

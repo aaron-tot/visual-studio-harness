@@ -584,7 +584,7 @@ export function toggleCustomTool(name: string) {
 }
 
 export function getTurn(sessionId: string, turnId: number) {
-  return fetchJson<{ turn: TurnData }>(
+  return fetchJson<{ turn: import("../../_shared/types/trace").TurnDetail }>(
     `${BASE}/sessions/${encodeURIComponent(sessionId)}/turns/${turnId}`
   );
 }

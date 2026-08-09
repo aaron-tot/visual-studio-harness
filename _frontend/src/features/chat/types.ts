@@ -137,6 +137,9 @@ export interface ChatState {
   } | null;
   abortSlotWait: (requestId: string) => void;
   setStreamingStartTime: (time: number | null) => void;
+  clearNewChatDraft: () => void;
+  startNewChat: () => void;
+  setStreamingStartTime: (time: number | null) => void;
 }
 
 export type BufferedDelta =

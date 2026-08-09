@@ -12,14 +12,16 @@ export async function buildSkillsSection(ctx: SectionContext): Promise<string | 
   };
 
   for (const skill of ctx.agentSettings.skillMds) {
-    const mode = skill.attachmentMode ?? "inject";
+    if (!skill.attachmentMode) {
+      throw new Error(`SkillMdConfig requires 'attachmentMode' (inject | hard | soft). Missing for skill: ${skill.name ?? skill.path ?? "unnamed"}`);
+    }
     const contents = await resolveSkillMds([skill], {
       dataDir: ctx.dataDir,
       workspaceRoot: ctx.workspaceRoot,
       sessionId: ctx.sessionId,
     });
     if (contents.length > 0) {
-      byMode[mode].push({ config: skill, content: contents[0] });
+      byMode[skill.attachmentMode].push({ config: skill, content: contents[0] });
     }
   }
 

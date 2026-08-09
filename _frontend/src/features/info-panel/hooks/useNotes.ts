@@ -24,6 +24,7 @@ export function useNotes({
     if (!enabled) return;
     setLoading(true);
     setError(null);
+    setGroups([]);
     try {
       if (scope === "global") {
         const notes = await listNotes({ scope: "global" });

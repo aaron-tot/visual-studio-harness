@@ -11,10 +11,11 @@ import { serverOriginFromBaseUrl } from "../../llm/slots";
 import { createMockFullStream } from "../../llm/mock-models";
 import { ensureTestServer, buildMockTools, hasMockActions } from "../../llm/mock-models/test-server";
 import type { StreamChatOptions, StreamChatResult } from "./stream-types";
-import { getRetryableLabel, DEFAULT_STREAM_RETRY_CONFIG } from "./stream-retry";
+import { getRetryableLabel, DEFAULT_STREAM_RETRY_CONFIG, calculateRetryDelay, canRetryInWindow, recordRetryAttempt } from "./stream-retry";
 import { createVerboseFetch } from "./raw-capture-fetch";
 import { parseFinishStepEvent, flattenUsage } from "./step-finish-meta";
 import { StepToolBatch } from "./step-tool-batch";
+import { withAdditionalSystemInfoTool, realToolNames } from "./per-step-system-prompt";
 
 export async function streamChat(options: StreamChatOptions): Promise<StreamChatResult> {
   const { provider, model, messages, onToken, onReasoning, onToolCall, onToolResult, tools, maxSteps = 30, temperature, thinkingEffort, signal, hookCtx, prepareStep } = options;
@@ -24,7 +25,12 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
     ...DEFAULT_STREAM_RETRY_CONFIG,
     maxAttempts: options.streamRetryMaxAttempts ?? DEFAULT_STREAM_RETRY_CONFIG.maxAttempts,
     errorName: options.streamRetryErrorName ?? DEFAULT_STREAM_RETRY_CONFIG.errorName,
-    delayMs: options.streamRetryDelayMs ?? DEFAULT_STREAM_RETRY_CONFIG.delayMs,
+    // Backward compat: if streamRetryDelayMs is provided, use it as base and disable progressive
+    baseDelayMs: options.streamRetryBaseDelayMs ?? options.streamRetryDelayMs ?? DEFAULT_STREAM_RETRY_CONFIG.baseDelayMs,
+    progressiveDelayMs: options.streamRetryDelayMs != null ? 0 : (options.streamRetryProgressiveDelayMs ?? DEFAULT_STREAM_RETRY_CONFIG.progressiveDelayMs),
+    windowValue: options.streamRetryWindowValue ?? DEFAULT_STREAM_RETRY_CONFIG.windowValue,
+    windowUnit: options.streamRetryWindowUnit ?? DEFAULT_STREAM_RETRY_CONFIG.windowUnit,
+    enabled: options.streamRetryEnabled ?? true,
   };
   let rawRequest: Record<string, unknown> | undefined;
   let rawResponse: Record<string, unknown> | undefined;
@@ -37,6 +43,12 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   const isTest = provider.displayName === "Test";
   const useMockEndpoint = isTest && hasMockActions(model);
   const sdkTools = useMockEndpoint ? buildMockTools(model, options.workspaceRoot) : tools;
+  // Register the fabricated `additional_system_info` tool in the map so the SDK
+  // accepts the injected tool-call instead of throwing NoSuchToolError, but hide
+  // it from the model's request via activeTools (it is not a real tool).
+  const sdkToolsWithAsi =
+    sdkTools && Object.keys(sdkTools).length > 0 ? withAdditionalSystemInfoTool(sdkTools) : sdkTools;
+  const activeToolNames = sdkToolsWithAsi ? realToolNames(sdkToolsWithAsi) : undefined;
 
   const makeSdkProvider = (fetchImpl: typeof fetch) =>
     isTest && !useMockEndpoint
@@ -51,7 +63,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           fetch: fetchImpl,
         });
 
-  const hasTools = sdkTools && Object.keys(sdkTools).length > 0;
+  const hasTools = sdkToolsWithAsi && Object.keys(sdkToolsWithAsi).length > 0;
   const bus = hookCtx ? getBus() : null;
   const stepBatch = new StepToolBatch({
     onBefore: async (p) => {
@@ -69,6 +81,9 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   dbg("streamChat:start", { provider: provider.displayName, model, messageCount: messages.length, hasTools, maxSteps, thinkingEffort, retryMaxAttempts: retryConfig.maxAttempts });
   const emitChunks = bus != null && bus.listenerCount("stream.chunk") > 0;
   const providerOptions = thinkingToProviderOptions(thinkingEffort);
+
+  // Per-provider:model retry attempt tracking for rate limiting
+  const streamRetryAttempts = new Map<string, number[]>();
 
   if (bus && hookCtx) {
     await bus.emit("stream.start", hookCtx, { modelName: model, providerName: provider.displayName, messageCount: messages.length });
@@ -146,7 +161,9 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
               maxRetries: 0,
               ...(temperature !== undefined ? { temperature } : {}),
               ...(providerOptions ? { providerOptions: providerOptions as never } : {}),
-              ...(hasTools ? { tools: sdkTools!, stopWhen: stepCountIs(maxSteps) } : {}),
+              ...(hasTools
+                ? { tools: sdkToolsWithAsi!, activeTools: activeToolNames as never, stopWhen: stepCountIs(maxSteps) }
+                : {}),
               onError: ({ error }) => {
                 const errObj = error?.lastError ?? error;
                 const info = classifyLlmError(errObj ?? "stream error", errCtx);
@@ -305,8 +322,14 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           break;
         }
         const label = getRetryableLabel(err, retryConfig.errorName);
-        if (attempt < retryConfig.maxAttempts && label) {
-          const delay = retryConfig.delayMs * Math.pow(2, attempt);
+        if (retryConfig.enabled && attempt < retryConfig.maxAttempts && label) {
+          // Check rate limit window
+          if (!canRetryInWindow(streamRetryAttempts, provider.displayName + ":" + model, retryConfig.maxAttempts, retryConfig.windowValue, retryConfig.windowUnit)) {
+            dbg("streamChat:rate-limited", { provider: provider.displayName, model });
+            throw new LlmError(classifyLlmError(err, errCtx));
+          }
+          recordRetryAttempt(streamRetryAttempts, provider.displayName + ":" + model);
+          const delay = calculateRetryDelay(attempt, retryConfig.baseDelayMs, retryConfig.progressiveDelayMs);
           console.error(`[LLM] ${provider.displayName} / ${model}: ${label} — retry ${attempt + 1}/${retryConfig.maxAttempts} in ${delay / 1000}s`);
           onToken(`\n\n_[${label} — retrying in ${delay / 1000}s...]_\n\n`);
           await new Promise<void>((resolve) => {

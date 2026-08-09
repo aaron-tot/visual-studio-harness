@@ -599,12 +599,15 @@ export async function runTurn(
         },
         onStepFinish: async (info) => {
           if (currentStepId != null) {
-            // Build+compare+emit the ASI at the END of this step (after its tools
-            // executed). The injection reflects THIS step's changes and is persisted
-            // against THIS step (attributed to the part that caused it), then carried
-            // into the next step's request by prepareStep.
+            // Build+compare+emit the ASI once per batch: only at the END of the
+            // batch's final step (the step where the model stops calling tools).
+            // Intermediate tool steps do not inject, so we don't emit one per step.
+            // The injection reflects the final step's changes and is persisted
+            // against that step (attributed to the part that caused it), then carried
+            // into a (future) step's request by prepareStep.
             try {
-              await perStep.emitAtStepEnd(info.stepIndex);
+              const isFinalStep = info.finishReason !== "tool-calls";
+              await perStep.emitAtStepEnd(info.stepIndex, isFinalStep);
             } catch (err) {
               console.error("[asi] emitAtStepEnd failed", err);
             }
@@ -656,6 +659,11 @@ export async function runTurn(
         signal: abortSignal, hookCtx, modelSpeed, workspaceRoot,
         streamRetryErrorName: config.streamRetryErrorName,
         streamRetryMaxAttempts: config.streamRetryMaxAttempts,
+        streamRetryEnabled: config.streamRetryEnabled,
+        streamRetryWindowValue: config.streamRetryWindowValue,
+        streamRetryWindowUnit: config.streamRetryWindowUnit,
+        streamRetryBaseDelayMs: config.streamRetryBaseDelayMs,
+        streamRetryProgressiveDelayMs: config.streamRetryProgressiveDelayMs,
         prepareStep,
       });
       _fullContent = streamResult.content;

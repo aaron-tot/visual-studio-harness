@@ -24,6 +24,7 @@ export function useResearchDocs({
     if (!enabled) return;
     setLoading(true);
     setError(null);
+    setGroups([]);
     try {
       if (scope === "global") {
         const docs = await listResearch({ scope: "global" });

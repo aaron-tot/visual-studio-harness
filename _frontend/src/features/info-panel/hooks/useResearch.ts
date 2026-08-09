@@ -32,6 +32,7 @@ export function useResearch({
     if (!enabled) return;
     setLoading(true);
     setError(null);
+    setGroups([]);
     try {
       if (scope === "global") {
         const entries = await listResearchViaApi({ scope: "global" });

@@ -9,6 +9,8 @@ scripts/generated/
 .superpowers/
 .superpowers/*
 .agentHarness/
+.visualstudioharness/*
+.VisualStudioHarness/*
 .momiji/
 .opencode/
 .vsh/

@@ -211,10 +211,10 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
       return;
     }
 
-    void (async () => {
+    const loadCache = async () => {
       try {
         const res = await getTurn(sessionId, turnId);
-        const turn = (res as any)?.turn;
+        const turn = res?.turn;
         if (!turn || cancelled) return;
         const groups = computeToolGroups(turn);
         const next: Record<string, string> = {};
@@ -228,12 +228,23 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
       } catch {
         if (!cancelled) setToolCacheByCallId({});
       }
-    })();
+    };
+
+    void loadCache();
+
+    // During streaming, the cache for a tool group comes from the NEXT step's
+    // usage, which is only persisted at that step's finish. Poll briefly so the
+    // badge catches up once the following step's cache lands in the DB.
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    if (isStreaming) {
+      pollTimer = setInterval(loadCache, 1500);
+    }
 
     return () => {
       cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
     };
-  }, [isUser, message.parts, sessionId, turnId, completedToolKey]);
+  }, [isUser, message.parts, sessionId, turnId, completedToolKey, isStreaming]);
 
   // User messages: simple right-aligned bubble
   const [ctxMenuPos, setCtxMenuPos] = useState<{ x: number; y: number } | null>(null);

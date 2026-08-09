@@ -109,6 +109,116 @@ function RateLimitRow({
   );
 }
 
+interface StreamRetryConfig {
+  enableKey: keyof ConfigFile;
+  maxAttemptsKey: keyof ConfigFile;
+  windowValueKey: keyof ConfigFile;
+  windowUnitKey: keyof ConfigFile;
+  baseDelayKey: keyof ConfigFile;
+  progressiveDelayKey: keyof ConfigFile;
+}
+
+function StreamRetryRow({
+  config,
+  onPatch,
+  label,
+  desc,
+  keys,
+}: {
+  config: ConfigFile;
+  onPatch: (patch: Partial<ConfigFile>) => void;
+  label: string;
+  desc: string;
+  keys: StreamRetryConfig;
+}) {
+  return (
+    <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
+      <label className="flex items-start gap-3 cursor-pointer group">
+        <input
+          type="checkbox"
+          checked={(config[keys.enableKey] as boolean) ?? true}
+          onChange={(e) => onPatch({ [keys.enableKey]: e.target.checked })}
+          className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+        />
+        <div>
+          <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+            {label}
+          </div>
+          <div className="text-xs text-zinc-500 mt-0.5">{desc}</div>
+        </div>
+      </label>
+
+      <div className="ml-7 space-y-2" style={{ opacity: (config[keys.enableKey] as boolean) ?? true ? 1 : 0.5 }}>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+          <span>Max retries</span>
+          <input
+            type="number"
+            min={0}
+            max={20}
+            value={(config[keys.maxAttemptsKey] as number) ?? 3}
+            onChange={(e) =>
+              onPatch({ [keys.maxAttemptsKey]: Math.max(0, Math.min(20, Number(e.target.value))) })
+            }
+            className="w-14 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center"
+          />
+          <span>in</span>
+          <input
+            type="number"
+            min={1}
+            max={1440}
+            value={(config[keys.windowValueKey] as number) ?? 1}
+            onChange={(e) =>
+              onPatch({ [keys.windowValueKey]: Math.max(1, Math.min(1440, Number(e.target.value))) })
+            }
+            className="w-14 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center"
+          />
+          <select
+            value={(config[keys.windowUnitKey] as string) ?? "minutes"}
+            onChange={(e) => onPatch({ [keys.windowUnitKey]: e.target.value })}
+            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+          >
+            {WINDOW_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+          <span>Base delay (ms)</span>
+          <input
+            type="number"
+            min={0}
+            max={60000}
+            step={100}
+            value={(config[keys.baseDelayKey] as number) ?? 2000}
+            onChange={(e) =>
+              onPatch({ [keys.baseDelayKey]: Math.max(0, Math.min(60000, Number(e.target.value))) })
+            }
+            className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center"
+          />
+          <span>Progressive (+ms/retry)</span>
+          <input
+            type="number"
+            min={0}
+            max={30000}
+            step={100}
+            value={(config[keys.progressiveDelayKey] as number) ?? 3000}
+            onChange={(e) =>
+              onPatch({ [keys.progressiveDelayKey]: Math.max(0, Math.min(30000, Number(e.target.value))) })
+            }
+            className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center"
+          />
+          <span className="text-zinc-600">(0 = fixed delay)</span>
+        </div>
+        <div className="text-[11px] text-zinc-500 font-mono">
+          Example: base=2000, progressive=3000 → 2s, 5s, 8s, 11s...
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GenerateToolSeedsButton() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ seeded: string[]; overwritten: string[]; errors: string[] } | null>(null);
@@ -259,6 +369,22 @@ export function GeneralPanel() {
             windowUnitKey: "autoContinueOnThinkingEndWindowUnit",
             promptKey: "autoContinueOnThinkingEndPrompt",
             defaultPrompt: DEFAULT_THINKING_END_PROMPT,
+          }}
+        />
+
+        {/* Provider error auto-retry */}
+        <StreamRetryRow
+          config={config}
+          onPatch={patch}
+          label="Auto-retry on provider errors"
+          desc="Automatically retry when the upstream provider returns 5xx, timeout, network error, or rate limit. Shows countdown in chat."
+          keys={{
+            enableKey: "streamRetryEnabled",
+            maxAttemptsKey: "streamRetryMaxAttempts",
+            windowValueKey: "streamRetryWindowValue",
+            windowUnitKey: "streamRetryWindowUnit",
+            baseDelayKey: "streamRetryBaseDelayMs",
+            progressiveDelayKey: "streamRetryProgressiveDelayMs",
           }}
         />
 

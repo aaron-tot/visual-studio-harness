@@ -219,6 +219,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ stagedChatInput: "" });
   },
 
+  startNewChat: () => {
+    const { sessionId } = get();
+    if (sessionId) {
+      // There's an active session - clear it and start fresh
+      set({
+        sessionId: null,
+        sessionMeta: null,
+        messages: [],
+        streaming: false,
+        stopping: false,
+        streamingContent: "",
+        streamingParts: [],
+        streamingTurnId: null,
+        lastSeq: 0,
+        _partSeq: 0,
+        _textSeq: 0,
+        _reasonIdx: 0,
+        streamingStartTime: null,
+      });
+    }
+    // Load new chat draft from localStorage
+    try {
+      const draft = localStorage.getItem(NEW_CHAT_DRAFT_KEY);
+      if (draft) {
+        set({ stagedChatInput: draft });
+      }
+    } catch { /* ignore */ }
+  },
+
   sendMessage: (content, config: SessionConfig) => {
     const { sessionId, messages, workspaceRoot } = get();
     // We are starting a live, client-initiated turn. Any in-flight

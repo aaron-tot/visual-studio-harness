@@ -481,6 +481,12 @@ export function AgentRuntimeEditor({
           Per-agent override of which sections are ALSO baked into the static base system prompt
           (rebuilt once per turn — not refreshed per step). Left empty, the global setting applies.
         </p>
+        <div className="text-[10px] text-amber-500/90 mt-1">
+          ⚠ Warning: enabling this bakes sections into the static system prompt. If the baked
+          content differs from the previous turn, it invalidates the entire cached context and
+          forces a full recompute — use the per-step "Additional System Info" sections instead
+          for dynamic content that changes frequently.
+        </div>
         {(() => {
           const sysSec: SystemPromptSections = value.systemPromptSections ?? DEFAULT_SYSTEM_PROMPT_SECTIONS;
           const patchSec = (partial: Partial<SystemPromptSections>) =>

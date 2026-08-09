@@ -24,6 +24,7 @@ export function useAudits({
     if (!enabled) return;
     setLoading(true);
     setError(null);
+    setGroups([]);
     try {
       if (scope === "global") {
         const audits = await listAudits({ scope: "global" });

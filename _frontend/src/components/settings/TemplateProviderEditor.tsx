@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Sparkles, RefreshCw, Check, X, Loader2, ToggleLeft, ToggleRight, Circle, Search } from "lucide-react";
+import { Sparkles, RefreshCw, Check, X, Loader2, ToggleLeft, ToggleRight, Circle, Search, Eye, EyeOff } from "lucide-react";
 import { useConfigStore } from "../../stores/config";
 import { fetchProviderModels } from "../../lib/api";
 import { getDescriptorByDisplayName } from "../../../../_shared/provider-registry";
@@ -15,6 +15,7 @@ export function TemplateProviderEditor({ providerIndex }: TemplateProviderEditor
   const descriptor = getDescriptorByDisplayName(provider?.displayName || "");
 
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [showField, setShowField] = useState<Record<string, boolean>>({});
   const [fetching, setFetching] = useState(false);
   const [status, setStatus] = useState<"idle" | "connecting" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -107,18 +108,34 @@ export function TemplateProviderEditor({ providerIndex }: TemplateProviderEditor
 
   const renderFields = () => {
     if (!descriptor.extraFields?.length) return null;
-    return descriptor.extraFields.map((field) => (
-      <div key={field.key} className="space-y-2">
-        <label className="text-xs text-zinc-400">{field.label}</label>
-        <input
-          value={fieldValues[field.key] || ""}
-          onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-          type={field.type}
-          placeholder={field.placeholder}
-          className="w-full rounded bg-zinc-800 border border-zinc-700 px-3 py-1.5 text-sm"
-        />
-      </div>
-    ));
+    return descriptor.extraFields.map((field) => {
+      const isPassword = field.type === "password";
+      return (
+        <div key={field.key} className="space-y-2">
+          <label className="text-xs text-zinc-400">{field.label}</label>
+          <div className="relative">
+            <input
+              value={fieldValues[field.key] || ""}
+              onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+              type={isPassword && showField[field.key] ? "text" : field.type}
+              placeholder={field.placeholder}
+              className={`w-full rounded bg-zinc-800 border border-zinc-700 px-3 py-1.5 text-sm ${isPassword ? "pr-9" : ""}`}
+            />
+            {isPassword && (
+              <button
+                type="button"
+                onClick={() => setShowField((prev) => ({ ...prev, [field.key]: !prev[field.key] }))}
+                tabIndex={-1}
+                title={showField[field.key] ? "Hide" : "Show"}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                {showField[field.key] ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    });
   };
 
   return (

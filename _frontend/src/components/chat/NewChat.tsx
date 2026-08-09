@@ -319,7 +319,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   const sessionMeta = useChatStore((s) => s.sessionMeta);
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
   const stagedChatInput = useChatStore((s) => s.stagedChatInput);
-  const { sendMessage, stopStreaming, stageChatInput } = useChatStore();
+  const { sendMessage, stopStreaming, stageChatInput, clearNewChatDraft } = useChatStore();
 
   const setInput = stageChatInput;
 
@@ -328,6 +328,26 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
 
   const [submitted, setSubmitted] = useState(false);
   const [hovered, setHovered] = useState(false);
+
+  // Load new chat draft from localStorage on mount
+  useEffect(() => {
+    if (isEmptyComposer) {
+      try {
+        const draft = localStorage.getItem("VISUAL STUDIO HARNESS.newChatDraft");
+        if (draft) {
+          setInput(draft);
+        }
+      } catch { /* ignore */ }
+    }
+  }, [isEmptyComposer, setInput]);
+
+  // Clear new chat draft when session is created
+  useEffect(() => {
+    if (sessionId && isEmptyComposer) {
+      // Transitioning from new chat to existing session — clear localStorage draft
+      clearNewChatDraft();
+    }
+  }, [sessionId, isEmptyComposer, clearNewChatDraft]);
   const [cardHeight, setCardHeight] = useState(240);
   const [modelError, setModelError] = useState(false);
 

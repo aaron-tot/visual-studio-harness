@@ -30,15 +30,22 @@ import {
 // ── Draft input persistence (debounced) ──────────────────────────────────────
 let _draftSaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
 const DRAFT_SAVE_DEBOUNCE_MS = 400;
+const NEW_CHAT_DRAFT_KEY = "VISUAL STUDIO HARNESS.newChatDraft";
 
-function saveDraftDebounced(sessionId: string, content: string) {
+function saveDraftDebounced(sessionId: string | null, content: string) {
   if (_draftSaveTimeoutId) clearTimeout(_draftSaveTimeoutId);
   _draftSaveTimeoutId = setTimeout(() => {
     _draftSaveTimeoutId = null;
-    if (!sessionId) return;
-    putSessionDraftInput(sessionId, content).catch((err) => {
-      console.error("[draft] save failed:", err);
-    });
+    if (sessionId) {
+      putSessionDraftInput(sessionId, content).catch((err) => {
+        console.error("[draft] save failed:", err);
+      });
+    } else {
+      // No session yet — persist to localStorage for new chat
+      try {
+        localStorage.setItem(NEW_CHAT_DRAFT_KEY, content);
+      } catch { /* ignore */ }
+    }
   }, DRAFT_SAVE_DEBOUNCE_MS);
 }
 
@@ -147,7 +154,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         : content;
     set({ stagedChatInput: next });
     const sid = get().sessionId;
-    if (sid) saveDraftDebounced(sid, next);
+    saveDraftDebounced(sid, next);
   },
 
   loadSession: async (id) => {
@@ -207,6 +214,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch { /* ignore */ }
   },
 
+  clearNewChatDraft: () => {
+    try { localStorage.removeItem(NEW_CHAT_DRAFT_KEY); } catch { /* ignore */ }
+    set({ stagedChatInput: "" });
+  },
+
   sendMessage: (content, config: SessionConfig) => {
     const { sessionId, messages, workspaceRoot } = get();
     // We are starting a live, client-initiated turn. Any in-flight
@@ -233,10 +245,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingStartTime: startTime,
       stagedChatInput: "",
     });
-    // Clear persisted draft for this session
+    // Clear persisted draft for this session (or new chat)
     if (sessionId) {
       clearDraftSaveTimeout();
       putSessionDraftInput(sessionId, "").catch((err) => console.error("[draft] clear failed:", err));
+    } else {
+      // No session yet — clear new chat draft from localStorage
+      try { localStorage.removeItem(NEW_CHAT_DRAFT_KEY); } catch { /* ignore */ }
     }
     chatDebug("store", "sendMessage -> streaming=true", { sessionId, agentName: config.agentName });
     touchStreamTimeout();
@@ -260,6 +275,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     clearDraftSaveTimeout();
     useSessionViewStore.getState().setCurrentSession(null);
     resetHydrateState();
+    // Clear new chat draft
+    try { localStorage.removeItem(NEW_CHAT_DRAFT_KEY); } catch { /* ignore */ }
     set({
       messages: [],
       streaming: false,

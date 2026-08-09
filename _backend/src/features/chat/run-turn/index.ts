@@ -558,6 +558,9 @@ export async function runTurn(
         provider, model: model.modelName, messages, tools,
         maxSteps: runtime.maxSteps, temperature: runtime.temperature,
         thinkingEffort: resolvedThinkingEffort,
+        providerRouting: model.providerOrder
+          ? { order: model.providerOrder, allowFallbacks: model.allowProviderFallbacks ?? true }
+          : undefined,
         onRetryAttempt: () => {
           if (traceTurnId != null) {
             clearTurnSteps(traceTurnId, dataDir);

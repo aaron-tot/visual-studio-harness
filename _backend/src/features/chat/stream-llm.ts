@@ -2,6 +2,7 @@ import type { Message, MessagePartType, ThinkingEffort } from "../../../../_shar
 import { streamText, stepCountIs } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { getBus } from "../hooks";
+import { sendToSession } from "../sessions/view-tracker";
 import { thinkingToProviderOptions } from "../../llm/thinking";
 import { classifyLlmError, LlmError, isAbortError } from "../../llm/errors";
 import { isStopTurnResult } from "../tools";
@@ -80,7 +81,26 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   const dbg = (...a: unknown[]) => console.log("[stream]", ...a);
   dbg("streamChat:start", { provider: provider.displayName, model, messageCount: messages.length, hasTools, maxSteps, thinkingEffort, retryMaxAttempts: retryConfig.maxAttempts });
   const emitChunks = bus != null && bus.listenerCount("stream.chunk") > 0;
-  const providerOptions = thinkingToProviderOptions(thinkingEffort);
+  // Inject OpenRouter-style fixed-provider routing (`provider.order` /
+  // `allow_fallbacks`) at the TOP LEVEL of the request body. AI SDK v7 merges
+  // providerOptions entries under the provider name namespace into the body
+  // (non-schema keys), so the key must match the SDK's providerOptionsName
+  // (displayName split on ".") — the `openaiCompatible` namespace is
+  // schema-stripped and never reaches the wire.
+  let providerOptions = thinkingToProviderOptions(thinkingEffort);
+  const routing = options.providerRouting;
+  if (routing?.order?.length) {
+    const ns = provider.displayName.split(".")[0].trim();
+    providerOptions = {
+      ...(providerOptions ?? {}),
+      [ns]: {
+        provider: {
+          order: routing.order,
+          allow_fallbacks: routing.allowFallbacks ?? true,
+        },
+      },
+    };
+  }
 
   // Per-provider:model retry attempt tracking for rate limiting
   const streamRetryAttempts = new Map<string, number[]>();
@@ -107,6 +127,28 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   let streamRawFinishReason: string | undefined;
   let streamTotalUsage: import("./stream-types").StreamChatResult["totalUsage"];
   let aborted = false;
+
+  // Stream pulse heartbeat — sends periodic "stream_pulse" to frontend to prevent 60s timeout
+  let pulseInterval: ReturnType<typeof setInterval> | null = null;
+  const startPulse = () => {
+    if (pulseInterval) return;
+    const sid = options.sessionId;
+    if (!sid) return;
+    pulseInterval = setInterval(() => {
+      if (turnEnded || aborted) {
+        clearInterval(pulseInterval!);
+        pulseInterval = null;
+        return;
+      }
+      sendToSession(sid, { type: "stream_pulse", sessionId: sid });
+    }, 30_000);
+  };
+  const stopPulse = () => {
+    if (pulseInterval) {
+      clearInterval(pulseInterval);
+      pulseInterval = null;
+    }
+  };
 
   assertExactlyOneSystemMessage(messages);
 
@@ -173,6 +215,9 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
               },
             })
           : { fullStream: createMockFullStream(model, signal, options.modelSpeed, options.workspaceRoot) };
+
+        // Start pulse heartbeat after stream is created
+        startPulse();
 
         const evtCounts: Record<string, number> = {};
         let firstEventLogged = false;
@@ -314,10 +359,12 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           }
         }
         dbg("streamChat:stream-done", { attempt, evtCounts, partsLen: parts.length, finishReason: streamFinishReason });
+        stopPulse();
         break;
       } catch (err: unknown) {
         if (isAbortError(err)) {
           aborted = true;
+          stopPulse();
           dbg("streamChat:aborted");
           break;
         }
@@ -338,6 +385,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
             signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
           });
           if (signal?.aborted) { aborted = true; break; }
+          stopPulse();
           continue;
         }
         dbg("streamChat:fatal-error", { label, message: String(err) });
@@ -345,6 +393,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
       }
     }
   } finally {
+    stopPulse();
     if (bus && hookCtx) await bus.emit("stream.end", hookCtx, { fullContent, partCount: parts.length, durationMs: Date.now() - streamStarted });
   }
 

@@ -7,6 +7,8 @@ export const ModelConfigSchema = z.object({
   modelName: z.string(),
   enabled: z.boolean().optional(),
   thinkingEffort: ThinkingEffortSchema.optional(),
+  providerOrder: z.array(z.string()).optional(),
+  allowProviderFallbacks: z.boolean().optional(),
 });
 
 export const ProviderConfigSchema = z.object({

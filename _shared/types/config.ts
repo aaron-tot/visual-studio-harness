@@ -6,6 +6,10 @@ export interface ModelConfig {
   enabled?: boolean;
   thinkingEffort?: ThinkingEffort;
   isLoaded?: boolean;
+  /** OpenRouter-style fixed provider routing. order = providers to try, in preference order. */
+  providerOrder?: string[];
+  /** When false, do not fall back beyond providerOrder — keeps prompt cache stable. Default true. */
+  allowProviderFallbacks?: boolean;
 }
 
 export interface ProviderConfig {

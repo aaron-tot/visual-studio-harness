@@ -201,17 +201,16 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
 
   useEffect(() => {
     let cancelled = false;
-    if (isUser || !sessionId || turnId == null) {
-      setToolCacheByCallId({});
-      return;
-    }
+    // Candidate rows only: user / no-session / no-tool rows never show a badge.
     const hasTool = (message.parts ?? []).some((p) => p.type === "tool");
-    if (!hasTool) {
+    if (isUser || !sessionId || !hasTool) {
       setToolCacheByCallId({});
       return;
     }
 
     const loadCache = async () => {
+      // turnId may be null early in streaming (only set on first tool_end).
+      if (turnId == null) return;
       try {
         const res = await getTurn(sessionId, turnId);
         const turn = res?.turn;
@@ -232,13 +231,29 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
 
     void loadCache();
 
-    // During streaming, the cache for a tool group comes from the NEXT step's
-    // usage, which is only persisted at that step's finish. Poll briefly so the
-    // badge catches up once the following step's cache lands in the DB.
+    // The cache for a tool group comes from the NEXT step's usage, which is only
+    // persisted at that step's finish. A committed turn's `message.parts` never
+    // changes identity again, so this effect runs once on mount; if that single
+    // fetch raced finalization (or turnId was still null), the map stays empty
+    // with no retry. Poll until the turn is settled so the badge eventually
+    // appears without needing a manual re-mount.
+    let settled = false;
+    const stop = () => {
+      settled = true;
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
     let pollTimer: ReturnType<typeof setInterval> | null = null;
-    if (isStreaming) {
-      pollTimer = setInterval(loadCache, 1500);
-    }
+    pollTimer = setInterval(() => {
+      if (cancelled || settled) return;
+      void loadCache().then(() => {
+        // A non-streaming turn is terminal: one fetch (or prior poll) reflects
+        // the final DB state, so stop polling after it completes.
+        if (!isStreaming) stop();
+      });
+    }, 1500);
 
     return () => {
       cancelled = true;

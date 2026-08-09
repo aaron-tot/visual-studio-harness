@@ -142,6 +142,12 @@ wsClient.on("error", (data: any) => {
   store.failStreaming(data?.error || "Unknown error", { modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, status: data.status, category: data?.category });
 });
 
+wsClient.on("stream_pulse", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId !== currentId) return;
+  touchStreamTimeout();
+});
+
 wsClient.on("tool_start", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;

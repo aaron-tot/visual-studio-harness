@@ -49,6 +49,8 @@ export interface StreamChatOptions {
   onToolBatchEnd?: (e: StepToolBatchAfterPayload) => void | Promise<void>;
   /** Per-step instructions rebuild. Must return the complete system block, never a delta. */
   prepareStep?: PrepareStepFunction<ToolSet>;
+  /** Fixed-provider routing for OpenAI-compatible/OpenRouter endpoints. */
+  providerRouting?: { order?: string[]; allowFallbacks?: boolean };
   tools?: ToolSet;
   maxSteps?: number;
   temperature?: number;

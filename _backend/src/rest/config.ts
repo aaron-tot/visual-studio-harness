@@ -257,12 +257,23 @@ export function registerConfigRoutes(
         } else if (runningModels) {
           isLoaded = runningModels.has(id);
         }
-        return {
+        const base = {
           displayName: id,
           modelName: id,
           enabled: true,
           isLoaded,
         };
+        // Preserve per-model routing on refresh (match by modelName) so a
+        // "Save & Connect" fetch doesn't wipe providerOrder/allowProviderFallbacks.
+        const existing = provider.models.find((m0) => m0.modelName === id);
+        if (existing && (existing.providerOrder || existing.allowProviderFallbacks !== undefined)) {
+          return {
+            ...base,
+            providerOrder: existing.providerOrder,
+            allowProviderFallbacks: existing.allowProviderFallbacks,
+          };
+        }
+        return base;
       })
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
 

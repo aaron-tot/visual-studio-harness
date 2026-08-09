@@ -70,6 +70,14 @@ export function touchStreamTimeout(): void {
   }, STREAM_TIMEOUT_MS);
 }
 
+/** Clear the streaming timeout when streaming ends. */
+function clearStreamTimeout(): void {
+  if (_streamTimeoutId) {
+    clearTimeout(_streamTimeoutId);
+    _streamTimeoutId = null;
+  }
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   streaming: false,

@@ -2,9 +2,11 @@ import { useState, useMemo } from "react";
 import type { MessagePartType } from "../../../../_shared/types";
 import { cn } from "../../../lib/utils";
 import { useChatStore } from "../../../stores/chat";
+import { useConfigStore } from "../../../stores/config";
 import { ToolCallCard } from "../../tools/ToolCallCard";
 import { ToolStatusBorder } from "./ToolStatusBorder";
 import { groupByStep } from "./group-by-step";
+import { toolBatchLabel } from "./tool-batch-label";
 import { ContextToolGroup, getCategory, type GroupCategory } from "./ContextToolGroup";
 import { isAdditionalSystemInfoPart, extractSystemInfoContent } from "../system-info";
 import { MemoSystemInfoBubble } from "../SystemInfoBubble";
@@ -58,6 +60,7 @@ export function StepToolGroup({ parts, toolCacheByCallId }: { parts: MessagePart
   const toolCount = toolParts.length;
   const allDone = toolParts.length > 0 && toolParts.every((p) => p.status === "completed" || p.status === "error");
   const someRunning = toolParts.some((p) => p.status === "running");
+  const toolExecutionMode = useConfigStore((s) => s.config.toolExecutionMode);
 
   // All parallel tools in one step share the same prompt-cache hit (their
   // results are batched into a single subsequent SDK call). Read it from the
@@ -89,9 +92,7 @@ export function StepToolGroup({ parts, toolCacheByCallId }: { parts: MessagePart
         )}
       >
         <span className={cn("transition-transform text-zinc-500 shrink-0", collapsed ? "rotate-0" : "rotate-90")}>&#9654;</span>
-        <span className={cn(someRunning && "animate-pulse")}>
-          {someRunning ? "Running parallel tool calls" : "Parallel tool calls"}
-        </span>
+        <span className={cn(someRunning && "animate-pulse")}>{toolBatchLabel(toolExecutionMode)}</span>
         {cacheText && (
           <span className="text-[10px] text-zinc-400 font-mono shrink-0" title="Prompt cache hit on next step">
             {cacheText} cache

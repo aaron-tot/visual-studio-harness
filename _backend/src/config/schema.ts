@@ -196,6 +196,7 @@ export const ConfigFileSchema = z.object({
   defaultAgent: z.string().optional(),
   defaultProvider: z.string().optional(),
   defaultModel: z.string().optional(),
+  toolExecutionMode: z.enum(["sequential", "concurrent"]).default("sequential"),
   autoContinueOnToolEnd: z.boolean().default(false),
   autoContinueOnToolEndMaxAttempts: z.number().int().positive().default(5),
   autoContinueOnToolEndWindowValue: z.number().int().positive().default(1),

@@ -464,6 +464,27 @@ export function GeneralPanel() {
             </div>
           </label>
 
+          {/* Tool execution mode */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm text-zinc-200">Tool execution mode</div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                How multiple tool calls issued in the same step are executed.
+                Sequential runs them one at a time; Parallel lets them run concurrently.
+              </div>
+            </div>
+            <select
+              value={config.toolExecutionMode ?? "sequential"}
+              onChange={(e) =>
+                patch({ toolExecutionMode: e.target.value === "concurrent" ? "concurrent" : "sequential" })
+              }
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+            >
+              <option value="sequential">Sequential</option>
+              <option value="concurrent">Parallel</option>
+            </select>
+          </div>
+
           {/* Permission request timeout */}
           <label className="flex items-start gap-3 cursor-pointer group">
             <input

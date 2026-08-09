@@ -24,6 +24,9 @@ export interface ProviderConfig {
 
 export type SlotBusyPolicy = "wait" | "fail" | "ask";
 
+/** How tool calls issued in the same step are executed: one at a time (sequential) or concurrently. */
+export type ToolExecutionMode = "sequential" | "concurrent";
+
 export interface AgentRuntimeSettings {
   providerName?: string;
   modelName?: string;
@@ -247,6 +250,8 @@ export interface ConfigFile {
   defaultAgent?: string;
   defaultProvider?: string;
   defaultModel?: string;
+  /** Execution mode for tool calls within a step. Default: "sequential" (one at a time). */
+  toolExecutionMode?: ToolExecutionMode;
   /** Config-level default system prompt base. New agents inherit this. Overridable per-agent. */
   systemPromptBase?: AgentMdConfig;
   testModels?: Record<string, TestModelConfig>;

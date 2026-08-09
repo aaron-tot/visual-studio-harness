@@ -239,6 +239,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingStartTime: null,
       });
     }
+    // Clear session store activeId so sidebar green indicator clears
+    try {
+      const { useSessionStore } = require("../stores/sessions");
+      useSessionStore.getState().setActive(null);
+    } catch { /* ignore if not loaded yet */ }
     // Load new chat draft from localStorage
     try {
       const draft = localStorage.getItem(NEW_CHAT_DRAFT_KEY);

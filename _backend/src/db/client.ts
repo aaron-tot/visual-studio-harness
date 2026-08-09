@@ -276,6 +276,7 @@ function ensureSchema(sqlite: Database): void {
     `ALTER TABLE sessions ADD COLUMN model_config_json TEXT`,
     `ALTER TABLE sessions ADD COLUMN session_perms_json TEXT`,
     `ALTER TABLE sessions ADD COLUMN starred INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE sessions ADD COLUMN draft_input TEXT`,
   ];
   for (const sql of alters) {
     try {

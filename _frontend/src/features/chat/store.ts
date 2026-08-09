@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { wsClient } from "../../lib/ws";
 import { useSessionViewStore } from "../../stores/sessionView";
+import { useSessionStore } from "../../stores/sessions";
 import {
   sortParts,
   textContentFromParts,
@@ -240,10 +241,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
     }
     // Clear session store activeId so sidebar green indicator clears
-    try {
-      const { useSessionStore } = require("../stores/sessions");
-      useSessionStore.getState().setActive(null);
-    } catch { /* ignore if not loaded yet */ }
+    useSessionStore.getState().setActive(null);
     // Load new chat draft from localStorage
     try {
       const draft = localStorage.getItem(NEW_CHAT_DRAFT_KEY);

@@ -309,9 +309,17 @@ async function main() {
       } catch { /* skip if listing fails */ }
     }, 5000);
 
-    // Clear interval on shutdown
-    process.on("SIGTERM", () => clearInterval(reconcileInterval));
-    process.on("SIGINT", () => clearInterval(reconcileInterval));
+    // Clear interval on shutdown. Must exit: registering a handler disables the
+    // default terminate behavior, and nodemon's hot-reload relies on SIGTERM
+    // killing the child — without process.exit() the dev server never restarts.
+    process.on("SIGTERM", () => {
+      clearInterval(reconcileInterval);
+      process.exit(0);
+    });
+    process.on("SIGINT", () => {
+      clearInterval(reconcileInterval);
+      process.exit(0);
+    });
   } else {
     console.log("[workspace-graph] disabled by config (workspaceGraph: false)");
   }

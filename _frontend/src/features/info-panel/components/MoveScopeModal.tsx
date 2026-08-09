@@ -14,7 +14,7 @@ export function MoveScopeModal({ title, currentScope, onClose, onMove }: MoveSco
     currentScope === "global" ? "project" : "global",
   );
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="rounded-md border border-zinc-700 bg-zinc-900 p-4 shadow-lg"
         onClick={(e) => e.stopPropagation()}

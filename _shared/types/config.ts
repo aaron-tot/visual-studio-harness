@@ -69,6 +69,8 @@ export interface AgentSettings {
   maxSteps?: number;
   color?: string;
   agentMd?: AgentMdConfig;
+  /** Per-agent global system prompt base override (falls back to config.systemPromptBase). */
+  systemPromptBase?: AgentMdConfig;
   skillMds?: SkillMdConfig[];
   /** Controls which skills the agent can access via the skill tool. Default: "all". */
   skillAccess?: "all" | "attached";

@@ -72,6 +72,7 @@ export const AgentSettingsSchema = z.object({
   maxSteps: z.number().int().positive().optional(),
   color: z.string().optional(),
   agentMd: AgentMdConfigSchema.optional(),
+  systemPromptBase: AgentMdConfigSchema.optional(),
   skillMds: z.array(SkillMdConfigSchema).default([]),
   additionalSystemInfo: AdditionalSystemInfoSchema.optional(),
   systemPromptSections: SystemPromptSectionsSchema.optional(),
@@ -113,10 +114,6 @@ export const McpServerConfigSchema = z.object({
   env: z.record(z.string()).optional(),
   url: z.string().optional(),
   headers: z.record(z.string()).optional(),
-});
-
-export const DbConfigSchema = z.object({
-  path: z.string().optional(),
 });
 
 export const SystemPromptJoinersSchema = z.object({
@@ -189,7 +186,6 @@ export const ConfigFileSchema = z.object({
   subagent: SubagentToolSettingsSchema.optional(),
   /** @deprecated Per-tool timeout settings now live in each tool's own `<name>.json` (`ToolConfig.timeouts`). Kept so existing configs still load. */
   toolSettings: ToolSettingsSchema.optional(),
-  db: DbConfigSchema.optional(),
   mcpServers: z.array(McpServerConfigSchema).default([]).optional(),
   systemPromptJoiners: SystemPromptJoinersSchema.optional(),
   additionalSystemInfo: AdditionalSystemInfoSchema.optional(),
@@ -197,6 +193,7 @@ export const ConfigFileSchema = z.object({
   defaultProvider: z.string().optional(),
   defaultModel: z.string().optional(),
   toolExecutionMode: z.enum(["sequential", "concurrent"]).default("sequential"),
+  systemPromptBase: AgentMdConfigSchema.optional(),
   autoContinueOnToolEnd: z.boolean().default(false),
   autoContinueOnToolEndMaxAttempts: z.number().int().positive().default(5),
   autoContinueOnToolEndWindowValue: z.number().int().positive().default(1),
@@ -237,4 +234,8 @@ export const ConfigFileSchema = z.object({
   streamRetryBaseDelayMs: z.number().int().min(0).default(2000),
   /** Additional delay per retry (ms). 0 = no progressive increase. With 3000: 2s, 5s, 8s, 11s... */
   streamRetryProgressiveDelayMs: z.number().int().min(0).default(3000),
+
+  /** Permission request timeout configuration */
+  permissionRequestTimeoutEnabled: z.boolean().default(false),
+  permissionRequestTimeoutMs: z.number().int().positive().default(120000),
 });

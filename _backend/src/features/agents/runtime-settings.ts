@@ -31,6 +31,8 @@ export function getAgentSettings(
     thinking: settings.thinking ?? { effort: "off" },
     maxSteps: settings.maxSteps ?? 30,
     agentMd: settings.agentMd,
+    // Global system prompt base: per-agent override wins, else config-level default.
+    systemPromptBase: settings.systemPromptBase ?? config.systemPromptBase,
     skillMds: settings.skillMds ?? [],
     // Per-agent additionalSystemInfo overrides the global default (spec §8.1).
     additionalSystemInfo: settings.additionalSystemInfo ?? config.additionalSystemInfo,

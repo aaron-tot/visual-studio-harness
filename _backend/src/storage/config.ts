@@ -32,6 +32,13 @@ export async function loadConfig(dataDir: string): Promise<ConfigFile> {
     const raw = await readFile(filePath, "utf-8");
     const parsed = JSON.parse(raw);
     const config = ConfigFileSchema.parse(parsed);
+    // Fail loudly when zod strips unknown keys — a key missing from the schema
+    // is dead config (silently has no effect). Keeps strip semantics (loading
+    // never bricks), but surfaces drift in logs.
+    const dropped = Object.keys(parsed).filter((k) => !(k in config));
+    if (dropped.length > 0) {
+      console.warn(`[config] Dropped unknown key(s) on load: ${dropped.join(", ")}`);
+    }
     const { providers, changed } = normalizeProviders(config.providers);
     if (changed) {
       const fixed = { ...config, providers };

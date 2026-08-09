@@ -119,6 +119,7 @@ bun run dev
 - Backend: `http://localhost:3001`
 - Frontend: `http://localhost:5173` (hot reload)
 - Config loaded from `data/{dev,prod}/config.json`
+- Tool execution mode: `toolExecutionMode` in `config.json` (`"sequential"` default | `"concurrent"`) — also editable in General settings; step batches render `Tool Call Batch: Sequential | Parallel`
 - Provider credentials via environment variables
 
 ---

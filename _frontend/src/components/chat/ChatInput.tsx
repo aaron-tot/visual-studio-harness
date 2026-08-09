@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import { Square, Send } from "lucide-react";
 import { useChatStore } from "../../stores/chat";
 
@@ -15,26 +15,23 @@ export function ChatInput({
   large = false,
   placeholder = "Type a message...",
 }: ChatInputProps) {
-  const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const { sendMessage, streaming, stopping, stopStreaming } = useChatStore();
-  const turnActive = streaming || stopping;
+  const { sendMessage, streaming, stopping, stopStreaming, stagedChatInput, stageChatInput } = useChatStore();
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  const setInput = stageChatInput;
 
   useEffect(() => {
     const handler = (e: CustomEvent<{ content: string; position: "start" | "end" }>) => {
       const { content, position } = e.detail;
-      if (position === "start") {
-        setInput((prev) => (prev ? content + "\n" + prev : content));
-      } else {
-        setInput((prev) => (prev ? prev + "\n" + content : content));
-      }
+      setInput((prev) => (prev ? content + "\n" + prev : content));
     };
     document.addEventListener("VISUAL STUDIO HARNESS:stage-input", handler as EventListener);
     return () => document.removeEventListener("VISUAL STUDIO HARNESS:stage-input", handler as EventListener);
+  }, []);
+  const turnActive = streaming || stopping;
+
+  useEffect(() => {
+    inputRef.current?.focus();
   }, []);
 
   const autoResize = useCallback(() => {
@@ -46,12 +43,12 @@ export function ChatInput({
 
   useEffect(() => {
     autoResize();
-  }, [input, autoResize]);
+  }, [stagedChatInput, autoResize]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    sendMessage(input);
+    if (!stagedChatInput.trim()) return;
+    sendMessage(stagedChatInput);
     setInput("");
     inputRef.current?.focus();
   };
@@ -65,7 +62,7 @@ export function ChatInput({
       <div className="flex gap-2 items-end">
         <textarea
           ref={inputRef}
-          value={input}
+          value={stagedChatInput}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -94,7 +91,7 @@ export function ChatInput({
         ) : (
           <button
             type="submit"
-            disabled={!input.trim()}
+            disabled={!stagedChatInput.trim()}
             className={`px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-white text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ${
               large ? "py-3 px-4" : ""
             }`}

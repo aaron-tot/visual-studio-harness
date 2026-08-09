@@ -141,9 +141,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setInspectedTurnId: (turnId) => set({ inspectedTurnId: turnId }),
   stageChatInput: (content) => {
-    set({ stagedChatInput: content });
+    const next =
+      typeof content === "function"
+        ? (content as (prev: string) => string)(get().stagedChatInput)
+        : content;
+    set({ stagedChatInput: next });
     const sid = get().sessionId;
-    if (sid) saveDraftDebounced(sid, content);
+    if (sid) saveDraftDebounced(sid, next);
   },
 
   loadSession: async (id) => {

@@ -6,7 +6,7 @@
  * prompt bar. Replaces the standalone ChatInput in the chat view.
  */
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import { useChatStore } from "../../../stores/chat";
 import { InjectIndicator } from "../../InjectIndicator";
 import { ContextIndicator } from "./ContextIndicator";
@@ -45,9 +45,8 @@ export function PromptInput({
   onAgentChange,
   headerControls,
 }: PromptInputProps) {
-  const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const { sendMessage, streaming, stopStreaming } = useChatStore();
+  const { sendMessage, streaming, stopStreaming, stagedChatInput, stageChatInput } = useChatStore();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -56,15 +55,18 @@ export function PromptInput({
   useEffect(() => {
     const handler = (e: CustomEvent<{ content: string; position: "start" | "end" }>) => {
       const { content, position } = e.detail;
-      if (position === "start") {
-        setInput((prev) => (prev ? content + "\n" + prev : content));
-      } else {
-        setInput((prev) => (prev ? prev + "\n" + content : content));
-      }
+      setInput((prev) => {
+        const next = position === "start"
+          ? (prev ? content + "\n" + prev : content)
+          : (prev ? prev + "\n" + content : content);
+        return next;
+      });
     };
     document.addEventListener("VISUAL STUDIO HARNESS:stage-input", handler as EventListener);
     return () => document.removeEventListener("VISUAL STUDIO HARNESS:stage-input", handler as EventListener);
   }, []);
+
+  const setInput = stageChatInput;
 
   const autoResize = useCallback(() => {
     const el = inputRef.current;
@@ -75,14 +77,13 @@ export function PromptInput({
 
   useEffect(() => {
     autoResize();
-  }, [input, autoResize]);
+  }, [stagedChatInput, autoResize]);
 
   const handleSubmit = useCallback(() => {
-    if (!input.trim()) return;
-    sendMessage(input);
-    setInput("");
+    if (!stagedChatInput.trim()) return;
+    sendMessage(stagedChatInput);
     inputRef.current?.focus();
-  }, [input, sendMessage]);
+  }, [stagedChatInput, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -124,7 +125,7 @@ export function PromptInput({
           <InjectIndicator />
           <textarea
             ref={inputRef}
-            value={input}
+            value={stagedChatInput}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
@@ -136,7 +137,7 @@ export function PromptInput({
         {/* Send/Stop */}
         <InputActions
           streaming={streaming}
-          canSend={input.trim().length > 0}
+          canSend={stagedChatInput.trim().length > 0}
           onSend={handleSubmit}
           onStop={stopStreaming}
           large={large}

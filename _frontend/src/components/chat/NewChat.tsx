@@ -318,13 +318,15 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   const sessionId = useChatStore((s) => s.sessionId);
   const sessionMeta = useChatStore((s) => s.sessionMeta);
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
-  const { sendMessage, stopStreaming } = useChatStore();
+  const stagedChatInput = useChatStore((s) => s.stagedChatInput);
+  const { sendMessage, stopStreaming, stageChatInput } = useChatStore();
+
+  const setInput = stageChatInput;
 
   const isEmptyComposer = messages.length === 0 && !streaming && !sessionId;
   const inSession = !isEmptyComposer;
 
   const [submitted, setSubmitted] = useState(false);
-  const [input, setInput] = useState("");
   const [hovered, setHovered] = useState(false);
   const [cardHeight, setCardHeight] = useState(240);
   const [modelError, setModelError] = useState(false);
@@ -349,7 +351,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
       if (!el) return;
       const start = el.selectionStart;
       const end = el.selectionEnd;
-      const newVal = input.slice(0, start) + snippet.content + input.slice(end);
+      const newVal = stagedChatInput.slice(0, start) + snippet.content + stagedChatInput.slice(end);
       setInput(newVal);
       requestAnimationFrame(() => {
         const newPos = start + snippet.content.length;
@@ -450,20 +452,19 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, []);
-  useEffect(() => { autoResize(); }, [input, autoResize]);
+  useEffect(() => { autoResize(); }, [stagedChatInput, autoResize]);
 
   const handleSubmit = useCallback(() => {
-    if (!input.trim()) return;
+    if (!stagedChatInput.trim()) return;
     if (!currentConfig.providerName || !currentConfig.modelName) {
       setModelError(true);
       return;
     }
     console.log("Message Submitted: ",currentConfig)
-    sendMessage(input, currentConfig);
-    setInput("");
+    sendMessage(stagedChatInput, currentConfig);
     inputRef.current?.focus();
     if (!submitted) setSubmitted(true);
-  }, [input, sendMessage, submitted, currentConfig]);
+  }, [stagedChatInput, sendMessage, submitted, currentConfig]);
 
   const handleContinue = useCallback(() => {
     sendMessage("continue", currentConfig);
@@ -554,18 +555,18 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
       <div className="flex items-end gap-2">
       <div className="flex-1 relative">
         <InjectIndicator />
-        <textarea data-testid="message-input" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
+        <textarea data-testid="message-input" ref={inputRef} value={stagedChatInput} onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Type a message..." rows={1} className={chatTextarea} />
       </div>
       {turnActive ? (
         <button data-testid="stop" type="button" onClick={stopStreaming} disabled={stopping} className={stopping ? stopButtonStopping : stopButton}><Square size={14} fill="currentColor" /></button>
-      ) : inSession && !input.trim() ? (
+      ) : inSession && !stagedChatInput.trim() ? (
         <button data-testid="continue" type="button" onClick={handleContinue}
           className="shrink-0 mb-[7px] p-2 rounded-xl bg-transparent hover:bg-white/10 text-emerald-500 hover:text-emerald-300 transition-all duration-200 hover:scale-105 active:scale-95"
         ><Send size={14} /></button>
       ) : (
-        <button data-testid="send" type="button" disabled={!input.trim()} onClick={handleSubmit} className={sendButton}><Send size={14} /></button>
+        <button data-testid="send" type="button" disabled={!stagedChatInput.trim()} onClick={handleSubmit} className={sendButton}><Send size={14} /></button>
       )}
     </div>
   );

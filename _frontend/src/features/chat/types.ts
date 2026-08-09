@@ -28,7 +28,7 @@ export interface ChatState {
   loadTurns: (sessionId: string) => Promise<void>;
   setInspectedTurnId: (turnId: number | null) => void;
   stagedChatInput: string;
-  stageChatInput: (content: string) => void;
+  stageChatInput: (content: string | ((prev: string) => string)) => void;
   sendMessage: (content: string, config: SessionConfig) => void;
   contextFirstTurnNumber: number | null;
   setContextFirstTurnNumber: (tn: number | null) => void;

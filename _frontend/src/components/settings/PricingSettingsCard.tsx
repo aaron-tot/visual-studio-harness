@@ -22,6 +22,16 @@ export function PricingSettingsCard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
+  const pricing = config.pricing ?? {};
+  const enabled = pricing.enabled ?? false;
+  const defaultProvider = config.defaultProvider ?? "";
+  const defaultModel = config.defaultModel ?? "";
+
+  const patch = (partial: Partial<ConfigFile>) => {
+    const current = useConfigStore.getState().config;
+    update({ ...current, ...partial });
+  };
+
   // Show the last time the models.dev catalog was fetched (on mount / when enabled).
   useEffect(() => {
     let cancelled = false;
@@ -38,16 +48,6 @@ export function PricingSettingsCard() {
       cancelled = true;
     };
   }, [enabled]);
-
-  const patch = (partial: Partial<ConfigFile>) => {
-    const current = useConfigStore.getState().config;
-    update({ ...current, ...partial });
-  };
-
-  const pricing = config.pricing ?? {};
-  const enabled = pricing.enabled ?? false;
-  const defaultProvider = config.defaultProvider ?? "";
-  const defaultModel = config.defaultModel ?? "";
   // Resolve a concrete provider:model for the preview (which snapshot "Refresh
   // now" returns). Tolerant of a placeholder defaultModel like "Default Model".
   const provider =

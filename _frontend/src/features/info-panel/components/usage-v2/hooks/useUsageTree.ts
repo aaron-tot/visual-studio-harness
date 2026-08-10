@@ -66,14 +66,20 @@ export function useUsageTree(sessionId: string | null): UsageTreeState {
     const onToolEnd = (msg: { sessionId?: string }) => {
       if (msg?.sessionId === sessionId) fetchTree({ silent: true });
     };
+    // step_end: a step finished & was persisted — refresh live stats (costs) per step
+    const onStepEnd = (msg: { sessionId?: string }) => {
+      if (msg?.sessionId === sessionId) fetchTree({ silent: true });
+    };
 
     wsClient.on("done", onDone as (d: unknown) => void);
     wsClient.on("error", onError as (d: unknown) => void);
     wsClient.on("tool_end", onToolEnd as (d: unknown) => void);
+    wsClient.on("step_end", onStepEnd as (d: unknown) => void);
     return () => {
       wsClient.off("done", onDone as (d: unknown) => void);
       wsClient.off("error", onError as (d: unknown) => void);
       wsClient.off("tool_end", onToolEnd as (d: unknown) => void);
+      wsClient.off("step_end", onStepEnd as (d: unknown) => void);
     };
   }, [sessionId, fetchTree]);
 

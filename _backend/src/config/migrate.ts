@@ -54,6 +54,17 @@ export function migrateConfig(config: ConfigFile): ConfigFile {
   let searchProviders = config.searchProviders ?? [];
   if (searchProviders.length === 0) {
     searchProviders = buildDefaultSearchProviders();
+  } else {
+    // Backfill descriptions for known built-in providers
+    searchProviders = searchProviders.map((p) => {
+      if (p.id === "exa-primary" && !p.description) {
+        return { ...p, description: "Exa MCP — keyless works but rate-limited. Set EXA_API_KEY for higher limits." };
+      }
+      if (p.id === "parallel-backup" && !p.description) {
+        return { ...p, description: "Parallel Search MCP — free/keyless by default. Set PARALLEL_API_KEY for higher limits." };
+      }
+      return p;
+    });
   }
 
   return {

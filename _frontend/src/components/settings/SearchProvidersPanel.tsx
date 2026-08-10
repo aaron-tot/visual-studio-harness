@@ -214,6 +214,13 @@ export function SearchProvidersPanel() {
                     {provider.description}
                   </div>
                 )}
+                {(!provider.description && (provider.id === "exa-primary" || provider.id === "parallel-backup")) && (
+                  <div className="text-[10px] text-zinc-400 italic mt-0.5">
+                    {provider.id === "exa-primary"
+                      ? "Exa MCP — keyless works but rate-limited. Set EXA_API_KEY for higher limits."
+                      : "Parallel Search MCP — free/keyless by default. Set PARALLEL_API_KEY for higher limits."}
+                  </div>
+                )}
               </div>
             </label>
           ))}
@@ -280,6 +287,13 @@ export function SearchProvidersPanel() {
                   {provider.description && (
                     <div className="text-[10px] text-zinc-400 italic mt-0.5">
                       {provider.description}
+                    </div>
+                  )}
+                  {(!provider.description && (provider.id === "exa-primary" || provider.id === "parallel-backup")) && (
+                    <div className="text-[10px] text-zinc-400 italic mt-0.5">
+                      {provider.id === "exa-primary"
+                        ? "Exa MCP — keyless works but rate-limited. Set EXA_API_KEY for higher limits."
+                        : "Parallel Search MCP — free/keyless by default. Set PARALLEL_API_KEY for higher limits."}
                     </div>
                   )}
 

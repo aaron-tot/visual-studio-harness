@@ -45,12 +45,13 @@ testing/**/*.d.ts.map
 _backend/src/**/*.js
 _backend/src/**/*.d.ts
 _backend/src/**/*.js.map
+_backend/src/**/*.d.ts.map
 
 # Compiled shared types outputs
-_shared/*.js
-_shared/*.d.ts
-_shared/*.js.map
-_shared/*.d.ts.map
+_shared/**/*.js
+_shared/**/*.d.ts
+_shared/**/*.js.map
+_shared/**/*.d.ts.map
 
 # Compiled seeds outputs
 seeds/**/*.js
@@ -63,6 +64,9 @@ fixtures/**/*.js
 fixtures/**/*.d.ts
 fixtures/**/*.js.map
 fixtures/**/*.d.ts.map
+
+# Compiled test mock outputs
+test-mock.*
 
 # Compiled tailwind config (source is .ts)
 _frontend/tailwind.config.js

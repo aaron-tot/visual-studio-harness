@@ -63,19 +63,35 @@ export function recordRetryAttempt(map: Map<string, number[]>, key: string): voi
 export function getRetryableLabel(err: unknown, errorName?: string): string | null {
   if (!err) return null;
 
-  // Normalize various error shapes to extract code and message
   const e = err as Record<string, unknown>;
   const last = (e.lastError as Record<string, unknown>) ?? (e.cause as Record<string, unknown>) ?? null;
 
-  // Try multiple locations for status code
-  const code =
-    (typeof last?.statusCode === "number" ? last.statusCode : null) ??
-    (typeof e.statusCode === "number" ? e.statusCode : null) ??
-    (typeof e.status === "number" ? e.status : null) ??
-    (typeof last?.status === "number" ? last.status : null) ??
-    null;
+  // Check if this is a provider error (has provider response structure)
+  // Provider errors come with response object containing the upstream API's error JSON
+  const providerError =
+    e.response?.body?.error ??
+    e.response?.error ??
+    last?.response?.body?.error ??
+    last?.response?.error ??
+    e.error?.response?.body?.error ??
+    e.error?.response?.error ??
+    e.body?.error ??
+    last?.body?.error ??
+    (typeof e.message === "string" && e.message.includes("Upstream error from") ? { message: e.message, raw: e.message } : null) ??
+    (typeof last?.message === "string" && last.message.includes("Upstream error from") ? { message: last.message, raw: last.message } : null);
 
-  // Try multiple locations for message - use helper that skips empty strings
+  // If we found a provider error structure, it's a provider error -> retry
+  if (providerError) {
+    // Extract a readable label from the provider error
+    const code = typeof providerError.code === "number" ? providerError.code : null;
+    const msg = typeof providerError.message === "string" && providerError.message.length > 0
+      ? providerError.message
+      : (typeof providerError.raw === "string" && providerError.raw.length > 0 ? providerError.raw : "Provider error");
+    if (code) return `${msg} (${code})`;
+    return msg;
+  }
+
+  // Network/connection errors (no HTTP response from provider)
   const getMsg = (val: unknown): string | null =>
     typeof val === "string" && val.length > 0 ? val : null;
 
@@ -86,8 +102,6 @@ export function getRetryableLabel(err: unknown, errorName?: string): string | nu
     getMsg(e.error) ??
     (err instanceof Error ? getMsg(err.message) : null) ??
     String(err);
-
-  if (code === 429 || (code && code >= 500) || code === 408 || code === 409) return `${msg}`;
 
   const low = msg.toLowerCase();
   if (e.code === "ECONNREFUSED" || low.includes("econnrefused")) return "connection refused";
@@ -103,7 +117,9 @@ export function getRetryableLabel(err: unknown, errorName?: string): string | nu
   )
     return "connection reset";
 
+  // Configurable error name substring match (fallback)
   if (errorName && low.includes(errorName.toLowerCase())) return errorName;
 
+  // No provider error structure found -> likely SDK/our bug -> don't retry
   return null;
 }

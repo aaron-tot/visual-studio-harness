@@ -667,6 +667,64 @@ export function getActiveTraceTurn(sessionId: string, dataDir?: string): TraceTu
   return row as unknown as TraceTurn;
 }
 
+// ── Retry logging ─────────────────────────────────────────────────────
+
+export interface RetryLogEntry {
+  attempt: number;
+  maxAttempts: number;
+  errorLabel: string;
+  errorCode: number | null;
+  errorRaw: string;
+  wasRetried: boolean;
+  rateLimited: boolean;
+  delayMs: number;
+  timestamp: string;
+}
+
+/** Insert a retry log entry as a step part for audit trail */
+export function insertRetryLog(
+  sessionId: string,
+  turnId: number,
+  stepId: number | null,
+  entry: RetryLogEntry,
+  dataDir?: string,
+): number {
+  const db = dbFor(dataDir);
+  const result = db
+    .insert(stepParts)
+    .values({
+      sessionId,
+      turnId,
+      stepId,
+      type: "retry",
+      seq: 999999, // high seq to appear last in step
+      status: "completed",
+      data: JSON.stringify(entry),
+      toolCallId: null,
+      toolName: null,
+      parentToolCallId: null,
+      createdAt: entry.timestamp,
+    })
+    .returning({ id: stepParts.id })
+    .get();
+  return result.id;
+}
+
+/**
+ * Check if a turn has an open step to attach retry logs to.
+ * Returns the current step ID if one is streaming, null otherwise.
+ */
+export function getCurrentStreamingStepId(turnId: number, dataDir?: string): number | null {
+  const db = dbFor(dataDir);
+  const row = db
+    .select({ id: steps.id })
+    .from(steps)
+    .where(and(eq(steps.turnId, turnId), eq(steps.status, "streaming")))
+    .orderBy(desc(steps.id))
+    .get();
+  return row?.id ?? null;
+}
+
 /**
  * Abort all turns with `status = "streaming"` across all sessions.
  * Called at backend startup to clean up orphaned turns from a prior crash.

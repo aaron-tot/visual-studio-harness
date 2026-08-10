@@ -55,7 +55,7 @@ export function shouldAutoContinueOnTool(result: {
   const parts = result.assistantMessage.parts;
   const lastPart = parts[parts.length - 1];
   if (lastPart.type !== "tool") return false;
-  const lastToolIdx = parts.findLastIndex((p) => p.type === "tool");
+  const lastToolIdx = parts.findLastIndex((p) => p.type === "tool" && p.toolName !== "additional_system_info");
   const hasTextAfter = parts.slice(lastToolIdx + 1).some((p) => p.type === "text");
   return !hasTextAfter;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { streamChat } from "./stream-llm";
+import { streamChat, normalizeHeaders } from "./stream-llm";
 import { createMockFullStream } from "../../llm/mock-models";
 import type { ProviderConfig } from "../../../../_shared/types";
 
@@ -194,5 +194,15 @@ describe("stream-llm identity headers on the wire", () => {
       });
     });
     expect(headers["http-referer"]).toBe("https://example.com/custom");
+  });
+
+  test("normalizeHeaders handles object, tuples, and Headers", () => {
+    expect(normalizeHeaders({ "X-Title": "a", "x-session-id": "s" })).toEqual({
+      "X-Title": "a",
+      "x-session-id": "s",
+    });
+    expect(normalizeHeaders([["x-title", "b"]])).toEqual({ "x-title": "b" });
+    expect(normalizeHeaders(new Headers({ "X-Title": "c" }))).toEqual({ "x-title": "c" });
+    expect(normalizeHeaders(undefined)).toBeUndefined();
   });
 });

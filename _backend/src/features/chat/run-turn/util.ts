@@ -4,7 +4,7 @@ export function generateId(): string {
   const now = new Date();
   const date = now.toISOString().split("T")[0];
   const time = now.toTimeString().split(" ")[0].replace(/:/g, "-");
-  return `${date}_${time}_${randomUUID().slice(0, 6)}`;
+  return `sessionID_${date}_${time}_${randomUUID().slice(0, 6)}`;
 }
 
 export function autoTitle(content: string): string {

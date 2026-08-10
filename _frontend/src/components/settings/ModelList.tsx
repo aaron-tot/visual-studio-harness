@@ -1,7 +1,9 @@
 import { useState, useCallback, useMemo } from "react";
 import { useConfigStore } from "../../stores/config";
 import { fetchProviderModels } from "../../lib/api";
-import { Plus, Trash2, RefreshCw, ToggleLeft, ToggleRight, Search, Settings2 } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ToggleLeft, ToggleRight, Search } from "lucide-react";
+import { supportsProviderRouting } from "../../../../_shared/provider-registry";
+import { ModelRoutingEditor, RoutingButton } from "./ModelRoutingEditor";
 
 interface ModelListProps {
   providerIndex: number;
@@ -13,8 +15,6 @@ export function ModelList({ providerIndex }: ModelListProps) {
   const [fetching, setFetching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [draftOrder, setDraftOrder] = useState("");
-  const [draftAllow, setDraftAllow] = useState(true);
 
   const filteredModels = useMemo(() => {
     if (!searchQuery.trim())
@@ -52,6 +52,7 @@ export function ModelList({ providerIndex }: ModelListProps) {
   }, [providerIndex, update]);
 
   if (!provider) return null;
+  const routingEnabled = supportsProviderRouting(provider.displayName);
 
   const addModel = () => {
     const current = useConfigStore.getState().config;
@@ -98,31 +99,6 @@ export function ModelList({ providerIndex }: ModelListProps) {
       ),
     };
     update({ ...current, providers });
-  };
-
-  const startEditRouting = (modelIndex: number) => {
-    const m = provider.models[modelIndex];
-    setDraftOrder((m.providerOrder ?? []).join(", "));
-    setDraftAllow(m.allowProviderFallbacks ?? true);
-    setEditingIndex(modelIndex);
-  };
-
-  const cancelRouting = () => setEditingIndex(null);
-
-  const saveRouting = (modelIndex: number) => {
-    const order = draftOrder.split(",").map((s) => s.trim()).filter(Boolean);
-    const current = useConfigStore.getState().config;
-    const providers = [...current.providers];
-    providers[providerIndex] = {
-      ...providers[providerIndex],
-      models: providers[providerIndex].models.map((m, i) =>
-        i === modelIndex
-          ? { ...m, providerOrder: order.length ? order : undefined, allowProviderFallbacks: draftAllow }
-          : m
-      ),
-    };
-    update({ ...current, providers });
-    setEditingIndex(null);
   };
 
   return (
@@ -206,13 +182,12 @@ export function ModelList({ providerIndex }: ModelListProps) {
                     className="flex-1 rounded bg-zinc-700 border border-zinc-600 px-2 py-1 text-sm"
                     placeholder="Model id"
                   />
-                  <button
-                    onClick={() => startEditRouting(entry.index)}
-                    className="p-1 hover:bg-zinc-600 rounded"
-                    title="Provider routing (OpenRouter provider order / fallbacks)"
-                  >
-                    <Settings2 size={14} />
-                  </button>
+                  {routingEnabled && (
+                    <RoutingButton
+                      open={editingIndex === entry.index}
+                      onToggle={() => setEditingIndex(editingIndex === entry.index ? null : entry.index)}
+                    />
+                  )}
                   <button
                     onClick={() => removeModel(entry.index)}
                     className="p-1 hover:bg-zinc-600 rounded opacity-50 hover:opacity-100"
@@ -221,45 +196,11 @@ export function ModelList({ providerIndex }: ModelListProps) {
                   </button>
                 </div>
                 {editingIndex === entry.index && (
-                  <div className="mt-1 p-2 bg-zinc-900 border border-zinc-700 rounded space-y-2">
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">
-                        Provider order (comma-separated)
-                      </label>
-                      <input
-                        value={draftOrder}
-                        onChange={(e) => setDraftOrder(e.target.value)}
-                        placeholder="deepinfra, together"
-                        className="w-full rounded bg-zinc-700 border border-zinc-600 px-2 py-1 text-sm"
-                      />
-                      <p className="text-[10px] text-zinc-500 mt-1">
-                        Empty = leave provider default routing.
-                      </p>
-                    </div>
-                    <label className="flex items-center gap-2 text-xs text-zinc-300">
-                      <input
-                        type="checkbox"
-                        checked={draftAllow}
-                        onChange={(e) => setDraftAllow(e.target.checked)}
-                        className="accent-zinc-400"
-                      />
-                      Allow provider fallbacks
-                    </label>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        onClick={() => saveRouting(entry.index)}
-                        className="px-2 py-1 rounded bg-green-700 hover:bg-green-600 text-xs"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={cancelRouting}
-                        className="px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-xs"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
+                  <ModelRoutingEditor
+                    providerIndex={providerIndex}
+                    modelIndex={entry.index}
+                    onClose={() => setEditingIndex(null)}
+                  />
                 )}
               </div>
             )))}

@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from "react";
 import { Sparkles, RefreshCw, Check, X, Loader2, ToggleLeft, ToggleRight, Circle, Search, Eye, EyeOff } from "lucide-react";
 import { useConfigStore } from "../../stores/config";
 import { fetchProviderModels } from "../../lib/api";
-import { getDescriptorByDisplayName } from "../../../../_shared/provider-registry";
+import { getDescriptorByDisplayName, supportsProviderRouting } from "../../../../_shared/provider-registry";
 import type { FieldDescriptor, AuthType } from "../../../../_shared/provider-registry";
+import { ModelRoutingEditor, RoutingButton } from "./ModelRoutingEditor";
 
 interface TemplateProviderEditorProps {
   providerIndex: number;
@@ -17,6 +18,7 @@ export function TemplateProviderEditor({ providerIndex }: TemplateProviderEditor
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [showField, setShowField] = useState<Record<string, boolean>>({});
   const [fetching, setFetching] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [status, setStatus] = useState<"idle" | "connecting" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [serverReachable, setServerReachable] = useState<boolean | null>(null);
@@ -50,6 +52,7 @@ export function TemplateProviderEditor({ providerIndex }: TemplateProviderEditor
   }, [provider, descriptor]);
 
   if (!provider || !descriptor) return null;
+  const routingEnabled = supportsProviderRouting(provider.displayName);
 
   const mergeModels = (newModels: any[], existing: any[]) => {
     const existingEnabled = new Map(existing.map((m) => [m.modelName, m.enabled]));
@@ -226,27 +229,44 @@ export function TemplateProviderEditor({ providerIndex }: TemplateProviderEditor
               const i = entry.index;
               const enabled = m.enabled ?? true;
               return (
-                <div key={i} className={`flex items-center justify-between px-3 py-1.5 bg-zinc-800 rounded text-sm text-zinc-300 ${enabled ? "" : "opacity-50"}`}>
-                  <span className="flex items-center gap-2">
-                    {m.isLoaded === true && <Circle size={8} className="fill-green-400 text-green-400 shrink-0" title="Loaded" />}
-                    {m.isLoaded === false && <Circle size={8} className="fill-red-500 text-red-500 shrink-0" title="Not loaded" />}
-                    {m.displayName}
-                  </span>
-                  <button
-                    onClick={() => {
-                      const p = [...config.providers];
-                      p[providerIndex] = {
-                        ...p[providerIndex],
-                        models: p[providerIndex].models.map((mm, j) =>
-                          j === i ? { ...mm, enabled: !enabled } : mm
-                        ),
-                      };
-                      update({ ...config, providers: p });
-                    }}
-                    className={`p-0.5 rounded ${enabled ? "text-green-400" : "text-zinc-600"}`}
-                  >
-                    {enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-                  </button>
+                <div key={i}>
+                  <div className={`flex items-center justify-between px-3 py-1.5 bg-zinc-800 rounded text-sm text-zinc-300 ${enabled ? "" : "opacity-50"}`}>
+                    <span className="flex items-center gap-2 min-w-0">
+                      {m.isLoaded === true && <Circle size={8} className="fill-green-400 text-green-400 shrink-0" title="Loaded" />}
+                      {m.isLoaded === false && <Circle size={8} className="fill-red-500 text-red-500 shrink-0" title="Not loaded" />}
+                      <span className="truncate">{m.displayName}</span>
+                    </span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      {routingEnabled && (
+                        <RoutingButton
+                          open={editingIndex === i}
+                          onToggle={() => setEditingIndex(editingIndex === i ? null : i)}
+                        />
+                      )}
+                      <button
+                        onClick={() => {
+                          const p = [...config.providers];
+                          p[providerIndex] = {
+                            ...p[providerIndex],
+                            models: p[providerIndex].models.map((mm, j) =>
+                              j === i ? { ...mm, enabled: !enabled } : mm
+                            ),
+                          };
+                          update({ ...config, providers: p });
+                        }}
+                        className={`p-0.5 rounded ${enabled ? "text-green-400" : "text-zinc-600"}`}
+                      >
+                        {enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                      </button>
+                    </span>
+                  </div>
+                  {editingIndex === i && (
+                    <ModelRoutingEditor
+                      providerIndex={providerIndex}
+                      modelIndex={i}
+                      onClose={() => setEditingIndex(null)}
+                    />
+                  )}
                 </div>
               );
             })}

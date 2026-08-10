@@ -19,6 +19,8 @@ export interface ProviderDescriptor {
   extraFields?: FieldDescriptor[];
   capabilities?: { thinking?: boolean };
   editorComponent?: string;
+  /** Provider supports OpenRouter-style per-model routing (provider.order / allow_fallbacks). */
+  supportsProviderRouting?: boolean;
   /** Predefined models this provider ships with.
    *  Non-test providers use a placeholder until live fetch replaces them. */
   defaultModels?: ModelConfig[];
@@ -88,8 +90,29 @@ export const PRECONFIGURED_PROVIDERS: ProviderDescriptor[] = [
     capabilities: { thinking: false },
     defaultModels: DEFAULT_MODEL_PLACEHOLDER,
   },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    icon: "🛰️",
+    baseUrl: "https://openrouter.ai/api/v1",
+    authType: "bearer",
+    extraFields: [
+      { key: "apiKey", label: "API Key", type: "password", required: true, placeholder: "Enter your OpenRouter API key (sk-or-...)" },
+    ],
+    capabilities: { thinking: true },
+    supportsProviderRouting: true,
+    defaultModels: DEFAULT_MODEL_PLACEHOLDER,
+  },
 ];
 
 export function getDescriptorByDisplayName(name: string): ProviderDescriptor | undefined {
   return PRECONFIGURED_PROVIDERS.find((d) => d.name === name);
+}
+
+/** Per-model provider routing availability. Preconfigured providers opt in
+ *  (OpenRouter); unknown/custom providers default to true since they may be
+ *  OpenRouter-compatible endpoints. */
+export function supportsProviderRouting(displayName: string): boolean {
+  const desc = getDescriptorByDisplayName(displayName);
+  return desc ? (desc.supportsProviderRouting ?? false) : true;
 }

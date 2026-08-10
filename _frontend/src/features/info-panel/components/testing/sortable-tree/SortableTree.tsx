@@ -6,7 +6,6 @@ import {
   DndContext,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
   useSensor,
   useSensors,
   type DragStartEvent,
@@ -39,6 +38,7 @@ import {
 import type {FlattenedItem, SensorContext, TreeItem, TreeItems} from './types';
 import {sortableTreeKeyboardCoordinates} from './keyboardCoordinates';
 import {SortableTreeItem} from './SortableTreeItem';
+import {SessionTreePointerSensor} from './sessionTreePointerSensor';
 
 function isGroupItem(id: UniqueIdentifier | null): boolean {
   if (id == null) return false;
@@ -158,6 +158,14 @@ export function SortableTree({
       queueMicrotask(() => { isSavingRef.current = false; });
     }
   }, [defaultItems, activeId]);
+
+  // Never leave the grabbing cursor behind if the tree unmounts mid-drag.
+  useEffect(() => {
+    return () => {
+      document.body.style.setProperty('cursor', '');
+    };
+  }, []);
+
   const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
   const [offsetLeft, setOffsetLeft] = useState(0);
   const [currentPosition, setCurrentPosition] = useState<{
@@ -253,7 +261,7 @@ export function SortableTree({
   );
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(SessionTreePointerSensor, {
       activationConstraint: {
         distance: 8,
       },

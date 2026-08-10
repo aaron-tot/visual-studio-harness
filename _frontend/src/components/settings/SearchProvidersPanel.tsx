@@ -39,6 +39,7 @@ export function SearchProvidersPanel() {
     apiKey: "",
     tags: [],
     customMcpUrl: "",
+    description: "",
   });
   const [rateLimits, setRateLimits] = useState<Record<string, { rpm?: number; rpd?: number }>>({});
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
@@ -104,11 +105,12 @@ export function SearchProvidersPanel() {
       rateLimit: newProviderForm.type === "custom" ? undefined : rateLimits[newProviderForm.id ?? ""],
       tags,
       customMcpUrl: newProviderForm.type === "custom" ? newProviderForm.customMcpUrl : undefined,
+      description: newProviderForm.description || undefined,
     };
 
     await saveProviders([...localProviders, newProvider]);
     setShowAddModal(false);
-    setNewProviderForm({ type: "exa", name: "", enabled: true, priority: 0, apiKey: "", tags: [], customMcpUrl: "" });
+    setNewProviderForm({ type: "exa", name: "", enabled: true, priority: 0, apiKey: "", tags: [], customMcpUrl: "", description: "" });
   };
 
   const handleUpdateProvider = async (id: string, patch: Partial<SearchProviderConfig>) => {
@@ -207,6 +209,11 @@ export function SearchProvidersPanel() {
                 <div className="text-xs text-zinc-500 mt-0.5">
                   Priority: {provider.priority} {provider.apiKey ? "• API key configured" : "• No API key (using env)"}
                 </div>
+                {provider.description && (
+                  <div className="text-[10px] text-zinc-400 italic mt-0.5">
+                    {provider.description}
+                  </div>
+                )}
               </div>
             </label>
           ))}
@@ -237,47 +244,44 @@ export function SearchProvidersPanel() {
             const result = testResults[provider.id];
             const isTesting = testingId === provider.id;
             return (
-              <div
-                key={provider.id}
-                draggable={true}
-                onDragStart={(e) => handleDragStart(e, provider.id)}
-                onDragOver={(e) => handleDragOver(e, provider.id)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, provider.id)}
-                onDragEnd={handleDragEnd}
-                className={`flex items-center gap-3 p-3 rounded-lg border ${
+              <div className={`flex items-center gap-3 p-3 rounded-lg border ${
                   provider.enabled ? "border-zinc-800 bg-zinc-900" : "border-zinc-800/50 bg-zinc-900/50 opacity-60"
-                } ${dragOverId === provider.id ? "border-blue-500 bg-blue-500/10" : ""}`}
-              >
-                <span className="text-xs text-zinc-500 font-mono w-6 text-center">{provider.priority}</span>
-                <span className="text-[10px] text-zinc-400">⋮⋮</span>
+                } ${dragOverId === provider.id ? "border-blue-500 bg-blue-500/10" : ""}`}>
+                  <span className="text-xs text-zinc-500 font-mono w-6 text-center">{provider.priority}</span>
+                  <span className="text-[10px] text-zinc-400">⋮⋮</span>
 
-                <input
-                  type="checkbox"
-                  checked={provider.enabled}
-                  onChange={(e) => handleUpdateProvider(provider.id, { enabled: e.target.checked })}
-                  className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
-                  title={provider.enabled ? "Enabled" : "Disabled"}
-                />
+                  <input
+                    type="checkbox"
+                    checked={provider.enabled}
+                    onChange={(e) => handleUpdateProvider(provider.id, { enabled: e.target.checked })}
+                    className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+                    title={provider.enabled ? "Enabled" : "Disabled"}
+                  />
 
-                <select
-                  value={provider.type}
-                  onChange={(e) => handleUpdateProvider(provider.id, { type: e.target.value as SearchProviderType })}
-                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 w-36"
-                  disabled={editingId === provider.id}
-                >
-                  {PROVIDER_TYPES.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
+                  <select
+                    value={provider.type}
+                    onChange={(e) => handleUpdateProvider(provider.id, { type: e.target.value as SearchProviderType })}
+                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 w-36"
+                    disabled={editingId === provider.id}
+                  >
+                    {PROVIDER_TYPES.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
 
-                <input
-                  type="text"
-                  value={provider.name}
-                  onChange={(e) => handleUpdateProvider(provider.id, { name: e.target.value })}
-                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 w-32"
-                  placeholder="Name"
-                />
+                  <input
+                    type="text"
+                    value={provider.name}
+                    onChange={(e) => handleUpdateProvider(provider.id, { name: e.target.value })}
+                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 w-32"
+                    placeholder="Name"
+                  />
+
+                  {provider.description && (
+                    <div className="text-[10px] text-zinc-400 italic mt-0.5">
+                      {provider.description}
+                    </div>
+                  )}
 
                 {provider.type === "custom" && (
                   <input
@@ -512,6 +516,17 @@ export function SearchProvidersPanel() {
                 onChange={(e) => setNewProviderForm({ ...newProviderForm, apiKey: e.target.value })}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
                 placeholder="Leave empty to use environment variable"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-zinc-400">Description (optional)</label>
+              <input
+                type="text"
+                value={newProviderForm.description ?? ""}
+                onChange={(e) => setNewProviderForm({ ...newProviderForm, description: e.target.value })}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+                placeholder="e.g., keyless but rate-limited; add API key for higher limits"
               />
             </div>
 

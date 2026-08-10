@@ -73,19 +73,25 @@ export function buildDefaultSearchProviders(): SearchProviderConfig[] {
       id: "exa-primary",
       type: "exa",
       name: "Exa Primary",
-      enabled: !!process.env.EXA_API_KEY || !!process.env.VISUAL_STUDIO_HARNESS_ENABLE_EXA,
+      // Exa MCP (https://mcp.exa.ai/mcp) works keyless at lower rate limits.
+      // API key (EXA_API_KEY) or VISUAL_STUDIO_HARNESS_ENABLE_EXA=1 enables higher limits.
+      enabled: true,
       priority: 0,
       apiKey: process.env.EXA_API_KEY,
       tags: ["primary", "batch-rotate"],
+      description: "Exa MCP — keyless works but rate-limited. Set EXA_API_KEY for higher limits.",
     },
     {
       id: "parallel-backup",
       type: "parallel",
       name: "Parallel Backup",
-      enabled: !!process.env.PARALLEL_API_KEY || !!process.env.VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL,
+      // Parallel Search MCP (https://search.parallel.ai/mcp) is free/keyless by default.
+      // API key (PARALLEL_API_KEY) or VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL=1 unlocks higher rate limits.
+      enabled: true,
       priority: 1,
       apiKey: process.env.PARALLEL_API_KEY,
       tags: ["fallback", "batch-rotate"],
+      description: "Parallel Search MCP — free/keyless by default. Set PARALLEL_API_KEY for higher limits.",
     },
   ];
 }

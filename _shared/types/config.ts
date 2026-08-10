@@ -219,6 +219,7 @@ export interface SearchProviderConfig {
   rateLimit?: { rpm?: number; rpd?: number };
   tags?: string[];
   customMcpUrl?: string;
+  description?: string;
 }
 
 export interface KnowledgeBaseConfig {

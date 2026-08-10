@@ -181,5 +181,4 @@ export {
   resolveToolPermissionDetailed,
   resolveAllKnownTools,
 } from "./perms/resolve";
-export { setTodoDataDir } from "./builtins/todo";
 export { setSkillRoots, setCustomToolsSkillDir } from "./builtins/skill";

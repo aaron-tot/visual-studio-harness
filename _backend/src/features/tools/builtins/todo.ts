@@ -16,8 +16,7 @@ type TodoItem = z.infer<typeof TodoItemSchema>;
 
 const memory = new Map<string, TodoItem[]>();
 
-async function loadFromDisk(dataDir: string | undefined, sessionId: string): Promise<TodoItem[] | null> {
-  if (!dataDir) return null;
+async function loadFromDisk(dataDir: string, sessionId: string): Promise<TodoItem[] | null> {
   try {
     const raw = getSessionTodosJson(sessionId, dataDir);
     if (!raw) return null;
@@ -27,20 +26,8 @@ async function loadFromDisk(dataDir: string | undefined, sessionId: string): Pro
   }
 }
 
-async function saveToDisk(
-  dataDir: string | undefined,
-  sessionId: string,
-  todos: TodoItem[]
-): Promise<void> {
-  if (!dataDir) return;
+async function saveToDisk(dataDir: string, sessionId: string, todos: TodoItem[]): Promise<void> {
   setSessionTodosJson(sessionId, JSON.stringify(todos), dataDir);
-}
-
-/** Optional dataDir for persistence — set via tool context extension. */
-export let todoDataDir: string | undefined;
-
-export function setTodoDataDir(dir: string | undefined) {
-  todoDataDir = dir;
 }
 
 export const todoWriteTool: ToolDef = {
@@ -57,7 +44,9 @@ export const todoWriteTool: ToolDef = {
   }),
   execute: async (args, ctx) => {
     memory.set(ctx.sessionId, args.todos);
-    await saveToDisk(todoDataDir, ctx.sessionId, args.todos);
+    // Persist to sessions.todos_json (SQLite) — the same store the
+    // /api/sessions/:id/todos endpoints read for the UI todo strip.
+    await saveToDisk(ctx.dataDir, ctx.sessionId, args.todos);
     const open = args.todos.filter((t) => t.status !== "completed" && t.status !== "cancelled").length;
     return {
       title: "todowrite",
@@ -77,7 +66,7 @@ export const todoReadTool: ToolDef = {
   execute: async (_args, ctx) => {
     let todos = memory.get(ctx.sessionId);
     if (!todos) {
-      todos = (await loadFromDisk(todoDataDir, ctx.sessionId)) ?? [];
+      todos = (await loadFromDisk(ctx.dataDir, ctx.sessionId)) ?? [];
       memory.set(ctx.sessionId, todos);
     }
     return {

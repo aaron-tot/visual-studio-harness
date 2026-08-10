@@ -4,7 +4,6 @@ import {
   todoWriteTool,
   todoReadTool,
   TodoItemSchema,
-  setTodoDataDir,
 } from "../builtins/todo";
 
 /**
@@ -53,4 +52,3 @@ export const todoTool: ToolDef = {
 };
 
 export const todoActions = TODO_ACTIONS;
-export { setTodoDataDir };

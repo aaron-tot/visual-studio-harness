@@ -241,9 +241,17 @@ function ActiveTodo({ sessionId }: { sessionId: string | null }) {
     };
     wsClient.on("tool_start", onToolStart);
     wsClient.on("tool_end", onToolEnd);
+    // Refresh whenever a turn completes — catches todo writes regardless of
+    // tool name (consolidated "todo", legacy "todowrite") or missed events.
+    const onStreamEnd = (data: any) => {
+      if (data.sessionId && data.sessionId !== id) return;
+      fetchSessionTodos(id).then((items) => useTodoStore.getState().hydrate(id, items)).catch(() => {});
+    };
+    wsClient.on("session_stream_end", onStreamEnd);
     return () => {
       wsClient.off("tool_start", onToolStart);
       wsClient.off("tool_end", onToolEnd);
+      wsClient.off("session_stream_end", onStreamEnd);
     };
   }, [id]);
 

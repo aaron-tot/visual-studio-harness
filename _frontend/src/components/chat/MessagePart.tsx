@@ -53,7 +53,7 @@ export function MessagePart({ part, allParts, toolCacheByCallId, isStreaming, ag
       return <TextPart content={part.content} isStreaming={isStreaming} />;
 
     case "reasoning":
-      return <ThinkingPart content={part.content} isStreaming={isStreaming} />;
+      return <ThinkingPart content={part.content} isStreaming={isStreaming} liveTps={part.liveTps} />;
 
     case "tool": {
       // For task tool calls, find and pass child tool calls
@@ -75,6 +75,7 @@ export function MessagePart({ part, allParts, toolCacheByCallId, isStreaming, ag
           cacheSummary={toolCacheByCallId?.[part.toolCallId]}
           childParts={childParts}
           additionalSystemInfo={(part as any).asiContent as string | undefined}
+          taskId={(part as any).taskId as string | undefined}
         />
       );
     }

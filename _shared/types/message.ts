@@ -2,8 +2,8 @@ import type { ToolCallStatus } from "./tools";
 
 export type MessagePartType =
   | { type: "text"; content: string; _seq?: number }
-  | { type: "tool"; toolCallId: string; toolName: string; status: ToolCallStatus; args: unknown; result?: unknown; error?: string; parentToolCallId?: string; stepIndex?: number; _seq?: number }
-  | { type: "reasoning"; content: string; _seq?: number }
+  | { type: "tool"; toolCallId: string; toolName: string; status: ToolCallStatus; args: unknown; result?: unknown; error?: string; parentToolCallId?: string; taskId?: string; stepIndex?: number; _seq?: number }
+  | { type: "reasoning"; content: string; _seq?: number; /** Runtime-only live TPS badge (never persisted); set while the thinking phase streams. */ liveTps?: number }
   | { type: "snapshot"; hash: string; _seq?: number }
   | { type: "agent"; name: string; _seq?: number }
   | { type: "step-finish"; cost?: number; tokens?: number; _seq?: number }

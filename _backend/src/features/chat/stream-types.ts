@@ -35,8 +35,8 @@ export interface StreamChatOptions {
   provider: ProviderConfig;
   model: string;
   messages: Message[];
-  onToken: (token: string) => void;
-  onReasoning?: (delta: string) => void;
+  onToken: (token: string, seq: number, tps?: number) => void;
+  onReasoning?: (delta: string, seq: number, tps?: number) => void;
   onToolCall?: (e: { toolCallId: string; toolName: string; args: unknown; stepIndex: number }) => void;
   onToolResult?: (e: { toolCallId: string; toolName: string; output: unknown; isError?: boolean }) => void;
   onRetryAttempt?: (attempt: number) => void;

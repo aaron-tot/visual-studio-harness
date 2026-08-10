@@ -136,7 +136,7 @@ function renderPart(
 
   // Thinking gets its own section
   if (part.type === "reasoning") {
-    return <ThinkingPart key={i} content={part.content} collapsed={thinkingCollapsed} isStreaming={isStreaming} />;
+    return <ThinkingPart key={i} content={part.content} collapsed={thinkingCollapsed} isStreaming={isStreaming} liveTps={part.liveTps} />;
   }
 
   // Text part
@@ -360,6 +360,9 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
           )}
         </AgentMessageCard>
 
+        {/* Live output TPS — right-aligned under the bubble while streaming */}
+        {isStreaming && <OutputTpsBadge />}
+
         {/* Live retry countdown - shows during backend retry wait */}
         {useChatStore.getState().retryCountdown && (
           <RetryCountdown {...useChatStore.getState().retryCountdown} />
@@ -429,6 +432,24 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
       </>
     )}
     </>
+  );
+}
+
+/** Live output tokens/sec under the agent bubble — subscribes in isolation so
+ * historical (non-streaming) rows never re-render on token updates. */
+function OutputTpsBadge() {
+  const tps = useChatStore((s) => s.streamingOutputTps);
+  if (tps == null) return null;
+  return (
+    <div className="w-full flex justify-end px-1 mt-0.5">
+      <span
+        title="Live TPS · calculated by VSH (chars/4 estimate)"
+        className="uppercase tracking-wide text-[10px] px-1.5 py-0.5 rounded font-mono text-zinc-500"
+        style={{ backgroundColor: "#18181b" }}
+      >
+        {Math.round(tps)} t/s
+      </span>
+    </div>
   );
 }
 

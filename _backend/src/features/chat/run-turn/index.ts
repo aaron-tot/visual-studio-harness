@@ -35,6 +35,7 @@ import { getWorkspaceGraphManager } from "../../../core/workspaceGraph/service-s
 import type { WorkspaceGraphService } from "../../../core/workspaceGraph/api/types";
 import { createStepStreamWriter } from "../persist-stream";
 import { buildErrorAssistantMessage } from "../turn-errors";
+import { createTpsTracker } from "../thinking-tps";
 import {
   getNextTurnNumber,
   createTurn,
@@ -329,6 +330,10 @@ export async function runTurn(
 
   try {
     let partSeq = 0;
+    // Thinking TPS tracker for the reasoning phase (2s window)
+    const thinkingTpsTracker = createTpsTracker(2000);
+    // Output TPS tracker for streamed text tokens (1s window — more responsive)
+    const outputTpsTracker = createTpsTracker(1000);
     const resolveCtx: ResolveContext = { dataDir, sessionId, workspaceRoot, agentSettings: runtime.settings };
     const providerName = provider?.displayName;
     const modelName = model?.modelName;
@@ -615,14 +620,33 @@ export async function runTurn(
         },
         onToken: (token) => {
           if (turnEnded) return;
+          // End thinking phase on first text delta
+          if (thinkingTpsTracker.isActive()) {
+            thinkingTpsTracker.end(Date.now());
+            events.onThinkingEnd?.();
+          }
           const seq = ++partSeq;
-          events.onToken?.(token, seq);
+          // Track output TPS (live under-bubble badge)
+          let tps: number | undefined;
+          if (!outputTpsTracker.isActive()) {
+            outputTpsTracker.start(token);
+          } else {
+            tps = outputTpsTracker.add(token, Date.now());
+          }
+          events.onToken?.(token, seq, tps);
           stepWriter.writeDelta("text", token, seq);
         },
         onReasoning: (delta) => {
           if (turnEnded) return;
           const seq = ++partSeq;
-          events.onReasoning?.(delta, seq);
+          // Track thinking TPS
+          let tps: number | undefined;
+          if (!thinkingTpsTracker.isActive()) {
+            thinkingTpsTracker.start(delta);
+          } else {
+            tps = thinkingTpsTracker.add(delta, Date.now());
+          }
+          events.onReasoning?.(delta, seq, tps);
           stepWriter.writeDelta("reasoning", delta, seq);
         },
         onStepStart: (info) => {
@@ -674,6 +698,12 @@ onStepFinish: async (info) => {
               console.error("[asi] emitAtStepEnd failed", err);
             }
             stepWriter.closeOpen();
+
+            // End thinking phase on step finish (covers reasoning-only steps)
+            if (thinkingTpsTracker.isActive()) {
+              thinkingTpsTracker.end(Date.now());
+              events.onThinkingEnd?.();
+            }
 
             // Step pricing: await the promise (with 2s cap) if step-start refresh is on
             let stepPricingSnapshot: Awaited<ReturnType<typeof getModelPricing>> | null = null;
@@ -734,10 +764,17 @@ onStepFinish: async (info) => {
               pricingJson: pricingSnapshot ? JSON.stringify(pricingSnapshot) : null,
               costUsd: stepCostUsd,
             }, dataDir);
+            // Emit after the step is persisted so live stats (usage tree) can refresh per step.
+            await events.onStepEnd?.({ stepIndex: info.stepIndex });
             currentStepId = null;
           }
         },        onToolCall: (e) => {
           if (turnEnded) return;
+          // End thinking phase on first tool call
+          if (thinkingTpsTracker.isActive()) {
+            thinkingTpsTracker.end(Date.now());
+            events.onThinkingEnd?.();
+          }
           stepWriter.closeOpen();
           const seq = ++partSeq;
           stepWriter.setToolPart(e.toolCallId, e.toolName, e.args, seq, e.stepIndex);

@@ -13,6 +13,8 @@ export interface TokenMessage extends BaseWsMessage {
   type: "token";
   content: string;
   seq?: number;
+  /** Live tokens-per-second estimate (chars/4), calculated by VSH during streaming. */
+  tps?: number;
 }
 
 // Reasoning delta
@@ -20,6 +22,8 @@ export interface ReasoningMessage extends BaseWsMessage {
   type: "reasoning";
   content: string;
   seq?: number;
+  /** Live tokens-per-second estimate (chars/4), calculated by VSH during streaming. */
+  tps?: number;
 }
 
 // Tool call started
@@ -254,6 +258,11 @@ export interface StepToolEndMessage extends BaseWsMessage {
   }>;
 }
 
+// Thinking phase ended (first text/tool/finish-step after reasoning deltas)
+export interface ThinkingEndMessage extends BaseWsMessage {
+  type: "thinking_end";
+}
+
 // ─── Retry Countdown Messages ───
 
 /** Emitted when a retry attempt begins */
@@ -301,6 +310,7 @@ export type WsMessage =
   | DoneMessage
   | StepToolStartMessage
   | StepToolEndMessage
+  | ThinkingEndMessage
   | RetryStartMessage
   | RetryTickMessage
   | RetryEndMessage;

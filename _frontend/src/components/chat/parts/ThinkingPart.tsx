@@ -19,6 +19,8 @@ interface ThinkingPartProps {
   className?: string;
   /** When true, shows "reasoning" badge; when false/undefined, shows "completed" */
   isStreaming?: boolean;
+  /** Live tokens-per-second estimate (calculated by VSH) — shown only while streaming */
+  liveTps?: number;
 }
 
 const Chevron = () => (
@@ -27,7 +29,7 @@ const Chevron = () => (
   </span>
 );
 
-export function ThinkingPart({ content, collapsed = true, className, isStreaming }: ThinkingPartProps) {
+export function ThinkingPart({ content, collapsed = true, className, isStreaming, liveTps }: ThinkingPartProps) {
   const ref = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => {
@@ -37,6 +39,8 @@ export function ThinkingPart({ content, collapsed = true, className, isStreaming
   }, [collapsed]);
 
   if (!content) return null;
+
+  const isActiveThinking = liveTps != null;
 
   return (
     <details
@@ -55,14 +59,25 @@ export function ThinkingPart({ content, collapsed = true, className, isStreaming
           <Brain size={12} className="shrink-0 text-purple-400" />
           <span className="font-medium text-purple-400">Thinking</span>
         </div>
-        <span
-          className="uppercase tracking-wide text-[10px] px-1.5 py-0.5 rounded shrink-0"
-          style={{
-            backgroundColor: isStreaming ? "#a78bfa15" : "#22c55e15",
-            color: isStreaming ? "#a78bfa" : "#22c55e",
-          }}
-        >
-          {isStreaming ? "reasoning" : "completed"}
+        <span className="flex items-center gap-2 shrink-0">
+          {isActiveThinking && (
+            <span
+              title="Live TPS · calculated by VSH (chars/4 estimate)"
+              className="uppercase tracking-wide text-[10px] px-1.5 py-0.5 rounded font-mono text-purple-300/90"
+              style={{ backgroundColor: "#a78bfa15" }}
+            >
+              {Math.round(liveTps!)} t/s
+            </span>
+          )}
+          <span
+            className="uppercase tracking-wide text-[10px] px-1.5 py-0.5 rounded shrink-0"
+            style={{
+              backgroundColor: isActiveThinking ? "#a78bfa15" : "#22c55e15",
+              color: isActiveThinking ? "#a78bfa" : "#22c55e",
+            }}
+          >
+            {isActiveThinking ? "reasoning" : "completed"}
+          </span>
         </span>
       </summary>
 

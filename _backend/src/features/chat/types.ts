@@ -43,13 +43,17 @@ export interface TurnInput {
 
 export interface TurnEvents {
   onSessionReady?: (info: { sessionId: string; created: boolean; meta: SessionMeta; turnId?: number }) => void;
-  onToken?: (token: string, seq: number) => void;
-  onReasoning?: (delta: string, seq: number) => void;
+  onToken?: (token: string, seq: number, tps?: number) => void;
+  onReasoning?: (delta: string, seq: number, tps?: number) => void;
   onToolCall?: (e: { toolCallId: string; toolName: string; args: unknown; parentToolCallId?: string; seq?: number; stepIndex?: number }) => void;
   onToolResult?: (e: { toolCallId: string; toolName: string; output: unknown; isError?: boolean; seq?: number }) => void;
-  onToolUpdate?: (e: { toolCallId: string; status: string; seq?: number }) => void;
+  onToolUpdate?: (e: { toolCallId: string; status: string; seq?: number; taskId?: string }) => void;
   onToolBatchStart?: (e: StepToolBatchBeforePayload) => void | Promise<void>;
   onToolBatchEnd?: (e: StepToolBatchAfterPayload) => void | Promise<void>;
+  /** Called after a step is finalized & persisted (used to refresh live usage/stats). */
+  onStepEnd?: (e: { stepIndex?: number }) => void | Promise<void>;
+  /** Called when the reasoning/thinking phase ends (text, tool, or step finish after reasoning). */
+  onThinkingEnd?: () => void | Promise<void>;
   askPermission?: (toolName: string, args: unknown, callId: string) => Promise<boolean>;
   requestSubagentConfig?: (req: SubagentConfigRequest) => Promise<SubagentConfigReply>;
   requestSlotBusyDecision?: NonNullable<ExtendedToolContext["requestSlotBusyDecision"]>;

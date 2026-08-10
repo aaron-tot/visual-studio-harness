@@ -92,6 +92,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   stopping: false,
   streamingContent: "",
   streamingParts: [],
+  streamingOutputTps: null,
   lastSeq: 0,
   _partSeq: 0,
   _textSeq: 0,
@@ -175,6 +176,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       stopping: false,
       streamingContent: "",
       streamingParts: [],
+      streamingOutputTps: null,
       streamingTurnId: null,
       lastSeq: 0,
       _partSeq: 0,
@@ -237,6 +239,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         stopping: false,
         streamingContent: "",
         streamingParts: [],
+        streamingOutputTps: null,
         streamingTurnId: null,
         lastSeq: 0,
         _partSeq: 0,
@@ -272,6 +275,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       stopping: false,
       streamingContent: "",
       streamingParts: [],
+      streamingOutputTps: null,
       streamingTurnId: null,
       lastSeq: 0,
       _partSeq: 0,
@@ -321,6 +325,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       stopping: false,
       streamingContent: "",
       streamingParts: [],
+      streamingOutputTps: null,
       streamingTurnId: null,
       lastSeq: 0,
       _partSeq: 0,
@@ -346,7 +351,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ stopping: true, streamingStartTime: null, retryCountdown: null });
   },
 
-  appendToken: (token, seq) => {
+  appendToken: (token, seq, tps) => {
     touchStreamTimeout();
     return set((state) => {
       if (seq != null && seq <= state.lastSeq) return {};
@@ -364,23 +369,48 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (lastMsg?.role === "assistant") {
         msgs[msgs.length - 1] = { ...lastMsg, content };
       }
-      return { messages: msgs, streamingParts: parts, streamingContent: content, lastSeq: nextSeq, _partSeq: nextSeq };
+      return {
+        messages: msgs,
+        streamingParts: parts,
+        streamingContent: content,
+        streamingOutputTps: typeof tps === "number" ? tps : state.streamingOutputTps,
+        lastSeq: nextSeq,
+        _partSeq: nextSeq,
+      };
     });
   },
 
-  appendReasoning: (delta, seq) => {
+  clearOutputTps: () => set({ streamingOutputTps: null }),
+
+  appendReasoning: (delta, seq, tps) => {
     touchStreamTimeout();
     return set((state) => {
       if (seq != null && seq <= state.lastSeq) return {};
       const nextSeq = seq ?? state.lastSeq + 1;
       const parts = [...state.streamingParts];
       const last = parts[parts.length - 1];
+      const tpsPatch = typeof tps === "number" ? { liveTps: tps } : {};
       if (last && last.type === "reasoning") {
-        parts[parts.length - 1] = { ...last, content: (last.content || "") + delta };
+        parts[parts.length - 1] = { ...last, content: (last.content || "") + delta, ...tpsPatch };
         return { streamingParts: parts, lastSeq: nextSeq, _partSeq: nextSeq };
       }
-      parts.push({ type: "reasoning", content: delta, _seq: nextSeq } as any);
+      parts.push({ type: "reasoning", content: delta, _seq: nextSeq, ...tpsPatch } as any);
       return { streamingParts: parts, lastSeq: nextSeq, _partSeq: nextSeq, _reasonIdx: parts.length };
+    });
+  },
+
+  endThinking: () => {
+    return set((state) => {
+      const parts = [...state.streamingParts];
+      // Clear liveTps from the active (last) reasoning part — phase ended.
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const p = parts[i];
+        if (p.type === "reasoning" && (p as { liveTps?: number }).liveTps != null) {
+          parts[i] = { ...p, liveTps: undefined };
+          break;
+        }
+      }
+      return { streamingParts: parts };
     });
   },
 
@@ -416,7 +446,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         updatedMessages = [...msgs, { role: "user" as const, content: hasContinue.content, timestamp: new Date().toISOString() }];
         nextAgentName = hasContinue.agentName;
       }
-      return { messages: updatedMessages, streaming: !!hasContinue, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null, streamingStartTime: hasContinue ? Date.now() : null, retryCountdown: null };
+      return { messages: updatedMessages, streaming: !!hasContinue, stopping: false, streamingContent: "", streamingParts: [], streamingOutputTps: null, streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null, streamingStartTime: hasContinue ? Date.now() : null, retryCountdown: null };
     });
   },
 
@@ -450,7 +480,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (userIdx >= 0 && msgs[userIdx].role === "user") msgs[userIdx] = { ...msgs[userIdx], turnId: meta.turnId };
       }
       if (state.sessionId) void get().loadTurns(state.sessionId);
-      return { messages: msgs, streaming: false, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null, streamingStartTime: null, retryCountdown: null };
+      return { messages: msgs, streaming: false, stopping: false, streamingContent: "", streamingParts: [], streamingOutputTps: null, streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null, streamingStartTime: null, retryCountdown: null };
     });
   },
 
@@ -467,10 +497,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
-  onToolUpdate: ({ toolCallId, status }) => {
+  onToolUpdate: ({ toolCallId, status, taskId }) => {
     touchStreamTimeout();
     return set((state) => ({
-      streamingParts: state.streamingParts.map((p) => p.type === "tool" && p.toolCallId === toolCallId ? { ...p, status } : p),
+      streamingParts: state.streamingParts.map((p) => p.type === "tool" && p.toolCallId === toolCallId ? { ...p, status, ...(taskId ? { taskId } : {}) } : p),
     }));
   },
 

@@ -23,10 +23,12 @@ import { touchStreamTimeout } from "./store";
 let _tokenRafId: number | null = null;
 let _pendingToken = "";
 let _pendingSeq = 0;
+let _pendingTokenTps: number | undefined = undefined;
 
 let _reasonRafId: number | null = null;
 let _pendingReasoning = "";
 let _pendingReasonSeq = 0;
+let _pendingReasonTps: number | undefined = undefined;
 
 wsClient.on("token", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
@@ -36,19 +38,22 @@ wsClient.on("token", (data: any) => {
   }
   if (awaitingSessionState) {
     chatDebug("token", "buffered (awaiting session state)", { seq: data.seq });
-    bufferDelta({ kind: "token", sessionId: data.sessionId, content: data.content, seq: data.seq });
+    bufferDelta({ kind: "token", sessionId: data.sessionId, content: data.content, seq: data.seq, ...(typeof data.tps === "number" ? { tps: data.tps } : {}) });
     return;
   }
   _pendingToken += data.content;
   _pendingSeq = data.seq ?? _pendingSeq;
+  if (typeof data.tps === "number") _pendingTokenTps = data.tps;
   if (_tokenRafId === null) {
     _tokenRafId = requestAnimationFrame(() => {
       _tokenRafId = null;
       const t = _pendingToken;
       const s = _pendingSeq;
+      const tp = _pendingTokenTps;
       _pendingToken = "";
       _pendingSeq = 0;
-      useChatStore.getState().appendToken(t, s);
+      _pendingTokenTps = undefined;
+      useChatStore.getState().appendToken(t, s, tp);
     });
   }
 });
@@ -61,21 +66,34 @@ wsClient.on("reasoning", (data: any) => {
   }
   if (awaitingSessionState) {
     chatDebug("reasoning", "buffered (awaiting session state)", { seq: data.seq });
-    bufferDelta({ kind: "reasoning", sessionId: data.sessionId, content: data.content, seq: data.seq });
+    bufferDelta({ kind: "reasoning", sessionId: data.sessionId, content: data.content, seq: data.seq, ...(typeof data.tps === "number" ? { tps: data.tps } : {}) });
     return;
   }
   _pendingReasoning += data.content;
   _pendingReasonSeq = data.seq ?? _pendingReasonSeq;
+  if (typeof data.tps === "number") _pendingReasonTps = data.tps;
   if (_reasonRafId === null) {
     _reasonRafId = requestAnimationFrame(() => {
       _reasonRafId = null;
       const r = _pendingReasoning;
       const s = _pendingReasonSeq;
+      const t = _pendingReasonTps;
       _pendingReasoning = "";
       _pendingReasonSeq = 0;
-      useChatStore.getState().appendReasoning(r, s);
+      _pendingReasonTps = undefined;
+      useChatStore.getState().appendReasoning(r, s, t);
     });
   }
+});
+
+wsClient.on("thinking_end", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId !== currentId) return;
+  if (awaitingSessionState) {
+    bufferDelta({ kind: "thinking_end", sessionId: data.sessionId });
+    return;
+  }
+  useChatStore.getState().endThinking();
 });
 
 wsClient.on("done", (data: any) => {
@@ -176,6 +194,7 @@ wsClient.on("retry_end", (data: any) => {
 wsClient.on("tool_start", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
+  useChatStore.getState().clearOutputTps(); // output paused — hide live badge
   if (awaitingSessionState) {
     bufferDelta({ kind: "tool_start", sessionId: data.sessionId, toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, parentToolCallId: data.parentToolCallId, seq: data.seq, stepIndex: data.stepIndex });
     return;
@@ -187,10 +206,10 @@ wsClient.on("tool_update", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
   if (awaitingSessionState) {
-    bufferDelta({ kind: "tool_update", sessionId: data.sessionId, toolCallId: data.toolCallId, status: data.status, partial: data.partial, seq: data.seq });
+    bufferDelta({ kind: "tool_update", sessionId: data.sessionId, toolCallId: data.toolCallId, status: data.status, partial: data.partial, seq: data.seq, ...(data.taskId ? { taskId: data.taskId } : {}) });
     return;
   }
-  useChatStore.getState().onToolUpdate({ toolCallId: data.toolCallId, status: data.status, partial: data.partial, seq: data.seq });
+  useChatStore.getState().onToolUpdate({ toolCallId: data.toolCallId, status: data.status, partial: data.partial, seq: data.seq, ...(data.taskId ? { taskId: data.taskId } : {}) });
 });
 
 wsClient.on("tool_end", (data: any) => {
@@ -326,7 +345,7 @@ wsClient.on("session_state", (data: any) => {
         const { streamingParts, streamingContent, partSeq } = partsFromSnapshot(lastAssistant.parts || []);
         const upTo = snapshotSeq ?? partSeq;
         const wsRoot = data.meta?.workspaceRoot;
-        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
+        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, streamingOutputTps: null, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
         touchStreamTimeout();
       } else {
         const upTo = snapshotSeq ?? maxSeqOf(msgs.flatMap((m: any) => m.parts || []));
@@ -349,6 +368,7 @@ wsClient.on("session_state", (data: any) => {
           streaming: isStreaming,
           streamingContent: isStreaming ? data.streaming : "",
           streamingParts: isStreaming ? cur.streamingParts : [],
+          streamingOutputTps: null,
           lastSeq: upTo,
           _partSeq: upTo,
           _reasonIdx: 0,
@@ -402,6 +422,7 @@ wsClient.onDisconnect(() => {
         streaming: false,
         streamingContent: "",
         streamingParts: [],
+        streamingOutputTps: null,
         streamingTurnId: null,
         lastSeq: 0,
         _reasonIdx: 0,

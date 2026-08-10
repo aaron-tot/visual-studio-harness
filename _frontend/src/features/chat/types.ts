@@ -14,6 +14,8 @@ export interface ChatState {
   stopping: boolean;
   streamingContent: string;
   streamingParts: MessagePartType[];
+  /** Live output TPS estimate (chars/4, VSH-calculated) — under-bubble badge while streaming. */
+  streamingOutputTps: number | null;
   lastSeq: number;
   _partSeq: number;
   _textSeq: number;
@@ -45,8 +47,12 @@ export interface ChatState {
   bumpContextConfigVersion: () => void;
   clearMessages: () => void;
   stopStreaming: () => void;
-  appendToken: (token: string, seq?: number) => void;
-  appendReasoning: (delta: string, seq?: number) => void;
+  appendToken: (token: string, seq?: number, tps?: number) => void;
+  appendReasoning: (delta: string, seq?: number, tps?: number) => void;
+  /** Clears the live TPS badge from the active thinking part (thinking phase ended). */
+  endThinking: () => void;
+  /** Clears the live output TPS badge (tool call started or stream paused). */
+  clearOutputTps: () => void;
   doneStreaming: (modelName?: string, providerName?: string, durationMs?: number, turnId?: number, agentName?: string) => void;
   failStreaming: (error: string, meta?: {
     modelName?: string;
@@ -67,7 +73,7 @@ export interface ChatState {
     seq?: number;
     stepIndex?: number;
   }) => void;
-  onToolUpdate: (e: { toolCallId: string; status: ToolCallStatus; partial?: string; seq?: number }) => void;
+  onToolUpdate: (e: { toolCallId: string; status: ToolCallStatus; partial?: string; seq?: number; taskId?: string }) => void;
   onToolEnd: (e: {
     toolCallId: string;
     status: ToolCallStatus;
@@ -155,8 +161,9 @@ export interface ChatState {
 }
 
 export type BufferedDelta =
-  | { kind: "token"; sessionId: string; content: string; seq?: number }
-  | { kind: "reasoning"; sessionId: string; content: string; seq?: number }
+  | { kind: "token"; sessionId: string; content: string; seq?: number; tps?: number }
+  | { kind: "reasoning"; sessionId: string; content: string; seq?: number; tps?: number }
+  | { kind: "thinking_end"; sessionId: string }
   | {
       kind: "tool_start";
       sessionId: string;
@@ -184,6 +191,7 @@ export type BufferedDelta =
       status: ToolCallStatus;
       partial?: string;
       seq?: number;
+      taskId?: string;
     }
   | {
       kind: "done";

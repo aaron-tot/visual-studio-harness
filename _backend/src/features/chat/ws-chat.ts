@@ -56,15 +56,17 @@ export async function handleSessionUpdate(msg: SessionUpdateWsMessage, dataDir: 
   return updateSessionMeta(dataDir, msg.sessionId, fields);
 }
 
-function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined, announceStreamStart: () => void): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate" | "onToolBatchStart" | "onToolBatchEnd" | "announceStreamStart"> {
+function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined, announceStreamStart: () => void): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate" | "onToolBatchStart" | "onToolBatchEnd" | "onStepEnd" | "onThinkingEnd" | "announceStreamStart"> {
   return {
-    onToken: (token, seq) => { const sid = getSessionId(); sendToSession(sid, { type: "token", sessionId: sid, content: token, seq }); },
-    onReasoning: (delta, seq) => { const sid = getSessionId(); sendToSession(sid, { type: "reasoning", sessionId: sid, content: delta, seq }); },
+    onToken: (token, seq, tps) => { const sid = getSessionId(); sendToSession(sid, { type: "token", sessionId: sid, content: token, seq, ...(tps != null ? { tps } : {}) }); },
+    onReasoning: (delta, seq, tps) => { const sid = getSessionId(); sendToSession(sid, { type: "reasoning", sessionId: sid, content: delta, seq, ...(tps != null ? { tps } : {}) }); },
     onToolCall: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_start", sessionId: sid, toolCallId: e.toolCallId, toolName: e.toolName, args: e.args, stepIndex: e.stepIndex, ...(e.seq != null ? { seq: e.seq } : {}), ...(e.parentToolCallId ? { parentToolCallId: e.parentToolCallId } : {}) }); },
     onToolResult: (e) => { const sid = getSessionId(); const tid = getTurnId(); sendToSession(sid, { type: "tool_end", sessionId: sid, toolCallId: e.toolCallId, status: e.isError ? "error" : "completed", result: e.output, error: e.isError ? String(e.output) : undefined, ...(e.seq != null ? { seq: e.seq } : {}), ...(tid != null ? { turnId: tid } : {}) }); },
-    onToolUpdate: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_update", sessionId: sid, toolCallId: e.toolCallId, status: e.status, ...(e.seq != null ? { seq: e.seq } : {}) }); },
+    onToolUpdate: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_update", sessionId: sid, toolCallId: e.toolCallId, status: e.status, ...(e.seq != null ? { seq: e.seq } : {}), ...(e.taskId ? { taskId: e.taskId } : {}) }); },
     onToolBatchStart: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_start", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls }); },
     onToolBatchEnd: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_end", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls.map((t) => ({ toolCallId: t.toolCallId, toolName: t.toolName, result: t.result, status: t.isError ? "error" : "completed" })) }); },
+    onStepEnd: (e) => { const sid = getSessionId(); const tid = getTurnId(); sendToSession(sid, { type: "step_end", sessionId: sid, stepIndex: e.stepIndex, ...(tid != null ? { turnId: tid } : {}) }); },
+    onThinkingEnd: () => { const sid = getSessionId(); sendToSession(sid, { type: "thinking_end", sessionId: sid }); },
     announceStreamStart,
   };
 }

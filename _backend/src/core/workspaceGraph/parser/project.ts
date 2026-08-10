@@ -3,7 +3,6 @@ import { Project, ModuleKind, ModuleResolutionKind, ScriptTarget, type ProjectOp
 let _project: Project | null = null;
 
 const DEFAULT_OPTIONS: ProjectOptions = {
-  useInMemoryFileSystem: true,
   skipAddingFilesFromTsConfig: true,
   manipulationSettings: {
     indentationText: " ",

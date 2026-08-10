@@ -94,6 +94,8 @@ function ensureSchema(sqlite: Database): void {
       cache_read_tokens INTEGER,
       cache_write_tokens INTEGER,
       step_count INTEGER,
+      pricing_json TEXT,
+      cost_usd REAL,
       raw_request_json TEXT,
       raw_response_json TEXT,
       config_snapshot_json TEXT,
@@ -107,6 +109,13 @@ function ensureSchema(sqlite: Database): void {
   // Migration: add kind column for existing databases
   try {
     sqlite.run(`ALTER TABLE turns ADD COLUMN kind TEXT NOT NULL DEFAULT 'turn'`);
+  } catch {}
+  // Migration: add pricing columns for existing databases
+  try {
+    sqlite.run(`ALTER TABLE turns ADD COLUMN pricing_json TEXT`);
+  } catch {}
+  try {
+    sqlite.run(`ALTER TABLE turns ADD COLUMN cost_usd REAL`);
   } catch {}
   sqlite.run(`CREATE UNIQUE INDEX IF NOT EXISTS uq_turns_session_number ON turns(session_id, turn_number);`);
   sqlite.run(`CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);`);
@@ -159,6 +168,8 @@ function ensureSchema(sqlite: Database): void {
       provider_metadata_json TEXT,
       warnings_json TEXT,
       request_meta_json TEXT,
+      pricing_json TEXT,
+      cost_usd REAL,
       prompt_snapshot_id INTEGER REFERENCES prompt_snapshots(id),
       raw_request_json TEXT,
       raw_response_json TEXT,
@@ -178,6 +189,13 @@ function ensureSchema(sqlite: Database): void {
   } catch {}
   try {
     sqlite.run(`ALTER TABLE steps ADD COLUMN raw_response_json TEXT`);
+  } catch {}
+  // Migration: add pricing columns for existing databases
+  try {
+    sqlite.run(`ALTER TABLE steps ADD COLUMN pricing_json TEXT`);
+  } catch {}
+  try {
+    sqlite.run(`ALTER TABLE steps ADD COLUMN cost_usd REAL`);
   } catch {}
 
   // ── step_parts ─────────────────────────────────────────────────────

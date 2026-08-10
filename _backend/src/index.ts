@@ -25,6 +25,8 @@ import { registerAuditPromptsRoutes } from "./rest/audit-prompts";
 import { registerCustomToolsRoutes } from "./rest/custom-tools";
 import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
+import { registerPricingRoutes } from "./rest/pricing";
+import { initPricingCache } from "./features/pricing/models-dev";
 import { setWorkspaceGraphManager, getWorkspaceGraphManager } from "./core/workspaceGraph/service-singleton";
 import { WorkspaceGraphManager } from "./core/workspaceGraph/graph-manager";
 import { listSessions } from "./features/sessions/store";
@@ -207,6 +209,9 @@ async function main() {
   }, MODE);
   currentConfig = watcher.config;
 
+  // Initialize pricing cache (load from disk)
+  await initPricingCache();
+
   if (!currentConfig.mcpServers || currentConfig.mcpServers.length === 0) {
     const seedPath = resolve(join(DATA_DIR, "..", "..", "seeds", "mcp", "default.json"));
     if (existsSync(seedPath)) {
@@ -252,6 +257,7 @@ async function main() {
 
   // Workspace graph: create manager, register REST routes (per-workspace lookup via query param)
   registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphManager());
+  registerPricingRoutes(app, DATA_DIR, () => currentConfig);
 
   registerKnowledgeRoutes(app, knowledgeService);
 

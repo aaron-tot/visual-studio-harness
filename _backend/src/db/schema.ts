@@ -113,6 +113,10 @@ export const turns = sqliteTable("turns", {
   cacheWriteTokens: integer("cache_write_tokens"),
   stepCount: integer("step_count"),
 
+  // Pricing (models.dev snapshot + computed cost)
+  pricingJson: text("pricing_json"),
+  costUsd: real("cost_usd"),
+
   // Opaque debug blobs
   rawRequestJson: text("raw_request_json"),
   rawResponseJson: text("raw_response_json"),
@@ -183,6 +187,10 @@ export const steps = sqliteTable("steps", {
   providerMetadataJson: text("provider_metadata_json"),
   warningsJson: text("warnings_json"),
   requestMetaJson: text("request_meta_json"),
+
+  // Pricing (models.dev snapshot + computed cost)
+  pricingJson: text("pricing_json"),
+  costUsd: real("cost_usd"),
 
   /** Per-step system prompt snapshot (what was actually sent for this step). */
   promptSnapshotId: integer("prompt_snapshot_id")

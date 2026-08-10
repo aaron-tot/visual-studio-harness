@@ -19,6 +19,8 @@ export const ProviderConfigSchema = z.object({
   models: z.array(ModelConfigSchema).default([]),
   enabled: z.boolean().optional(),
   test: z.boolean().optional(),
+  /** Explicit models.dev provider id override (e.g., "opencode", "openrouter"). */
+  pricingProviderId: z.string().optional(),
 });
 
 export const SlotBusyPolicySchema = z.enum(["wait", "fail", "ask"]);
@@ -176,6 +178,13 @@ export const SearchProviderConfigSchema = z.object({
   customMcpUrl: z.string().optional(),
 });
 
+/** models.dev pricing integration (single toggle + TTL throttle). */
+export const PricingConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  cacheTtlMinutes: z.number().int().positive().optional(),
+  sourceUrl: z.string().url().optional(),
+});
+
 export const ConfigFileSchema = z.object({
   providers: z.array(ProviderConfigSchema),
   /** @deprecated Search providers now live in each tool's `<name>.json` (`ToolConfig.searchProviders`). Kept so existing configs still load. */
@@ -238,4 +247,7 @@ export const ConfigFileSchema = z.object({
   /** Permission request timeout configuration */
   permissionRequestTimeoutEnabled: z.boolean().default(false),
   permissionRequestTimeoutMs: z.number().int().positive().default(120000),
+
+  /** models.dev pricing integration */
+  pricing: PricingConfigSchema.optional(),
 });

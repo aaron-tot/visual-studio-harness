@@ -32,6 +32,8 @@ import { createStepStreamWriter } from "./persist-stream";
 import { createSession } from "../sessions/db";
 
 const SESSION_ID = "test-trace-session";
+/** Isolated session for pricing/finalize cost tests — must not perturb SESSION_ID's successful-turn count. */
+const PRICING_SESSION_ID = "test-trace-pricing-session";
 
 let dataDir: string;
 
@@ -44,6 +46,10 @@ beforeAll(async () => {
 
   createSession(
     { id: SESSION_ID, title: "trace test", providerName: "test", modelName: "test", created: new Date().toISOString(), updated: new Date().toISOString() },
+    dataDir,
+  );
+  createSession(
+    { id: PRICING_SESSION_ID, title: "trace pricing test", providerName: "test", modelName: "test", created: new Date().toISOString(), updated: new Date().toISOString() },
     dataDir,
   );
 });
@@ -229,6 +235,41 @@ describe("trace repository", () => {
     expect(t!.totalTokens).toBe(750);
     expect(t!.stepCount).toBe(2);
     expect(t!.completedAt).toBeTruthy();
+  });
+
+  test("finalizeTurnTrace with passed steps sums cost_usd from DB (not wiped)", () => {
+    const turnNum = getNextTurnNumber(PRICING_SESSION_ID, dataDir);
+    const tId = createTurn(PRICING_SESSION_ID, turnNum, "cost test", new Date().toISOString(), {}, dataDir);
+
+    const s1 = createStep(tId, PRICING_SESSION_ID, 0, {}, dataDir);
+    finalizeStep(s1, { inputTokens: 100, outputTokens: 50, totalTokens: 150, costUsd: 0.001 }, dataDir);
+
+    const s2 = createStep(tId, PRICING_SESSION_ID, 1, {}, dataDir);
+    finalizeStep(s2, { inputTokens: 200, outputTokens: 100, totalTokens: 300, costUsd: 0.002 }, dataDir);
+
+    // Passed TraceStep (streamChat) never carries costUsd — turn cost must come from DB sum
+    finalizeTurnTrace(tId, { success: true, finishReason: "stop" }, dataDir, [
+      { id: 1, sessionId: PRICING_SESSION_ID, turnId: tId, stepIndex: 0, status: "completed", inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      { id: 2, sessionId: PRICING_SESSION_ID, turnId: tId, stepIndex: 1, status: "completed", inputTokens: 200, outputTokens: 100, totalTokens: 300 },
+    ] as unknown as Parameters<typeof finalizeTurnTrace>[3]);
+
+    const t = getTurnById(tId, dataDir);
+    expect(t!.costUsd).toBeCloseTo(0.003, 10);
+  });
+
+  test("finalizeTurnTrace keeps turn cost NULL when no step has cost (no snapshot)", () => {
+    const turnNum = getNextTurnNumber(PRICING_SESSION_ID, dataDir);
+    const tId = createTurn(PRICING_SESSION_ID, turnNum, "nocost", new Date().toISOString(), {}, dataDir);
+
+    const s1 = createStep(tId, PRICING_SESSION_ID, 0, {}, dataDir);
+    finalizeStep(s1, { inputTokens: 10, outputTokens: 5, totalTokens: 15 }, dataDir);
+
+    finalizeTurnTrace(tId, { success: true, finishReason: "stop" }, dataDir, [
+      { id: 1, sessionId: PRICING_SESSION_ID, turnId: tId, stepIndex: 0, status: "completed", inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    ] as unknown as Parameters<typeof finalizeTurnTrace>[3]);
+
+    const t = getTurnById(tId, dataDir);
+    expect(t!.costUsd).toBeNull();
   });
 
   test("session cache reflects successful turn only", () => {

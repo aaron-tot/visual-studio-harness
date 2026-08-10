@@ -25,6 +25,7 @@ export interface UsageTokenBlock {
   reasoningTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  costUsd?: number;
 }
 
 export interface UsageTreeStep {
@@ -92,6 +93,7 @@ function ownBlock(t: {
   reasoningTokens?: number | null;
   cacheReadTokens?: number | null;
   cacheWriteTokens?: number | null;
+  costUsd?: number | null;
 }): UsageTokenBlock {
   return {
     inputTokens: t.inputTokens ?? 0,
@@ -100,6 +102,7 @@ function ownBlock(t: {
     reasoningTokens: t.reasoningTokens ?? undefined,
     cacheReadTokens: t.cacheReadTokens ?? undefined,
     cacheWriteTokens: t.cacheWriteTokens ?? undefined,
+    costUsd: t.costUsd ?? undefined,
   };
 }
 
@@ -111,6 +114,7 @@ function addBlocks(a: UsageTokenBlock, b: UsageTokenBlock): UsageTokenBlock {
     reasoningTokens: (a.reasoningTokens ?? 0) + (b.reasoningTokens ?? 0) || undefined,
     cacheReadTokens: (a.cacheReadTokens ?? 0) + (b.cacheReadTokens ?? 0) || undefined,
     cacheWriteTokens: (a.cacheWriteTokens ?? 0) + (b.cacheWriteTokens ?? 0) || undefined,
+    costUsd: (a.costUsd ?? 0) + (b.costUsd ?? 0) || undefined,
   };
 }
 
@@ -138,6 +142,7 @@ export function getSessionOwnTokens(
       .select({
         cacheReadTokens: sum(turns.cacheReadTokens),
         cacheWriteTokens: sum(turns.cacheWriteTokens),
+        costUsd: sum(turns.costUsd),
       })
       .from(turns)
       .where(eq(turns.sessionId, sessionId))
@@ -146,6 +151,7 @@ export function getSessionOwnTokens(
       ...cached,
       cacheReadTokens: Number(cr?.cacheReadTokens ?? 0) || undefined,
       cacheWriteTokens: Number(cr?.cacheWriteTokens ?? 0) || undefined,
+      costUsd: Number(cr?.costUsd ?? 0) || undefined,
     };
   }
 
@@ -157,6 +163,7 @@ export function getSessionOwnTokens(
       reasoningTokens: sum(turns.reasoningTokens),
       cacheReadTokens: sum(turns.cacheReadTokens),
       cacheWriteTokens: sum(turns.cacheWriteTokens),
+      costUsd: sum(turns.costUsd),
     })
     .from(turns)
     .where(eq(turns.sessionId, sessionId))
@@ -169,6 +176,7 @@ export function getSessionOwnTokens(
     reasoningTokens: Number(row?.reasoningTokens ?? 0) || undefined,
     cacheReadTokens: Number(row?.cacheReadTokens ?? 0) || undefined,
     cacheWriteTokens: Number(row?.cacheWriteTokens ?? 0) || undefined,
+    costUsd: Number(row?.costUsd ?? 0) || undefined,
   };
 }
 

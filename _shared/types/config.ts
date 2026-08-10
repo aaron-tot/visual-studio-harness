@@ -20,6 +20,8 @@ export interface ProviderConfig {
   models: ModelConfig[];
   enabled?: boolean;
   test?: boolean;
+  /** Explicit models.dev provider id override (e.g., "opencode", "opencode-go", "openrouter", "ollama"). If omitted, resolved from displayName/baseUrl. */
+  pricingProviderId?: string;
 }
 
 export type SlotBusyPolicy = "wait" | "fail" | "ask";
@@ -307,6 +309,153 @@ export interface ConfigFile {
   /** Permission request timeout configuration */
   permissionRequestTimeoutEnabled?: boolean;
   permissionRequestTimeoutMs?: number;
+
+  /** Pricing configuration (models.dev catalog) */
+  pricing?: PricingConfig;
+}
+
+/** Per-provider override for models.dev provider id (e.g., "opencode" for OpenCode Zen). */
+export interface ProviderConfig {
+  displayName: string;
+  baseUrl: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  models: ModelConfig[];
+  enabled?: boolean;
+  test?: boolean;
+  /** Explicit models.dev provider id override (e.g., "opencode", "opencode-go", "openrouter", "ollama"). If omitted, resolved from displayName/baseUrl. */
+  pricingProviderId?: string;
+}
+
+/** Pricing configuration for models.dev catalog integration. */
+export interface PricingConfig {
+  /**
+   * Master switch: when true, pricing is checked at every turn start AND every
+   * step start. Checks are instant in-memory lookups; the models.dev catalog is
+   * only re-fetched when the cached price is older than `cacheTtlMinutes`.
+   */
+  enabled?: boolean;
+  /**
+   * Cache TTL in minutes (default: 60). Acts as a network throttle: the catalog
+   * is re-downloaded at most once per TTL window regardless of how many
+   * turns/steps run. Failures use a short negative TTL (~5 min) instead.
+   */
+  cacheTtlMinutes?: number;
+  /** Custom models.dev catalog URL (default: https://models.dev/api.json). */
+  sourceUrl?: string;
+}
+
+/** Normalized pricing snapshot from models.dev catalog. */
+export interface PricingSnapshot {
+  /** models.dev provider id (e.g., "opencode", "openrouter", "ollama"). */
+  providerId: string;
+  /** Human-readable provider name from config. */
+  providerDisplayName: string;
+  /** Model identifier (as used in provider config). */
+  modelId: string;
+  /** Whether the model was found in the catalog. */
+  found: boolean;
+  /** Source URL of the catalog. */
+  sourceUrl: string;
+  /** ISO timestamp when the snapshot was fetched. */
+  fetchedAt: string;
+  /** Token rates per 1M tokens (USD). */
+  rates: {
+    inputPerM: number;
+    outputPerM: number;
+    cacheReadPerM: number;
+    cacheWritePerM: number;
+  };
+  /** Optional context-size tiered pricing. */
+  tiers?: Array<{
+    size: number;
+    input: number;
+    output: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  }>;
+  /** Optional >200k context override pricing. */
+  contextOver200K?: {
+    input: number;
+    output: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  };
+  /** Model context/output limits from catalog. */
+  limitContext?: number;
+  /** Error message if fetch/normalize failed. */
+  error?: string;
+}
+
+/** Token counts used for cost computation (matches step/turn token columns). */
+export interface PricingTokenInput {
+  inputTokens?: number;
+  noCacheInputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+}
+
+/**
+ * Compute cost in USD from token counts and a pricing snapshot.
+ * Returns null when snapshot.found is false or rates are unavailable.
+ * Formula mirrors opencode's Session.getUsage:
+ * - noCacheInput (input - cacheRead - cacheWrite) × inputPerM
+ * - (output - reasoning) × outputPerM
+ * - reasoning × outputPerM (charged at output rate)
+ * - cacheRead × cacheReadPerM
+ * - cacheWrite × cacheWritePerM
+ * Tier selection: highest context tier ≤ inputTokens, else contextOver200K if > 200k, else base rates.
+ */
+export function computeCostUsd(
+  tokens: PricingTokenInput,
+  snapshot: PricingSnapshot
+): number | null {
+  if (!snapshot.found || !snapshot.rates) return null;
+
+  const inputTokens = tokens.inputTokens ?? 0;
+  const noCacheInputTokens =
+    tokens.noCacheInputTokens ??
+    Math.max(0, inputTokens - (tokens.cacheReadTokens ?? 0) - (tokens.cacheWriteTokens ?? 0));
+  const cacheReadTokens = tokens.cacheReadTokens ?? 0;
+  const cacheWriteTokens = tokens.cacheWriteTokens ?? 0;
+  const outputTokens = tokens.outputTokens ?? 0;
+  const reasoningTokens = tokens.reasoningTokens ?? 0;
+  const normalOutputTokens = Math.max(0, outputTokens - reasoningTokens);
+
+  // Select rate tier based on input token count
+  let rates = snapshot.rates;
+  if (snapshot.tiers && snapshot.tiers.length > 0) {
+    // Pick highest tier where context size ≤ inputTokens
+    const tier = [...snapshot.tiers]
+      .sort((a, b) => b.size - a.size)
+      .find((t) => inputTokens > t.size);
+    if (tier) {
+      rates = {
+        inputPerM: tier.input,
+        outputPerM: tier.output,
+        cacheReadPerM: tier.cacheRead ?? snapshot.rates.cacheReadPerM,
+        cacheWritePerM: tier.cacheWrite ?? snapshot.rates.cacheWritePerM,
+      };
+    }
+  } else if (snapshot.contextOver200K && inputTokens > 200_000) {
+    rates = {
+      inputPerM: snapshot.contextOver200K.input,
+      outputPerM: snapshot.contextOver200K.output,
+      cacheReadPerM: snapshot.contextOver200K.cacheRead ?? snapshot.rates.cacheReadPerM,
+      cacheWritePerM: snapshot.contextOver200K.cacheWrite ?? snapshot.rates.cacheWritePerM,
+    };
+  }
+
+  const cost =
+    (noCacheInputTokens / 1_000_000) * rates.inputPerM +
+    (normalOutputTokens / 1_000_000) * rates.outputPerM +
+    (reasoningTokens / 1_000_000) * rates.outputPerM +
+    (cacheReadTokens / 1_000_000) * rates.cacheReadPerM +
+    (cacheWriteTokens / 1_000_000) * rates.cacheWritePerM;
+
+  return cost;
 }
 
 /**

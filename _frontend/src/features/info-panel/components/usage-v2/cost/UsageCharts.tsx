@@ -1,5 +1,5 @@
 import type { UsageTokenBlock, UsageTreeSession } from "../types";
-import { estimateCostUsd, formatUsd, ratesForModel } from "./pricing";
+import { formatUsd, formatCostValue } from "./pricing";
 import { formatTokens } from "../format/format";
 
 function BarRow({
@@ -108,8 +108,12 @@ function StackBar({
   );
 }
 
-function costForBlock(block: UsageTokenBlock, model?: string | null) {
-  return estimateCostUsd(block.inputTokens, block.outputTokens, model);
+/** Stored real cost from the models.dev pricing pipeline, or null when no snapshot exists. */
+function costForBlock(block: UsageTokenBlock): number | null {
+  if (block.costUsd !== undefined && block.costUsd !== null) {
+    return block.costUsd;
+  }
+  return null;
 }
 
 /**
@@ -120,13 +124,8 @@ export function UsageCharts({
 }: {
   session: UsageTreeSession;
 }) {
-  const modelHint =
-    session.turns[0]?.modelName ??
-    session.turns[0]?.steps[0]?.modelId ??
-    null;
-  const ownCost = costForBlock(session.own, modelHint);
-  const inclCost = costForBlock(session.inclusive, modelHint);
-  const rates = ratesForModel(modelHint);
+  const ownCost = costForBlock(session.own);
+  const inclCost = costForBlock(session.inclusive);
 
   const tokMax = Math.max(
     session.own.inputTokens,
@@ -137,25 +136,31 @@ export function UsageCharts({
     1
   );
 
+  // Real stored cost only — no fallback estimates
+  const hasStoredCost = ownCost !== null || inclCost !== null;
+  const costLabel = hasStoredCost ? "Cost" : "Cost (no snapshot)";
+  const costCaveat = hasStoredCost
+    ? "models.dev snapshot · real pricing"
+    : "No pricing snapshot. Enable \"Refresh pricing at turn start\" in Settings > General > Pricing to store real cost.";
+
   return (
     <div className="px-3 py-2 space-y-3 border-b border-zinc-800/60">
       <div>
         <div className="text-[8px] text-zinc-600 uppercase tracking-widest mb-1.5">
-          Est. cost
+          {costLabel}
         </div>
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-sm font-semibold text-zinc-200 tabular-nums">
-            {formatUsd(ownCost.usd)}
+            {formatCostValue(ownCost)}
           </span>
-          {inclCost.usd > ownCost.usd && (
+          {inclCost !== null && ownCost !== null && inclCost > ownCost && (
             <span className="text-[11px] text-zinc-500 tabular-nums">
-              ({formatUsd(inclCost.usd)} incl)
+              ({formatUsd(inclCost)} incl)
             </span>
           )}
         </div>
         <div className="text-[9px] text-zinc-600 mt-0.5">
-          {rates.label}
-          {modelHint ? ` · ${modelHint}` : ""} · rough $/M tok estimate, not billing (IGNORE THESE $ FIGURES THEY ARE NOT CURRENLY REAL)
+          {costCaveat}
         </div>
       </div>
 
@@ -215,23 +220,28 @@ export function UsageCharts({
 
 function TurnCostBars({ session }: { session: UsageTreeSession }) {
   const costs = session.turns.map((t) => {
-    const model = t.modelName ?? t.steps[0]?.modelId;
+    const ownCost = costForBlock(t.own);
+    const inclCost = costForBlock(t.inclusive);
     return {
       n: t.turnNumber,
-      own: costForBlock(t.own, model).usd,
-      incl: costForBlock(t.inclusive, model).usd,
+      own: ownCost,
+      incl: inclCost,
       input: t.own.inputTokens ?? 0,
       cache: Math.min(t.own.cacheReadTokens ?? 0, t.own.inputTokens ?? 0),
     };
   });
-  const max = Math.max(...costs.map((c) => Math.max(c.own, c.incl)), 1e-12);
+  const max = Math.max(...costs.map((c) => Math.max(c.own ?? 0, c.incl ?? 0)), 1e-12);
+
+  // Check if any turn has stored cost
+  const hasStoredCost = costs.some((c) => c.own !== null || c.incl !== null);
 
   return (
     <div className="space-y-1">
       <div className="text-[8px] text-zinc-600 uppercase tracking-widest mb-1">
-        Est. cost by turn
+        {hasStoredCost ? "Cost by turn" : "Cost by turn (no snapshot)"}
       </div>
       {costs.map((c) => {
+        const own = c.own ?? 0;
         const nonCache = Math.max(0, c.input - c.cache);
         // Bar is sized by cost; inner split reflects cache vs non-cache input.
         const nonCachePct = c.input > 0 ? (nonCache / c.input) * 100 : 100;
@@ -245,7 +255,7 @@ function TurnCostBars({ session }: { session: UsageTreeSession }) {
               <div
                 className="h-full bg-violet-500/25"
                 style={{
-                  width: `${(Math.min(100, (c.own / max) * 100)) * (nonCachePct / 100)}%`,
+                  width: `${(Math.min(100, (own / max) * 100)) * (nonCachePct / 100)}%`,
                 }}
                 title={`non-cache input ${formatTokens(nonCache)}`}
               />
@@ -253,15 +263,15 @@ function TurnCostBars({ session }: { session: UsageTreeSession }) {
                 <div
                   className="h-full bg-teal-500/30"
                   style={{
-                    width: `${(Math.min(100, (c.own / max) * 100)) * (cachePct / 100)}%`,
+                    width: `${(Math.min(100, (own / max) * 100)) * (cachePct / 100)}%`,
                   }}
                   title={`cache read ${formatTokens(c.cache)}`}
                 />
               )}
             </div>
             <span className="text-zinc-400 w-14 text-right shrink-0 tabular-nums">
-              {formatUsd(c.own)}
-              {c.incl > c.own ? ` (${formatUsd(c.incl)})` : ""}
+              {formatCostValue(c.own)}
+              {c.incl !== null && c.own !== null && c.incl > c.own ? ` (${formatUsd(c.incl)})` : ""}
             </span>
           </div>
         );

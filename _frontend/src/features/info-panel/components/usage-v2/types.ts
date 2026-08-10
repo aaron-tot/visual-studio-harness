@@ -10,6 +10,7 @@ export interface UsageTokenBlock {
   reasoningTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  costUsd?: number;
 }
 
 export interface UsageTreeStep {

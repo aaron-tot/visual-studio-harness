@@ -50,8 +50,11 @@ import {
   abortTurnTrace,
   updateTurnRawCapture,
   updateTurnConfigSnapshot,
+  updateTurnPricing,
   writeStepRaw,
 } from "../db-trace";
+import { getModelPricing } from "../../pricing/models-dev";
+import { computeCostUsd } from "../../../../../_shared/types/config";
 import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
 import { buildSystemBlockBase, buildAdditionalSystemInfoBlock } from "../../system-prompt/builder";
@@ -185,6 +188,39 @@ export async function runTurn(
     temperature: runtime.temperature,
     thinkingEffort: runtime.thinkingEffort,
   }, dataDir);
+
+  // ── Turn-start pricing fetch ──────────────────────────────────────
+  let turnPricingSnapshot: Awaited<ReturnType<typeof getModelPricing>> | null = null;
+  if (config.pricing?.enabled) {
+    try {
+      turnPricingSnapshot = await getModelPricing(provider, model.modelName, config, dataDir);
+      const turnCostUsd = turnPricingSnapshot.found
+        ? computeCostUsd({
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+          }, turnPricingSnapshot)
+        : null;
+      // Store pricing snapshot on turn (cost will be recomputed at finalize)
+      updateTurnPricing(traceTurnId, JSON.stringify(turnPricingSnapshot), turnCostUsd, dataDir);
+    } catch (err) {
+      console.error("[pricing] turn-start fetch failed:", err);
+      // Record found:false snapshot on error
+      const errorSnapshot = {
+        providerId: "",
+        providerDisplayName: provider.displayName,
+        modelId: model.modelName,
+        found: false,
+        sourceUrl: config.pricing?.sourceUrl ?? "https://models.dev/api.json",
+        fetchedAt: new Date().toISOString(),
+        rates: { inputPerM: 0, outputPerM: 0, cacheReadPerM: 0, cacheWritePerM: 0 },
+        error: err instanceof Error ? err.message : String(err),
+      };
+      updateTurnPricing(traceTurnId, JSON.stringify(errorSnapshot), null, dataDir);
+    }
+  }
 
   // ── Context refs ─────────────────────────────────────────────────
 
@@ -504,6 +540,9 @@ export async function runTurn(
     let stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
     let stepIdByIndex: Record<number, number> = {};
 
+    // Step-start pricing promise storage (for non-blocking fetch)
+    let stepPricingPromise: Promise<Awaited<ReturnType<typeof getModelPricing>>> | null = null;
+
     // Per-step system info. The ASI is BUILT+COMPARED+EMITTED at the END of each
     // step (after its tools ran), so it reflects the changes that step caused and
     // is attributed to that step (spec §5/§6.1). prepareStep merely CARRIES the
@@ -556,6 +595,8 @@ export async function runTurn(
     try {
       const streamResult = await streamChat({
         provider, model: model.modelName, messages, tools,
+        sessionId,
+        ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}),
         maxSteps: runtime.maxSteps, temperature: runtime.temperature,
         thinkingEffort: resolvedThinkingEffort,
         providerRouting: model.providerOrder
@@ -589,6 +630,24 @@ export async function runTurn(
           // Display proxy for the Inspector: the block reflects the injection
           // emitted at the PREVIOUS step's end (carried into this step's request).
           const stepPromptSnapshotId = ensurePromptSnapshot(lastPreparedBlock, dataDir);
+
+          // Step-start pricing fetch (non-blocking)
+          if (config.pricing?.enabled) {
+            stepPricingPromise = getModelPricing(provider, model.modelName, config, dataDir).catch((err) => {
+              console.error("[pricing] step-start fetch failed:", err);
+              return {
+                providerId: "",
+                providerDisplayName: provider.displayName,
+                modelId: model.modelName,
+                found: false,
+                sourceUrl: config.pricing?.sourceUrl ?? "https://models.dev/api.json",
+                fetchedAt: new Date().toISOString(),
+                rates: { inputPerM: 0, outputPerM: 0, cacheReadPerM: 0, cacheWritePerM: 0 },
+                error: err instanceof Error ? err.message : String(err),
+              };
+            });
+          }
+
           currentStepId = createStep(traceTurnId, sessionId, info.stepIndex, {
             providerName: provider.displayName,
             modelId: model.modelName,
@@ -600,7 +659,7 @@ export async function runTurn(
           stepIdByIndex[info.stepIndex] = currentStepId;
           stepWriter.rebindStep(currentStepId);
         },
-        onStepFinish: async (info) => {
+onStepFinish: async (info) => {
           if (currentStepId != null) {
             // Build+compare+emit the ASI once per batch: only at the END of the
             // batch's final step (the step where the model stops calling tools).
@@ -615,6 +674,39 @@ export async function runTurn(
               console.error("[asi] emitAtStepEnd failed", err);
             }
             stepWriter.closeOpen();
+
+            // Step pricing: await the promise (with 2s cap) if step-start refresh is on
+            let stepPricingSnapshot: Awaited<ReturnType<typeof getModelPricing>> | null = null;
+            let stepCostUsd: number | null = null;
+            if (stepPricingPromise) {
+              try {
+                // Race the pricing fetch against a 2s timeout
+                stepPricingSnapshot = await Promise.race([
+                  stepPricingPromise,
+                  new Promise<Awaited<ReturnType<typeof getModelPricing>>>((_, reject) =>
+                    setTimeout(() => reject(new Error("pricing fetch timeout")), 2000)
+                  ),
+                ]);
+                stepPricingPromise = null;
+              } catch (err) {
+                console.error("[pricing] step-start fetch timeout/error:", err);
+                stepPricingPromise = null;
+              }
+            }
+
+            // If no step pricing (enabled off or timed out), fall back to turn snapshot
+            const pricingSnapshot = stepPricingSnapshot ?? turnPricingSnapshot;
+            if (pricingSnapshot?.found) {
+              stepCostUsd = computeCostUsd({
+                inputTokens: info.inputTokens,
+                outputTokens: info.outputTokens,
+                cacheReadTokens: info.cacheReadTokens,
+                cacheWriteTokens: info.cacheWriteTokens,
+                noCacheInputTokens: info.noCacheInputTokens,
+                reasoningTokens: info.reasoningTokens,
+              }, pricingSnapshot);
+            }
+
             // Persist full SDK finish-step meta (usage details, performance, provider metadata)
             finalizeStep(currentStepId, {
               finishReason: info.finishReason != null ? String(info.finishReason) : undefined,
@@ -639,11 +731,12 @@ export async function runTurn(
               warningsJson: info.warningsJson,
               responseId: info.responseId,
               responseModelId: info.responseModelId,
+              pricingJson: pricingSnapshot ? JSON.stringify(pricingSnapshot) : null,
+              costUsd: stepCostUsd,
             }, dataDir);
             currentStepId = null;
           }
-        },
-        onToolCall: (e) => {
+        },        onToolCall: (e) => {
           if (turnEnded) return;
           stepWriter.closeOpen();
           const seq = ++partSeq;

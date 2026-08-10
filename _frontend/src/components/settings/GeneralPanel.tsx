@@ -3,6 +3,7 @@ import { useConfigStore } from "../../stores/config";
 import type { ConfigFile } from "../../../../_shared/types";
 import { AgentSelector, type AgentOption } from "../chat/input/AgentSelector";
 import { ModelDropdown } from "../chat/ModelDropdown";
+import { PricingSettingsCard } from "./PricingSettingsCard";
 
 const WINDOW_UNITS = ["seconds", "minutes", "hours"] as const;
 
@@ -387,6 +388,9 @@ export function GeneralPanel() {
             progressiveDelayKey: "streamRetryProgressiveDelayMs",
           }}
         />
+
+        {/* Pricing (models.dev) */}
+        <PricingSettingsCard />
 
         {/* Checkbox settings */}
         <div className="border border-zinc-800 rounded-lg p-3 space-y-3">

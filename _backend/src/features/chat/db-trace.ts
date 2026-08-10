@@ -173,6 +173,7 @@ export function createStep(
     requestMetaJson?: string;
     warningsJson?: string;
     promptSnapshotId?: number;
+    pricingJson?: string;
   },
   dataDir?: string,
 ): number {
@@ -190,6 +191,7 @@ export function createStep(
       requestMetaJson: opts?.requestMetaJson ?? null,
       warningsJson: opts?.warningsJson ?? null,
       promptSnapshotId: opts?.promptSnapshotId ?? null,
+      pricingJson: opts?.pricingJson ?? null,
       startedAt: new Date().toISOString(),
     })
     .returning({ id: steps.id })
@@ -222,6 +224,8 @@ export function finalizeStep(
     warningsJson?: string;
     responseId?: string;
     responseModelId?: string;
+    pricingJson?: string;
+    costUsd?: number;
   },
   dataDir?: string,
 ): void {
@@ -252,6 +256,8 @@ export function finalizeStep(
       warningsJson: opts.warningsJson ?? null,
       responseId: opts.responseId ?? null,
       responseModelId: opts.responseModelId ?? null,
+      pricingJson: opts.pricingJson ?? null,
+      costUsd: opts.costUsd ?? null,
     })
     .where(eq(steps.id, stepId))
     .run();
@@ -386,6 +392,7 @@ export function recomputeTurnUsage(turnId: number, dataDir?: string): void {
       cacheReadTokens: sum(steps.cacheReadTokens),
       cacheWriteTokens: sum(steps.cacheWriteTokens),
       stepCount: count(),
+      costUsd: sum(steps.costUsd),
     })
     .from(steps)
     .where(eq(steps.turnId, turnId))
@@ -399,6 +406,7 @@ export function recomputeTurnUsage(turnId: number, dataDir?: string): void {
       cacheReadTokens: Number(row?.cacheReadTokens ?? 0),
       cacheWriteTokens: Number(row?.cacheWriteTokens ?? 0),
       stepCount: Number(row?.stepCount ?? 0),
+      costUsd: row?.costUsd ?? null,
     })
     .where(eq(turns.id, turnId))
     .run();
@@ -413,6 +421,7 @@ export function recomputeSessionUsage(sessionId: string, dataDir?: string): void
       totalTokens: sum(turns.totalTokens),
       reasoningTokens: sum(turns.reasoningTokens),
       turnCount: sum(sql`CASE WHEN ${turns.success} = 1 THEN 1 ELSE 0 END`),
+      costUsd: sum(turns.costUsd),
     })
     .from(turns)
     .where(and(eq(turns.sessionId, sessionId), eq(turns.success, true)))
@@ -434,14 +443,15 @@ export function finalizeTurnTrace(
   turnId: number,
   outcome: { success: boolean; finishReason?: string; errorMessage?: string; errorRaw?: string; errorIsCustom?: boolean },
   dataDir?: string,
-  steps?: TraceStep[],
+  sdkSteps?: TraceStep[],
 ): void {
   const db = dbFor(dataDir);
 
   // Recompute turn usage from steps - prefer passed steps (from streamChat result) over DB query
   // to avoid race condition where step finalizations haven't completed DB writes yet
-  if (steps && steps.length > 0) {
-    const agg = steps.reduce(
+  // (param is named `sdkSteps` so it does not shadow the imported `steps` table used below)
+  if (sdkSteps && sdkSteps.length > 0) {
+    const agg = sdkSteps.reduce(
       (acc, s) => ({
         inputTokens: acc.inputTokens + (s.inputTokens ?? 0),
         outputTokens: acc.outputTokens + (s.outputTokens ?? 0),
@@ -453,6 +463,14 @@ export function finalizeTurnTrace(
       }),
       { inputTokens: 0, outputTokens: 0, totalTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, stepCount: 0 },
     );
+    // TraceStep from streamChat does not carry costUsd — read the authoritative
+    // sum from steps.cost_usd (steps are finalized before finalizeTurnTrace runs).
+    // SUM skips NULLs: no step cost → NULL (no snapshot), all-zero costs → 0 (free).
+    const costRow = db
+      .select({ c: sum(steps.costUsd) })
+      .from(steps)
+      .where(eq(steps.turnId, turnId))
+      .get();
     db.update(turns)
       .set({
         inputTokens: agg.inputTokens,
@@ -462,6 +480,7 @@ export function finalizeTurnTrace(
         cacheReadTokens: agg.cacheReadTokens,
         cacheWriteTokens: agg.cacheWriteTokens,
         stepCount: agg.stepCount,
+        costUsd: costRow?.c ?? null,
       })
       .where(eq(turns.id, turnId))
       .run();
@@ -602,6 +621,36 @@ export function updateTurnConfigSnapshot(
   if (!snapshot) return;
   const db = dbFor(dataDir);
   db.update(turns).set({ configSnapshotJson: JSON.stringify(snapshot) }).where(eq(turns.id, turnId)).run();
+}
+
+// ── Pricing helpers ───────────────────────────────────────────────────────
+
+/** Update turn pricing snapshot and computed cost */
+export function updateTurnPricing(
+  turnId: number,
+  pricingJson: string,
+  costUsd: number | null,
+  dataDir?: string,
+): void {
+  const db = dbFor(dataDir);
+  db.update(turns)
+    .set({ pricingJson, costUsd })
+    .where(eq(turns.id, turnId))
+    .run();
+}
+
+/** Update step pricing snapshot and computed cost */
+export function updateStepPricing(
+  stepId: number,
+  pricingJson: string,
+  costUsd: number | null,
+  dataDir?: string,
+): void {
+  const db = dbFor(dataDir);
+  db.update(steps)
+    .set({ pricingJson, costUsd })
+    .where(eq(steps.id, stepId))
+    .run();
 }
 
 // ── Utility ──────────────────────────────────────────────────────────

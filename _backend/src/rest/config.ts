@@ -5,6 +5,7 @@ import { migrateConfig } from "../config/migrate";
 import { broadcastConfig } from "../ws/configPush";
 import { serverOriginFromBaseUrl } from "../llm/slots";
 import { getSearchProviderRegistry } from "../features/tools/host/search-provider-registry";
+import { getModelPricing, refreshModelPricing } from "../features/pricing/models-dev";
 
 function buildProviderHeaders(provider: { type: string; apiKey?: string }): Record<string, string> {
   const headers: Record<string, string> = {
@@ -286,5 +287,56 @@ export function registerConfigRoutes(
     }
 
     return { models, providerAlive: true };
+  });
+}
+
+export function registerPricingRoutes(
+  app: FastifyInstance,
+  dataDir: string,
+  getConfig: () => ConfigFile
+) {
+  // GET /api/pricing/status?provider=&model= — returns cached snapshot
+  app.get("/api/pricing/status", async (request, reply) => {
+    const { provider: providerName, model: modelName } = request.query as { provider?: string; model?: string };
+    const config = getConfig();
+
+    if (!providerName || !modelName) {
+      const defaultProvider = config.defaultProvider ?? "";
+      const defaultModel = config.defaultModel ?? "";
+      const provider = config.providers.find((p) => p.displayName === defaultProvider);
+      const model = provider?.models.find((m) => m.modelName === defaultModel);
+      if (!provider || !model) {
+        return reply.code(400).send({ error: "No provider/model specified and no default configured" });
+      }
+      return { provider: provider.displayName, model: model.modelName };
+    }
+
+    const provider = config.providers.find((p) => p.displayName === providerName);
+    const model = provider?.models.find((m) => m.modelName === modelName);
+    if (!provider || !model) {
+      return reply.code(404).send({ error: "Provider or model not found" });
+    }
+
+    const snap = await getModelPricing(provider, model.modelName, config, dataDir);
+    return snap;
+  });
+
+  // POST /api/pricing/refresh?provider=&model= — force refetch
+  app.post("/api/pricing/refresh", async (request, reply) => {
+    const { provider: providerName, model: modelName } = request.query as { provider?: string; model?: string };
+    const config = getConfig();
+
+    if (!providerName || !modelName) {
+      return reply.code(400).send({ error: "provider and model query params required" });
+    }
+
+    const provider = config.providers.find((p) => p.displayName === providerName);
+    const model = provider?.models.find((m) => m.modelName === modelName);
+    if (!provider || !model) {
+      return reply.code(404).send({ error: "Provider or model not found" });
+    }
+
+    const snap = await refreshModelPricing(provider, model.modelName, config, dataDir);
+    return snap;
   });
 }

@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { reindexWorkspace } from "./reindex";
 import { openWorkspaceGraphDb, closeWorkspaceGraphDb } from "../storage/db";
 import { createWorkspaceGraphRepository } from "../storage/repository";
+import { getParserProject, resetParserProject, REINDEX_PROJECT_RESET_INTERVAL } from "../parser/project";
 
 function freshDir() {
   const dir = join(tmpdir(), "wg-index-" + randomUUID());
@@ -86,5 +87,17 @@ describe("reindexWorkspace", () => {
     expect(report.modifiedCount).toBe(0);
     expect(report.deletedCount).toBe(0);
     expect(report.skippedCount).toBe(1);
+  });
+
+  it("indexes many files correctly across periodic parser resets", async () => {
+    const fileCount = REINDEX_PROJECT_RESET_INTERVAL + 50;
+    for (let i = 0; i < fileCount; i++) {
+      writeFileSync(join(workspaceRoot, "src", `file_${i}.ts`), `export const v${i} = ${i};\n`);
+    }
+
+    const report = await reindexWorkspace({ workspaceRoot, dbPath, mode: "startup" });
+
+    expect(report.createdCount).toBe(fileCount);
+    expect(report.reindexedPaths.length).toBe(fileCount);
   });
 });

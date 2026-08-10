@@ -6,7 +6,7 @@ import { computeSourceHash } from "../scanner/hash";
 import { parseWorkspaceFile } from "../parser/parse-file";
 import { openWorkspaceGraphDb } from "../storage/db";
 import { createWorkspaceGraphRepository, type WorkspaceGraphRepository } from "../storage/repository";
-import { getParserProject, resetParserProject } from "../parser/project";
+import { getParserProject, resetParserProject, REINDEX_PROJECT_RESET_INTERVAL } from "../parser/project";
 import { applyFileUpdate } from "./apply-file-update";
 import type { FolderRow } from "../types";
 
@@ -33,8 +33,17 @@ export async function reindexWorkspace(input: ReindexInput): Promise<ReindexRepo
   const db = openWorkspaceGraphDb(dbPath);
   const repo = createWorkspaceGraphRepository(db);
 
-  const project = getParserProject();
+  let project = getParserProject();
+  let filesProcessed = 0;
   const reindexedPaths: string[] = [];
+
+  const resetProjectIfNeeded = () => {
+    filesProcessed++;
+    if (filesProcessed % REINDEX_PROJECT_RESET_INTERVAL === 0) {
+      resetParserProject();
+      project = getParserProject();
+    }
+  };
 
   if (input.changedPaths && input.changedPaths.length > 0) {
     // --- Incremental mode: only process files reported by the watcher ---
@@ -95,6 +104,7 @@ export async function reindexWorkspace(input: ReindexInput): Promise<ReindexRepo
         const parsed = await parseWorkspaceFile(scanned, 0, project);
         await applyFileUpdate(repo, scanned, parsed);
         reindexedPaths.push(relPath);
+        resetProjectIfNeeded();
 
         if (existing) {
           modifiedCount++;
@@ -155,12 +165,14 @@ export async function reindexWorkspace(input: ReindexInput): Promise<ReindexRepo
     const parsed = await parseWorkspaceFile(file, 0, project);
     await applyFileUpdate(repo, file, parsed);
     reindexedPaths.push(file.path);
+    resetProjectIfNeeded();
   }
 
   for (const file of scanResult.modified) {
     const parsed = await parseWorkspaceFile(file, 0, project);
     await applyFileUpdate(repo, file, parsed);
     reindexedPaths.push(file.path);
+    resetProjectIfNeeded();
   }
 
   for (const file of scanResult.deleted) {

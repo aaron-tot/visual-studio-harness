@@ -18,6 +18,9 @@ const DEFAULT_OPTIONS: ProjectOptions = {
   },
 };
 
+/** Number of files parsed before the parser Project is dropped and recreated mid-reindex. */
+export const REINDEX_PROJECT_RESET_INTERVAL = 250;
+
 export function getParserProject(): Project {
   if (!_project) {
     _project = new Project(DEFAULT_OPTIONS);

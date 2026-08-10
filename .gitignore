@@ -39,6 +39,30 @@ scripts/*.js.map
 testing/**/*.js
 testing/**/*.d.ts
 testing/**/*.js.map
+testing/**/*.d.ts.map
+
+# Compiled backend source outputs (mock models, etc.)
+_backend/src/**/*.js
+_backend/src/**/*.d.ts
+_backend/src/**/*.js.map
+
+# Compiled shared types outputs
+_shared/*.js
+_shared/*.d.ts
+_shared/*.js.map
+_shared/*.d.ts.map
+
+# Compiled seeds outputs
+seeds/**/*.js
+seeds/**/*.d.ts
+seeds/**/*.js.map
+seeds/**/*.d.ts.map
+
+# Compiled fixtures outputs
+fixtures/**/*.js
+fixtures/**/*.d.ts
+fixtures/**/*.js.map
+fixtures/**/*.d.ts.map
 
 # Compiled tailwind config (source is .ts)
 _frontend/tailwind.config.js

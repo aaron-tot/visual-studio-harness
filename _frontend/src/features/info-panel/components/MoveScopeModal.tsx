@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import type { PlanScope } from "../types";
 import { scopeLabel } from "../lib/scope-params";
 
@@ -13,7 +14,7 @@ export function MoveScopeModal({ title, currentScope, onClose, onMove }: MoveSco
   const [target, setTarget] = useState<PlanScope>(
     currentScope === "global" ? "project" : "global",
   );
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="rounded-md border border-zinc-700 bg-zinc-900 p-4 shadow-lg"
@@ -55,6 +56,7 @@ export function MoveScopeModal({ title, currentScope, onClose, onMove }: MoveSco
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

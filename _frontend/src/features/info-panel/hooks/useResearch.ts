@@ -121,6 +121,11 @@ export function useResearch({
     }
   }, [scope, workspaceRoot, currentSessionId, enabled]);
 
+  // Clear groups immediately when scope changes to avoid stale flash
+  useEffect(() => {
+    setGroups([]);
+  }, [scope]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);

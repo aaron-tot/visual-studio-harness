@@ -34,6 +34,7 @@ tsconfig.tsbuildinfo
 scripts/*.js
 scripts/*.d.ts
 scripts/*.js.map
+scripts/*.d.ts.map
 
 # Compiled Playwright test outputs
 testing/**/*.js

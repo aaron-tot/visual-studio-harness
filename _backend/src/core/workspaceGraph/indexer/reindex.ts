@@ -6,7 +6,7 @@ import { computeSourceHash } from "../scanner/hash";
 import { parseWorkspaceFile } from "../parser/parse-file";
 import { openWorkspaceGraphDb } from "../storage/db";
 import { createWorkspaceGraphRepository, type WorkspaceGraphRepository } from "../storage/repository";
-import { createScopedProject, resetParserProject } from "../parser/project";
+import { getParserProject, resetParserProject } from "../parser/project";
 import { applyFileUpdate } from "./apply-file-update";
 import type { FolderRow } from "../types";
 
@@ -33,7 +33,7 @@ export async function reindexWorkspace(input: ReindexInput): Promise<ReindexRepo
   const db = openWorkspaceGraphDb(dbPath);
   const repo = createWorkspaceGraphRepository(db);
 
-  const project = createScopedProject();
+  const project = getParserProject();
   const reindexedPaths: string[] = [];
 
   if (input.changedPaths && input.changedPaths.length > 0) {

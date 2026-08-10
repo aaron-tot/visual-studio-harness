@@ -21,7 +21,7 @@ export type WsServerMessage =
   | { type: "session_created"; session: SessionMeta }
   | { type: "session_updated"; session: SessionMeta }
   | { type: "tool_start"; sessionId: string; toolCallId: string; toolName: string; args: unknown; parentToolCallId?: string }
-  | { type: "tool_update"; sessionId: string; toolCallId: string; status: ToolCallStatus; partial?: string; parentToolCallId?: string }
+  | { type: "tool_update"; sessionId: string; toolCallId: string; status: ToolCallStatus; partial?: string; parentToolCallId?: string; taskId?: string }
   | { type: "tool_end"; sessionId: string; toolCallId: string; status: ToolCallStatus; result?: unknown; error?: string; parentToolCallId?: string }
   | { type: "step_tool_start"; sessionId: string; stepIndex: number; toolCalls: StepToolCall[] }
   | { type: "step_tool_end"; sessionId: string; stepIndex: number; toolCalls: (StepToolBatchResult & { status: ToolCallStatus })[] }

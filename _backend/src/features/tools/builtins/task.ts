@@ -72,6 +72,14 @@ ${agentList}`,
           onToolUpdate: ctx.bridgeToolUpdate
             ? (e) => ctx.bridgeToolUpdate!({ ...e, parentToolCallId })
             : undefined,
+          onSessionReady: ctx.bridgeToolUpdate
+            ? (info) =>
+                ctx.bridgeToolUpdate!({
+                  toolCallId: ctx.callId,
+                  status: "running",
+                  taskId: info.sessionId,
+                })
+            : undefined,
         }
       );
 

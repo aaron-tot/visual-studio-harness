@@ -149,6 +149,7 @@ export function ContextToolGroup({ parts, toolCacheByCallId }: ToolGroupProps) {
                     result={p.result}
                     error={p.error}
                     sessionId={sessionId}
+                    taskId={(p as any).taskId as string | undefined}
                     cacheSummary={toolCacheByCallId?.[p.toolCallId]}
                   />
                 </ToolStatusBorder>

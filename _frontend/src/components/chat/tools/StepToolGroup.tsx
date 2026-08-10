@@ -74,7 +74,7 @@ export function StepToolGroup({ parts, toolCacheByCallId }: { parts: MessagePart
       const sessionId = useChatStore.getState().sessionId;
       return (
         <ToolStatusBorder key={p.toolCallId || i} status={p.status}>
-          <ToolCallCard toolCallId={p.toolCallId} toolName={p.toolName} status={p.status} args={p.args} result={p.result} error={p.error} sessionId={sessionId} />
+          <ToolCallCard toolCallId={p.toolCallId} toolName={p.toolName} status={p.status} args={p.args} result={p.result} error={p.error} sessionId={sessionId} taskId={(p as any).taskId as string | undefined} />
         </ToolStatusBorder>
       );
     });

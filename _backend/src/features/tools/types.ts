@@ -128,7 +128,7 @@ export interface ExtendedToolContext extends BaseToolContext {
     output: unknown;
     isError?: boolean;
   }) => void;
-  bridgeToolUpdate?: (e: { toolCallId: string; status: string }) => void;
+  bridgeToolUpdate?: (e: { toolCallId: string; status: string; taskId?: string }) => void;
   /**
    * Prompt the user to pick provider/model for this subagent task.
    */

@@ -27,6 +27,8 @@ interface ToolCallPartProps {
   childParts?: MessagePartType[];
   /** Verbatim additional_system_info content for this step, nested in Output */
   additionalSystemInfo?: string;
+  /** Child subagent session id, known while the task is still running */
+  taskId?: string;
 }
 
 export function ToolCallPart({
@@ -37,6 +39,7 @@ export function ToolCallPart({
   result,
   error,
   sessionId,
+  taskId,
   cacheSummary,
   childParts,
   additionalSystemInfo,
@@ -56,6 +59,7 @@ export function ToolCallPart({
         result={result}
         error={error}
         sessionId={sessionId}
+        taskId={taskId}
         cacheSummary={cacheSummary}
         additionalSystemInfo={additionalSystemInfo}
       />

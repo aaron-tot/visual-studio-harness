@@ -228,7 +228,8 @@ function ActiveTodo({ sessionId }: { sessionId: string | null }) {
   useEffect(() => {
     if (!id) return;
     const onToolStart = (data: any) => {
-      if (data.toolName === "todowrite") {
+      // Consolidated folder tool is registered as "todo"; legacy builtins used "todowrite".
+      if (data.toolName === "todo" || data.toolName === "todowrite") {
         pendingTodoCalls.current.add(data.toolCallId);
       }
     };

@@ -98,6 +98,10 @@ interface ToolCallCardProps {
   result?: unknown;
   error?: string;
   sessionId?: string | null;
+  /** Sub-agent (child) session id. When present, shows the "Open session" link
+   *  even while the task is still running, so a non-completed subagent's session
+   *  can be viewed live. */
+  taskId?: string;
   cacheSummary?: string;
   /** Verbatim additional_system_info content for this step, shown in Output */
   additionalSystemInfo?: string;
@@ -122,6 +126,7 @@ export function ToolCallCard({
   result,
   error,
   sessionId,
+  taskId,
   cacheSummary,
   additionalSystemInfo,
 }: ToolCallCardProps) {
@@ -152,9 +157,8 @@ export function ToolCallCard({
         ? result
         : JSON.stringify(result, null, 2);
 
-  const taskId = toolName === "task" && status === "completed"
-    ? resultText.match(/task_id:\s*(\S+)/)?.[1]
-    : undefined;
+  const derivedTaskId = taskId ||
+    (toolName === "task" ? resultText.match(/task_id:\s*(\S+)/)?.[1] : undefined);
 
   const argsText =
     args === undefined || args === null
@@ -241,12 +245,12 @@ export function ToolCallCard({
               {cacheSummary} cache
             </span>
           )}
-          {taskId && (
+          {derivedTaskId && (
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                useSessionStore.getState().setActive(taskId);
+                useSessionStore.getState().setActive(derivedTaskId);
               }}
               className="text-[10px] px-1.5 py-0.5 rounded border border-zinc-600/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
             >

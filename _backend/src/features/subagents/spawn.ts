@@ -232,6 +232,7 @@ export async function runSubagentTurn(
           onToolCall: ctx.onToolCall,
           onToolResult: ctx.onToolResult,
           onToolUpdate: ctx.onToolUpdate,
+          onSessionReady: ctx.onSessionReady,
         }
       );
 
@@ -259,6 +260,7 @@ export async function runSubagentTurn(
             onToolCall: ctx.onToolCall,
             onToolResult: ctx.onToolResult,
             onToolUpdate: ctx.onToolUpdate,
+            onSessionReady: ctx.onSessionReady,
           }
         );
 

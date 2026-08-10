@@ -50,5 +50,11 @@ export interface SubagentSpawnContext {
     output: unknown;
     isError?: boolean;
   }) => void;
-  onToolUpdate?: (e: { toolCallId: string; status: string }) => void;
+  onToolUpdate?: (e: { toolCallId: string; status: string; taskId?: string }) => void;
+  /**
+   * Called once the child subagent session has been created/resumed (its id is
+   * now known). Used to surface the child session id to the parent UI while the
+   * task is still running.
+   */
+  onSessionReady?: (info: { sessionId: string; created: boolean }) => void;
 }

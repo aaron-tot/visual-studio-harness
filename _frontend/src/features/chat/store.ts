@@ -9,7 +9,7 @@ import {
   consolidateTextParts,
   partsFromSnapshot,
 } from "./parts-util";
-import type { ChatState } from "./types";
+import type { ChatState, RetryCountdownState } from "./types";
 import {
   getSession,
   getTurns,
@@ -120,10 +120,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   agentChangePrompt: null,
   setAgentChangePrompt: (prompt) => set({ agentChangePrompt: prompt }),
   slotWaitState: null,
+  retryCountdown: null,
   abortSlotWait: (requestId) => {
     const sid = get().sessionId || "";
     wsClient.send({ type: "slot_wait_abort", sessionId: sid, requestId });
   },
+  setRetryCountdown: (state: RetryCountdownState) => set({ retryCountdown: state }),
+  updateRetryCountdown: (remainingMs: number) => set((s) => ({ retryCountdown: s.retryCountdown ? { ...s.retryCountdown, remainingMs } : null })),
+  clearRetryCountdown: () => set({ retryCountdown: null }),
   streamingStartTime: null,
   setStreamingStartTime: (time) => set({ streamingStartTime: time }),
 
@@ -178,6 +182,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       _reasonIdx: 0,
       streamingStartTime: null,
       stagedChatInput: "",
+      retryCountdown: null,
     });
 
     wsClient.send({ type: "request_session_state", sessionId: id, requestId });
@@ -238,6 +243,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         _textSeq: 0,
         _reasonIdx: 0,
         streamingStartTime: null,
+        retryCountdown: null,
       });
     }
     // Clear session store activeId so sidebar green indicator clears
@@ -325,6 +331,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       turns: {},
       inspectedTurnId: null,
       streamingStartTime: null,
+      retryCountdown: null,
     });
   },
 
@@ -336,7 +343,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (sessionId) {
       wsClient.send({ type: "cancel", sessionId });
     }
-    set({ stopping: true, streamingStartTime: null });
+    set({ stopping: true, streamingStartTime: null, retryCountdown: null });
   },
 
   appendToken: (token, seq) => {
@@ -409,7 +416,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         updatedMessages = [...msgs, { role: "user" as const, content: hasContinue.content, timestamp: new Date().toISOString() }];
         nextAgentName = hasContinue.agentName;
       }
-      return { messages: updatedMessages, streaming: !!hasContinue, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null, streamingStartTime: hasContinue ? Date.now() : null };
+      return { messages: updatedMessages, streaming: !!hasContinue, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: hasContinue ? 0 : state.lastSeq, _reasonIdx: 0, _pendingAgentName: nextAgentName, _pendingModelName: undefined, _pendingProviderName: undefined, _pendingDropdownAgent: undefined, _pendingContinueMessage: null, streamingStartTime: hasContinue ? Date.now() : null, retryCountdown: null };
     });
   },
 
@@ -443,7 +450,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (userIdx >= 0 && msgs[userIdx].role === "user") msgs[userIdx] = { ...msgs[userIdx], turnId: meta.turnId };
       }
       if (state.sessionId) void get().loadTurns(state.sessionId);
-      return { messages: msgs, streaming: false, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null, streamingStartTime: null };
+      return { messages: msgs, streaming: false, stopping: false, streamingContent: "", streamingParts: [], streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null, streamingStartTime: null, retryCountdown: null };
     });
   },
 

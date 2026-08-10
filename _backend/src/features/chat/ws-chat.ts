@@ -56,7 +56,7 @@ export async function handleSessionUpdate(msg: SessionUpdateWsMessage, dataDir: 
   return updateSessionMeta(dataDir, msg.sessionId, fields);
 }
 
-function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate" | "onToolBatchStart" | "onToolBatchEnd"> {
+function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined, announceStreamStart: () => void): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate" | "onToolBatchStart" | "onToolBatchEnd" | "announceStreamStart"> {
   return {
     onToken: (token, seq) => { const sid = getSessionId(); sendToSession(sid, { type: "token", sessionId: sid, content: token, seq }); },
     onReasoning: (delta, seq) => { const sid = getSessionId(); sendToSession(sid, { type: "reasoning", sessionId: sid, content: delta, seq }); },
@@ -65,6 +65,7 @@ function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | 
     onToolUpdate: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_update", sessionId: sid, toolCallId: e.toolCallId, status: e.status, ...(e.seq != null ? { seq: e.seq } : {}) }); },
     onToolBatchStart: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_start", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls }); },
     onToolBatchEnd: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_end", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls.map((t) => ({ toolCallId: t.toolCallId, toolName: t.toolName, result: t.result, status: t.isError ? "error" : "completed" })) }); },
+    announceStreamStart,
   };
 }
 
@@ -88,7 +89,6 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
   let streamingTurnId: number | undefined;
   const getSid = () => sessionId;
   const getTurnId = () => streamingTurnId;
-  const handlers = streamWsHandlers(getSid, getTurnId);
 
   let streamAnnounced = false;
   let streamSuccess = true;
@@ -97,6 +97,8 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
     streamAnnounced = true;
     broadcastToAll({ type: "session_stream_start", sessionId });
   };
+
+  const handlers = streamWsHandlers(getSid, getTurnId, announceStreamStart);
   const announceStreamEnd = (success: boolean) => {
     if (!streamAnnounced || !sessionId) return;
     broadcastToAll({ type: "session_stream_end", sessionId, success });
@@ -233,6 +235,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
   } finally {
     logMemory("after LLM turn");
     announceStreamEnd(streamSuccess);
+    streamAnnounced = false;
     socket.removeListener("close", onClose);
     const cleanKey = sessionId || (lookupKey || "");
     if (cleanKey) {

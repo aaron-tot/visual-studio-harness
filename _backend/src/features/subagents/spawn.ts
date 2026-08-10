@@ -211,6 +211,7 @@ export async function runSubagentTurn(
         {
           content: prompt,
           sessionId: childSessionId,
+          parentSessionId: ctx.parentSessionId,
           workspaceRoot: ctx.workspaceRoot,
           excludeTools: ["task"],
           createMeta: isNew

@@ -31,6 +31,8 @@ export function parseCapturedBody(rawText: string): Record<string, unknown> {
 export interface CapturedExchange {
   request?: Record<string, unknown>;
   response?: Record<string, unknown>;
+  /** Headers from the outgoing fetch init (contains SDK + identity headers). */
+  requestHeaders?: HeadersInit;
 }
 
 export function createVerboseFetch(): {
@@ -53,6 +55,9 @@ export function createVerboseFetch(): {
   const verboseFetch: typeof fetch = async (input, init) => {
     // Capture the exact HTTP request body the SDK sends
     const exchange: CapturedExchange = {};
+    if (init) {
+      exchange.requestHeaders = init.headers;
+    }
     if (init && typeof init.body === "string") {
       try {
         exchange.request = JSON.parse(init.body);

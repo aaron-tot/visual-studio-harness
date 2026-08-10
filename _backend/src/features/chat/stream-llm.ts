@@ -5,6 +5,7 @@ import { getBus } from "../hooks";
 import { sendToSession } from "../sessions/view-tracker";
 import { thinkingToProviderOptions } from "../../llm/thinking";
 import { classifyLlmError, LlmError, isAbortError } from "../../llm/errors";
+import { identityHeaders } from "../../llm/identity";
 import { isStopTurnResult } from "../tools";
 import { assertExactlyOneSystemMessage } from "../mds";
 import { getDescriptorByDisplayName } from "../../../../_shared/provider-registry";
@@ -57,9 +58,13 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
       : createOpenAICompatible({
           baseURL: useMockEndpoint ? ensureTestServer() : provider.baseUrl,
           apiKey: provider.apiKey || "no-key",
-          headers: useMockEndpoint
-            ? { ...(provider.headers ?? {}), "x-test-speed": String(options.modelSpeed || 0) }
-            : provider.headers,
+          headers: {
+            ...(useMockEndpoint
+              ? {}
+              : identityHeaders({ sessionId: options.sessionId, parentSessionId: options.parentSessionId })),
+            ...(useMockEndpoint ? { "x-test-speed": String(options.modelSpeed || 0) } : {}),
+            ...(provider.headers ?? {}),
+          },
           name: provider.displayName,
           fetch: fetchImpl,
         });
@@ -378,13 +383,70 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           recordRetryAttempt(streamRetryAttempts, provider.displayName + ":" + model);
           const delay = calculateRetryDelay(attempt, retryConfig.baseDelayMs, retryConfig.progressiveDelayMs);
           console.error(`[LLM] ${provider.displayName} / ${model}: ${label} — retry ${attempt + 1}/${retryConfig.maxAttempts} in ${delay / 1000}s`);
-          onToken(`\n\n_[${label} — retrying in ${delay / 1000}s...]_\n\n`);
+
+          // Emit retry_start for live countdown
+          const sid = options.sessionId;
+          if (sid) {
+            sendToSession(sid, {
+              type: "retry_start",
+              sessionId: sid,
+              attempt: attempt + 1,
+              maxAttempts: retryConfig.maxAttempts,
+              totalDelayMs: delay,
+              errorLabel: label,
+            });
+          }
+
+          // Wait with periodic retry_tick emissions
+          let abortedDuringWait = false;
           await new Promise<void>((resolve) => {
-            if (signal?.aborted) { resolve(); return; }
-            const timer = setTimeout(resolve, delay);
-            signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+            if (signal?.aborted) {
+              abortedDuringWait = true;
+              resolve();
+              return;
+            }
+            const startWait = Date.now();
+            const endWait = startWait + delay;
+            const tickInterval = setInterval(() => {
+              const remainingMs = endWait - Date.now();
+              if (remainingMs <= 0) {
+                clearInterval(tickInterval);
+                return;
+              }
+              if (sid) {
+                sendToSession(sid, {
+                  type: "retry_tick",
+                  sessionId: sid,
+                  remainingMs,
+                });
+              }
+            }, 1000);
+            const timer = setTimeout(() => {
+              clearInterval(tickInterval);
+              resolve();
+            }, delay);
+            signal?.addEventListener("abort", () => {
+              clearInterval(tickInterval);
+              clearTimeout(timer);
+              abortedDuringWait = true;
+              resolve();
+            }, { once: true });
           });
-          if (signal?.aborted) { aborted = true; break; }
+
+          // Emit retry_end
+          if (sid) {
+            sendToSession(sid, {
+              type: "retry_end",
+              sessionId: sid,
+              aborted: abortedDuringWait,
+            });
+          }
+
+          if (signal?.aborted || abortedDuringWait) {
+            aborted = true;
+            stopPulse();
+            break;
+          }
           stopPulse();
           continue;
         }

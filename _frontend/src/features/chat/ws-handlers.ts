@@ -148,6 +148,31 @@ wsClient.on("stream_pulse", (data: any) => {
   touchStreamTimeout();
 });
 
+// Retry countdown handlers
+wsClient.on("retry_start", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId && data.sessionId !== currentId) return;
+  useChatStore.getState().setRetryCountdown({
+    attempt: data.attempt,
+    maxAttempts: data.maxAttempts,
+    totalDelayMs: data.totalDelayMs,
+    remainingMs: data.totalDelayMs,
+    errorLabel: data.errorLabel,
+  });
+});
+
+wsClient.on("retry_tick", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId && data.sessionId !== currentId) return;
+  useChatStore.getState().updateRetryCountdown(data.remainingMs);
+});
+
+wsClient.on("retry_end", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId && data.sessionId !== currentId) return;
+  useChatStore.getState().clearRetryCountdown();
+});
+
 wsClient.on("tool_start", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;

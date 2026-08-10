@@ -148,6 +148,7 @@ export async function runContinuationTurn(opts: {
         signal: acAbort.signal,
         onSessionReady: () => {
           sendSessionStateToSession(sessionId);
+          if (streamHandlers.announceStreamStart) streamHandlers.announceStreamStart();
         },
         ...streamHandlers,
         askPermission: async (toolName: string, args: unknown, callId: string) => {

@@ -49,6 +49,10 @@ export interface StreamChatOptions {
   onToolBatchEnd?: (e: StepToolBatchAfterPayload) => void | Promise<void>;
   /** Per-step instructions rebuild. Must return the complete system block, never a delta. */
   prepareStep?: PrepareStepFunction<ToolSet>;
+  /** Conversation id sent to providers via identity headers (X-Session-Id / x-session-affinity). */
+  sessionId?: string;
+  /** Parent conversation id for subagent turns (x-parent-session-id). */
+  parentSessionId?: string;
   /** Fixed-provider routing for OpenAI-compatible/OpenRouter endpoints. */
   providerRouting?: { order?: string[]; allowFallbacks?: boolean };
   tools?: ToolSet;

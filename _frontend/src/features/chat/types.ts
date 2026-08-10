@@ -1,5 +1,13 @@
 import type { Message, MessagePartType, PermissionDecision, SessionMeta, SessionConfig, ThinkingEffort, ToolCallStatus, TurnsFile } from "../../../_shared/types";
 
+export interface RetryCountdownState {
+  attempt: number;
+  maxAttempts: number;
+  totalDelayMs: number;
+  remainingMs: number;
+  errorLabel: string;
+}
+
 export interface ChatState {
   messages: Message[];
   streaming: boolean;
@@ -22,6 +30,7 @@ export interface ChatState {
   turns: TurnsFile;
   inspectedTurnId: number | null;
   streamingStartTime: number | null;
+  retryCountdown: RetryCountdownState | null;
   setWorkspaceRoot: (path: string) => void;
   updateSessionMeta: (patch: Partial<SessionMeta>) => void;
   loadSession: (id: string) => Promise<void>;
@@ -137,6 +146,9 @@ export interface ChatState {
   } | null;
   abortSlotWait: (requestId: string) => void;
   setStreamingStartTime: (time: number | null) => void;
+  setRetryCountdown: (state: RetryCountdownState) => void;
+  updateRetryCountdown: (remainingMs: number) => void;
+  clearRetryCountdown: () => void;
   clearNewChatDraft: () => void;
   startNewChat: () => void;
   setStreamingStartTime: (time: number | null) => void;

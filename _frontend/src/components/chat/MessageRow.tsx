@@ -27,6 +27,7 @@ import { isAdditionalSystemInfoPart, extractSystemInfoContent } from "./system-i
 import { TurnContextMenu } from "./TurnContextMenu";
 import { useChatStore } from "../../stores/chat";
 import { StreamingTimer } from "./StreamingTimer";
+import { RetryCountdown } from "./RetryCountdown";
 import { summarizeRange } from "../../lib/api";
 import { TurnInspectorModal } from "./TurnInspectorModal";
 import { CopyButton } from "./CopyButton";
@@ -358,6 +359,11 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
             />
           )}
         </AgentMessageCard>
+
+        {/* Live retry countdown - shows during backend retry wait */}
+        {useChatStore.getState().retryCountdown && (
+          <RetryCountdown {...useChatStore.getState().retryCountdown} />
+        )}
 
         {/* Errors ALWAYS under the bubble (red shaded), with stable test id */}
         {errors.map((err, i) => (

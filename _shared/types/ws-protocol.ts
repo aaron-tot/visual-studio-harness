@@ -33,4 +33,7 @@ export type WsServerMessage =
   | { type: "slot_wait_ended"; sessionId: string; requestId: string }
   | { type: "agent_change_request"; sessionId: string; requestId: string; toolCallId?: string; suggestedAgent: string; reason: string; agents: Array<{ name: string; isCurrent: boolean }> }
   | { type: "session_stream_start"; sessionId: string }
-  | { type: "session_stream_end"; sessionId: string; success?: boolean };
+  | { type: "session_stream_end"; sessionId: string; success?: boolean }
+  | { type: "retry_start"; sessionId: string; attempt: number; maxAttempts: number; totalDelayMs: number; errorLabel: string }
+  | { type: "retry_tick"; sessionId: string; remainingMs: number }
+  | { type: "retry_end"; sessionId: string; aborted: boolean };

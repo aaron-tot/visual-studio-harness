@@ -37,6 +37,8 @@ export interface TurnInput {
   excludeTools?: string[];
   createMeta?: TurnCreateMeta;
   contextFirstTurnNumber?: number | null;
+  /** Parent conversation id for subagent turns (forwarded as x-parent-session-id). */
+  parentSessionId?: string;
 }
 
 export interface TurnEvents {
@@ -56,6 +58,8 @@ export interface TurnEvents {
   onSlotWaitStart?: NonNullable<ExtendedToolContext["onSlotWaitStart"]>;
   onSlotWaitStatus?: NonNullable<ExtendedToolContext["onSlotWaitStatus"]>;
   onSlotWaitEnd?: NonNullable<ExtendedToolContext["onSlotWaitEnd"]>;
+  /** Called when the turn starts streaming; used to broadcast session_stream_start. */
+  announceStreamStart?: () => void;
   signal?: AbortSignal;
   source?: HookSource;
 }

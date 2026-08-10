@@ -113,3 +113,86 @@ describe("stream-llm step awareness", () => {
     expect(retryCalls).toEqual([1, 2]);
   });
 });
+
+describe("stream-llm identity headers on the wire", () => {
+  async function withCaptureServer(
+    run: (baseUrl: string) => Promise<unknown>,
+  ): Promise<Record<string, string>> {
+    let captured: Record<string, string> = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (req.method !== "POST" || new URL(req.url).pathname !== "/v1/chat/completions") {
+          return new Response("not found", { status: 404 });
+        }
+        captured = Object.fromEntries(req.headers.entries());
+        const encoder = new TextEncoder();
+        const sse = new ReadableStream({
+          async start(controller) {
+            const send = (obj: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+            send({ choices: [{ index: 0, delta: { role: "assistant", content: "hi" }, finish_reason: null }] });
+            send({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+        return new Response(sse, {
+          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+        });
+      },
+    });
+    try {
+      await run(`http://127.0.0.1:${server.port}/v1`);
+    } finally {
+      server.stop(true);
+    }
+    return captured;
+  }
+
+  test("sends session + identity headers when sessionId is provided", async () => {
+    const headers = await withCaptureServer(async (baseUrl) => {
+      const provider: ProviderConfig = {
+        displayName: "WireProvider",
+        baseUrl,
+        models: [{ displayName: "wire", modelName: "wire" }],
+      };
+      return streamChat({
+        provider,
+        model: "wire",
+        sessionId: "cap-session-1",
+        messages: [
+          { role: "system", content: "system", timestamp: new Date().toISOString() },
+          { role: "user", content: "hi", timestamp: new Date().toISOString() },
+        ],
+        onToken: () => {},
+      });
+    });
+    expect(headers["x-session-id"]).toBe("cap-session-1");
+    expect(headers["x-session-affinity"]).toBe("cap-session-1");
+    expect(headers["x-title"]).toBe("Visual Studio Harness");
+    expect(headers["http-referer"]).toBe("https://github.com/aaron-tot/visual-studio-harness");
+    expect(headers["user-agent"]).toMatch(/^visual-studio-harness\//);
+  });
+
+  test("provider.headers overrides identity defaults", async () => {
+    const headers = await withCaptureServer(async (baseUrl) => {
+      const provider: ProviderConfig = {
+        displayName: "WireProvider",
+        baseUrl,
+        headers: { "HTTP-Referer": "https://example.com/custom" },
+        models: [{ displayName: "wire", modelName: "wire" }],
+      };
+      return streamChat({
+        provider,
+        model: "wire",
+        sessionId: "cap-session-2",
+        messages: [
+          { role: "system", content: "system", timestamp: new Date().toISOString() },
+          { role: "user", content: "hi", timestamp: new Date().toISOString() },
+        ],
+        onToken: () => {},
+      });
+    });
+    expect(headers["http-referer"]).toBe("https://example.com/custom");
+  });
+});

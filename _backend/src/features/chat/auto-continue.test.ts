@@ -64,6 +64,73 @@ describe("shouldAutoContinueOnTool", () => {
   test("false when no parts", () => {
     expect(shouldAutoContinueOnTool(mkResult({ parts: [] }))).toBe(false);
   });
+
+  test("false when last real tool is a todo write with all items completed", () => {
+    expect(
+      shouldAutoContinueOnTool(
+        mkResult({
+          parts: [
+            { type: "tool", toolName: "todo", args: { action: "write", todos: [
+              { id: "1", content: "a", status: "completed" },
+              { id: "2", content: "b", status: "completed" },
+            ] } },
+          ],
+        })
+      )
+    ).toBe(false);
+  });
+
+  test("still auto-continues when todo write has an open item", () => {
+    expect(
+      shouldAutoContinueOnTool(
+        mkResult({
+          parts: [
+            { type: "tool", toolName: "todo", args: { action: "write", todos: [
+              { id: "1", content: "a", status: "completed" },
+              { id: "2", content: "b", status: "in_progress" },
+            ] } },
+          ],
+        })
+      )
+    ).toBe(true);
+  });
+
+  test("false when todo write has an empty todo list", () => {
+    expect(
+      shouldAutoContinueOnTool(
+        mkResult({
+          parts: [
+            { type: "tool", toolName: "todo", args: { action: "write", todos: [] } },
+          ],
+        })
+      )
+    ).toBe(false);
+  });
+
+  test("false when todo write has zero open items (completed + cancelled)", () => {
+    expect(
+      shouldAutoContinueOnTool(
+        mkResult({
+          parts: [
+            { type: "tool", toolName: "todo", args: { action: "write", todos: [
+              { id: "1", content: "a", status: "completed" },
+              { id: "2", content: "b", status: "cancelled" },
+            ] } },
+          ],
+        })
+      )
+    ).toBe(false);
+  });
+
+  test("still auto-continues when last real tool is a todo read (no todos)", () => {
+    expect(
+      shouldAutoContinueOnTool(
+        mkResult({
+          parts: [{ type: "tool", toolName: "todo", args: { action: "read" } }],
+        })
+      )
+    ).toBe(true);
+  });
 });
 
 describe("shouldAutoContinueOnThinking", () => {

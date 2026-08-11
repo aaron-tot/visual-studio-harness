@@ -46,6 +46,22 @@ export function recordAutoContinue(map: Map<string, number[]>, key: string): voi
   map.set(key, attempts);
 }
 
+/**
+ * True when a `todo` write call ended with no remaining work: an empty/absent
+ * todo list or one where every item is completed or cancelled. Ending on such a
+ * write is a valid stop. A todo call with open (pending/in_progress) items is
+ * not done and should keep auto-continuing.
+ */
+function isCompletedTodoWrite(part: Extract<MessagePartType, { type: "tool" }>): boolean {
+  if (part.toolName !== "todo") return false;
+  const args = part.args as { action?: string; todos?: Array<{ status?: string }> } | undefined;
+  if (args?.action !== "write") return false;
+  const todos = args.todos;
+  // Nothing in the todo list (empty or absent) is a proper stop.
+  if (!todos || todos.length === 0) return true;
+  return todos.every((t) => t.status === "completed" || t.status === "cancelled");
+}
+
 export function shouldAutoContinueOnTool(result: {
   success?: boolean;
   assistantMessage?: { parts?: MessagePartType[] } | null;
@@ -56,6 +72,9 @@ export function shouldAutoContinueOnTool(result: {
   const lastPart = parts[parts.length - 1];
   if (lastPart.type !== "tool") return false;
   const lastToolIdx = parts.findLastIndex((p) => p.type === "tool" && p.toolName !== "additional_system_info");
+  if (lastToolIdx < 0) return false;
+  const lastTool = parts[lastToolIdx] as Extract<MessagePartType, { type: "tool" }>;
+  if (isCompletedTodoWrite(lastTool)) return false;
   const hasTextAfter = parts.slice(lastToolIdx + 1).some((p) => p.type === "text");
   return !hasTextAfter;
 }

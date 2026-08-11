@@ -58,6 +58,7 @@ function NoteRows({
             onArchive={() => onArchive(note.name, group.location)}
             onDelete={() => onDelete(note.name, group.location)}
             location={group.location}
+            indent={indent}
             onMove={(toScope) => onMove(note.name, group.location, toScope)}
           />
         );

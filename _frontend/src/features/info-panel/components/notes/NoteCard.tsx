@@ -15,6 +15,8 @@ interface NoteCardProps {
   onMove: (toScope: PlanScope) => void;
   /** Location for API calls */
   location: DesignLocation;
+  /** Indent under a group header when nested. */
+  indent?: boolean;
 }
 
 export function NoteCard({
@@ -27,6 +29,7 @@ export function NoteCard({
   onDelete,
   onMove,
   location,
+  indent = false,
 }: NoteCardProps) {
   const [showMove, setShowMove] = useState(false);
   const bodyPreview = note.body
@@ -39,7 +42,9 @@ export function NoteCard({
     <div>
       {/* Header */}
       <div
-        className="w-full flex items-center gap-1 pr-3 py-1.5 hover:bg-zinc-900 transition-colors group cursor-pointer px-3"
+        className={`w-full flex items-center gap-1 pr-3 py-1.5 hover:bg-zinc-900 transition-colors group cursor-pointer ${
+          indent ? "pl-8" : "px-3"
+        }`}
         onClick={(e) => {
           e.stopPropagation();
           onToggle();
@@ -94,7 +99,10 @@ export function NoteCard({
 
       {/* Expanded body */}
       {expanded && (
-        <div className="px-6 pb-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+        <div
+          className={`pb-2 space-y-1.5 ${indent ? "pl-12 pr-3" : "px-6"}`}
+          onClick={(e) => e.stopPropagation()}
+        >
           {bodyPreview && (
             <div className="text-[11px] text-zinc-400 whitespace-pre-wrap leading-relaxed">
               {note.body.length > 120 ? note.body : bodyPreview}

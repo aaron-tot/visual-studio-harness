@@ -34,43 +34,55 @@ describe("pricing: models-dev", () => {
   });
 
   describe("resolveModelsDevProviderId", () => {
+    // A minimal catalog shaped like models.dev api.json (provider slug → { api, models })
+    const testCatalog: Record<string, unknown> = {
+      opencode: { api: "https://opencode.ai/zen/v1", models: {} },
+      "opencode-go": { api: "https://opencode.ai/zen/go/v1", models: {} },
+      openrouter: { api: "https://openrouter.ai/api/v1", models: {} },
+    };
+
     it("returns explicit override", () => {
       const p = { ...mockProvider, pricingProviderId: "custom-id" };
       expect(resolveModelsDevProviderId(p)).toBe("custom-id");
     });
 
-    it("returns builtin map for OpenCode Zen", () => {
-      expect(resolveModelsDevProviderId(mockProvider)).toBe("opencode");
+    it("matches by URL (trailing slash stripped) for OpenCode Zen", () => {
+      expect(resolveModelsDevProviderId(mockProvider, testCatalog)).toBe("opencode");
     });
 
-    it("returns builtin map for OpenCode Go", () => {
-      const p = { ...mockProvider, displayName: "OpenCode Go" };
-      expect(resolveModelsDevProviderId(p)).toBe("opencode-go");
+    it("matches by URL regardless of display name", () => {
+      const p = { ...mockProvider, displayName: "whatever the user named it" };
+      expect(resolveModelsDevProviderId(p, testCatalog)).toBe("opencode");
     });
 
-    it("returns builtin map for OpenRouter", () => {
-      const p = { ...mockProvider, displayName: "OpenRouter" };
-      expect(resolveModelsDevProviderId(p)).toBe("openrouter");
+    it("matches opencode-go by URL", () => {
+      const p = { ...mockProvider, displayName: "OpenCode Go", baseUrl: "https://opencode.ai/zen/go/v1" };
+      expect(resolveModelsDevProviderId(p, testCatalog)).toBe("opencode-go");
     });
 
-    it("returns builtin map for Ollama", () => {
-      const p = { ...mockProvider, displayName: "Ollama" };
-      expect(resolveModelsDevProviderId(p)).toBe("ollama");
+    it("matches OpenRouter by URL with trailing slash in baseUrl", () => {
+      const p = { ...mockProvider, baseUrl: "https://openrouter.ai/api/v1/" };
+      expect(resolveModelsDevProviderId(p, testCatalog)).toBe("openrouter");
+    });
+
+    it("does NOT match by display name alone (no URL fallback)", () => {
+      const p = { ...mockProvider, displayName: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1/notcanonical" };
+      expect(resolveModelsDevProviderId(p, testCatalog)).toBeNull();
     });
 
     it("returns null for localhost provider", () => {
       const p = { ...mockProvider, baseUrl: "http://localhost:11434/v1" };
-      expect(resolveModelsDevProviderId(p)).toBeNull();
+      expect(resolveModelsDevProviderId(p, testCatalog)).toBeNull();
     });
 
     it("returns null for test provider", () => {
       const p = { ...mockProvider, test: true };
-      expect(resolveModelsDevProviderId(p)).toBeNull();
+      expect(resolveModelsDevProviderId(p, testCatalog)).toBeNull();
     });
 
-    it("returns null for unknown provider", () => {
+    it("returns null for unknown provider (not in catalog)", () => {
       const p = { ...mockProvider, displayName: "UnknownProvider", baseUrl: "https://example.com" };
-      expect(resolveModelsDevProviderId(p)).toBeNull();
+      expect(resolveModelsDevProviderId(p, testCatalog)).toBeNull();
     });
   });
 
@@ -177,6 +189,7 @@ describe("pricing: models-dev", () => {
 
     const catalog = {
       opencode: {
+        api: "https://opencode.ai/zen/v1",
         models: {
           "model-a": { cost: { input: 3, output: 15 }, limit: { context: 1000000 } },
           "model-b": { cost: { input: 1, output: 2, cache_read: 0.1, cache_write: 0.2 }, limit: { context: 2000000 } },

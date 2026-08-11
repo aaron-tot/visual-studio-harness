@@ -62,31 +62,42 @@ async function persistCatalogCache(): Promise<void> {
   }
 }
 
-/** Builtin displayName → models.dev provider id map */
-const BUILTIN_PROVIDER_MAP: Record<string, string> = {
-  "OpenCode Zen": "opencode",
-  "OpenCode Go": "opencode-go",
-  "OpenRouter": "openrouter",
-  "Ollama": "ollama",
-};
+/** Normalize a base URL for provider matching: trim, strip trailing slashes, lowercase. */
+function normalizeApiUrl(url: string): string {
+  return url.trim().replace(/\/+$/, "").toLowerCase();
+}
 
-/** Resolve models.dev provider id from provider config */
-export function resolveModelsDevProviderId(provider: ProviderConfig): string | null {
-  // Explicit override
+/** Find the catalog slug whose `api` (base URL) matches the given base URL. */
+function resolveByUrl(catalog: Record<string, unknown>, baseUrl: string): string | null {
+  const target = normalizeApiUrl(baseUrl);
+  if (!target) return null;
+  for (const [slug, entry] of Object.entries(catalog)) {
+    const api = (entry as Record<string, unknown>)?.api;
+    if (typeof api === "string" && normalizeApiUrl(api) === target) {
+      return slug;
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolve the models.dev catalog provider id for a provider config.
+ * Priority: explicit `pricingProviderId` → URL match against the catalog's
+ * provider `api` (trailing-/ stripped, case-insensitive) → null.
+ * The display name is deliberately NOT used (users may name providers anything).
+ */
+export function resolveModelsDevProviderId(
+  provider: ProviderConfig,
+  catalog?: Record<string, unknown>
+): string | null {
+  // Explicit override always wins
   if (provider.pricingProviderId) return provider.pricingProviderId;
 
   // Local/self-hosted providers (localhost or test) have no catalog entry
-  if (provider.baseUrl.includes("localhost") || provider.test) {
-    return null;
-  }
+  if (provider.baseUrl.includes("localhost") || provider.test) return null;
 
-  // Builtin map
-  if (BUILTIN_PROVIDER_MAP[provider.displayName]) {
-    return BUILTIN_PROVIDER_MAP[provider.displayName];
-  }
-
-  // Unknown — caller must handle (returns found:false snapshot)
-  return null;
+  // URL match requires the catalog; without it we cannot resolve.
+  return catalog ? resolveByUrl(catalog, provider.baseUrl) : null;
 }
 
 /** Cache file path for the current mode */
@@ -267,33 +278,39 @@ export async function getModelPricing(
   const sourceUrl = pricingConfig.sourceUrl ?? DEFAULT_SOURCE_URL;
   const ttlMinutes = pricingConfig.cacheTtlMinutes ?? DEFAULT_TTL_MINUTES;
 
-  const providerId = resolveModelsDevProviderId(provider);
+  const notFound = (error: string, providerId = ""): PricingSnapshot => ({
+    providerId,
+    providerDisplayName: provider.displayName,
+    modelId: modelName,
+    found: false,
+    sourceUrl,
+    fetchedAt: new Date().toISOString(),
+    rates: { inputPerM: 0, outputPerM: 0, cacheReadPerM: 0, cacheWritePerM: 0 },
+    error,
+  });
 
-  // No catalog entry for this provider (local/test/unknown)
-  if (!providerId) {
-    return {
-      providerId: "",
-      providerDisplayName: provider.displayName,
-      modelId: modelName,
-      found: false,
-      sourceUrl,
-      fetchedAt: new Date().toISOString(),
-      rates: { inputPerM: 0, outputPerM: 0, cacheReadPerM: 0, cacheWritePerM: 0 },
-      error: "Provider not in models.dev catalog (local/self-hosted or unknown)",
-    };
+  // Local/self-hosted (no override) — never in the catalog; skip the fetch.
+  if (!provider.pricingProviderId && (provider.baseUrl.includes("localhost") || provider.test)) {
+    return notFound("Provider not in models.dev catalog (local/self-hosted or unknown)");
   }
 
-  const key = cacheKey(sourceUrl, providerId, modelName);
-
-  // Check memory cache
-  const cached = memoryCache.get(key);
-  if (cached && isFresh(cached, ttlMinutes)) {
-    return cached;
-  }
-
-  // Fetch catalog (shared download — TTL throttles the network)
+  // Fetch catalog (shared download — TTL throttles the network), then resolve the
+  // provider id by URL (or explicit override). URL resolution requires the catalog.
   try {
     const catalog = await getCatalog(sourceUrl, ttlMinutes);
+    const providerId = provider.pricingProviderId ?? resolveByUrl(catalog, provider.baseUrl);
+    if (!providerId) {
+      return notFound("Provider not in models.dev catalog (local/self-hosted or unknown)");
+    }
+
+    const key = cacheKey(sourceUrl, providerId, modelName);
+
+    // Check memory cache
+    const cached = memoryCache.get(key);
+    if (cached && isFresh(cached, ttlMinutes)) {
+      return cached;
+    }
+
     const providerEntry = catalog[providerId] as Record<string, unknown> | undefined;
 
     if (!providerEntry) {
@@ -380,8 +397,9 @@ export async function refreshModelPricing(
   const pricingConfig = config.pricing ?? {};
   const sourceUrl = pricingConfig.sourceUrl ?? DEFAULT_SOURCE_URL;
   await refreshPricingCatalog(sourceUrl);
-  const key = cacheKey(sourceUrl, resolveModelsDevProviderId(provider) ?? "", modelName);
-  memoryCache.delete(key);
+  const catalog = catalogCache.get(sourceUrl)?.data;
+  const providerId = resolveModelsDevProviderId(provider, catalog);
+  if (providerId) memoryCache.delete(cacheKey(sourceUrl, providerId, modelName));
   return getModelPricing(provider, modelName, config, dataDir);
 }
 
@@ -405,7 +423,8 @@ export function getCachedPricing(
 ): PricingSnapshot | null {
   const pricingConfig = config.pricing ?? {};
   const sourceUrl = pricingConfig.sourceUrl ?? DEFAULT_SOURCE_URL;
-  const providerId = resolveModelsDevProviderId(provider);
+  const catalog = catalogCache.get(sourceUrl)?.data;
+  const providerId = resolveModelsDevProviderId(provider, catalog);
   if (!providerId) return null;
   const key = cacheKey(sourceUrl, providerId, modelName);
   return memoryCache.get(key) ?? null;

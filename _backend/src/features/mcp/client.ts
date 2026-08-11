@@ -8,6 +8,9 @@ import type {
   McpToolCallContent,
   McpServerConfig,
 } from "./types";
+import { VERSION } from "../../../../_shared/version";
+
+const MCP_PROTOCOL_VERSION = "2024-11-05";
 
 export class McpClient {
   private transport: McpTransport;
@@ -28,7 +31,23 @@ export class McpClient {
 
   async connect(): Promise<void> {
     await this.transport.connect();
+    await this.initialize();
     await this.discoverTools();
+  }
+
+  private async initialize(): Promise<void> {
+    const response = await this.sendRequest({
+      method: "initialize",
+      params: {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: "visual-studio-harness", version: VERSION },
+      },
+    });
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+    this.transport.notify({ method: "notifications/initialized", params: {} });
   }
 
   async disconnect(): Promise<void> {

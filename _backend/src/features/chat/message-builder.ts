@@ -2,6 +2,7 @@ import { inArray, eq } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
 import { turns, stepParts } from "../../db/schema";
 import type { CoreMessage } from "ai";
+import { normalizeToolInput } from "./tool-input";
 
 function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
@@ -193,7 +194,11 @@ export async function buildModelMessages(
               break;
             }
             if (options.includeTools && part.toolCallId) {
-              const args = data.args ?? {};
+              // Guard: heal legacy rows whose `args` were persisted as a raw
+              // malformed JSON string (SDK forwards the model's arguments
+              // verbatim). Coerce to a plain object so the replayed request
+              // keeps a valid `function.arguments` object on the wire.
+              const args = normalizeToolInput(data.args);
               contentParts.push({
                 type: "tool-call",
                 toolCallId: part.toolCallId,

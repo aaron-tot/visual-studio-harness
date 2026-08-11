@@ -3,6 +3,11 @@
  *
  * Usage:
  *   bun run scripts/build-installer.ts --target=bun-linux-x64-modern [--seed='{"mcps":[],"providers":[],"agents":[],"mds":[]}']
+ *   bun run scripts/build-installer.ts --target=bun-windows-x64-modern [--seed='...']
+ *
+ * The installer wizard entry is chosen by target: scripts/installer-wizard.ts
+ * for POSIX (linux/darwin) targets, scripts/installer-wizard-windows.ts for
+ * bun-windows-* targets. They are separate, platform-specific installers.
  *
  * Output: data/package/VSH_v{version}-{target-short}-installer
  */
@@ -24,8 +29,55 @@ const seedFlag = process.argv.find(a => a.startsWith("--seed="));
 const seedArg = seedFlag ? seedFlag.split("=")[1] : "{}";
 const targetShort = target === "bun" ? "" : target.replace(/^bun-/, "") + "-";
 
+/**
+ * Bun appends the executable extension automatically when compiling for a
+ * foreign target (e.g. `.exe` for `bun-windows-*`), so the portable binary the
+ * installer wraps is named `VSH_v{ver}-windows-x64-modern-.exe`, not the
+ * extensionless name previously assumed (which made Windows installer builds
+ * fail with "Portable binary not found").
+ */
+function exeSuffixForTarget(t: string): string {
+  return t.startsWith("bun-windows") ? ".exe" : "";
+}
+
+/**
+ * Map a bun target triple to the sqlite-vec platform package that provides the
+ * native vector-search extension. Platform packages install as siblings of the
+ * resolved `sqlite-vec` package: linux → vec0.so, windows → vec0.dll,
+ * darwin → vec0.dylib. Returns null when the platform package isn't installed.
+ */
+function vec0LibForTarget(
+  vecRoot: string,
+  t: string,
+): { filename: string; path: string; platform: string } | null {
+  const arch = t.includes("arm64") ? "arm64" : "x64";
+  let platform: string;
+  let filename: string;
+  if (t.startsWith("bun-windows")) {
+    platform = `windows-${arch}`;
+    filename = "vec0.dll";
+  } else if (t.startsWith("bun-darwin")) {
+    platform = `darwin-${arch}`;
+    filename = "vec0.dylib";
+  } else {
+    platform = `linux-${arch}`;
+    filename = "vec0.so";
+  }
+  const libPath = join(vecRoot, `sqlite-vec-${platform}`, filename);
+  if (existsSync(libPath)) return { filename, path: libPath, platform };
+
+  // Fall back to a vendored copy so cross-compiles (notably Linux→Windows) work
+  // even when the foreign-platform package isn't materialized by `bun install`
+  // (e.g. vendor/sqlite-vec-windows-x64/vec0.dll for bun-windows-x64 targets).
+  const vendored = join(ROOT, "vendor", `sqlite-vec-${platform}`, filename);
+  if (existsSync(vendored)) return { filename, path: vendored, platform };
+
+  return null;
+}
+
+const exeSuffix = exeSuffixForTarget(target);
 const portableName = `VSH_v${VERSION}-${targetShort}`;
-const portablePath = join(PACKAGE_DIR, portableName);
+const portablePath = join(PACKAGE_DIR, portableName + exeSuffix);
 
 async function generateSeededData(): Promise<string> {
   let seed: any = {};
@@ -148,16 +200,32 @@ export const PORTABLE_SIZE = ${portableBuf.length};
   await writeFile(generatedPath, generatedTs, "utf-8");
   console.log(`Wrote embedded portable: ${generatedPath} (${(portableBuf.length / 1024 / 1024).toFixed(1)} MB)`);
 
-  // Embed sqlite-vec native extension for install-time extraction
+  // Embed sqlite-vec native extension for install-time extraction.
+  // Selected by build target so Windows installers embed vec0.dll, not the
+  // Linux vec0.so that the host happens to have installed.
   const vecPkg = Bun.resolveSync("sqlite-vec/package.json", join(ROOT, "_backend", "src"));
-  const vec0Source = join(dirname(vecPkg), "..", "sqlite-vec-linux-x64", "vec0.so");
+  const vecRoot = join(dirname(vecPkg), "..");
+  const vec0Lib = vec0LibForTarget(vecRoot, target);
   let vec0Embed = "";
-  if (existsSync(vec0Source)) {
-    const vec0Buf = await readFile(vec0Source);
+  let vec0Filename = "vec0.so";
+  if (vec0Lib) {
+    const vec0Buf = await readFile(vec0Lib.path);
     vec0Embed = vec0Buf.toString("base64");
-    console.log(`Embedded vec0.so (${(vec0Buf.length / 1024).toFixed(0)} KB)`);
+    vec0Filename = vec0Lib.filename;
+    console.log(
+      `Embedded ${vec0Lib.filename} (${(vec0Buf.length / 1024).toFixed(0)} KB) for ${target}`
+    );
+  } else if (!target.startsWith("bun-") || target.startsWith("bun-linux")) {
+    throw new Error(
+      `vec0 native lib not found for target "${target}" — vector search will be broken in the installer. ` +
+        "Run \"bun install\" so the matching sqlite-vec platform package is available."
+    );
   } else {
-    throw new Error("vec0.so not found — vector search will be broken in installer. Build portable first so node_modules are available.");
+    console.warn(
+      `WARNING: sqlite-vec native lib not found for target "${target}". ` +
+        "Vector search will be DISABLED in this installer. " +
+        "Install the matching platform package (e.g. \"bun add sqlite-vec-windows-x64\") to enable it."
+    );
   }
   const vec0GenPath = join(GENERATED_DIR, "embedded-vec0.ts");
   await writeFile(
@@ -165,7 +233,7 @@ export const PORTABLE_SIZE = ${portableBuf.length};
     `// Generated by scripts/build-installer.ts — do not edit by hand.
 
 export const VEC0_SO_BASE64 = ${JSON.stringify(vec0Embed)};
-export const VEC0_SO_FILENAME = "vec0.so";
+export const VEC0_SO_FILENAME = ${JSON.stringify(vec0Filename)};
 `,
     "utf-8"
   );
@@ -176,18 +244,24 @@ export const VEC0_SO_FILENAME = "vec0.so";
   }
 
   const installerName = `VSH_v${VERSION}-${targetShort}installer`;
-  const installerPath = join(PACKAGE_DIR, installerName);
+  const installerPath = join(PACKAGE_DIR, installerName + exeSuffix);
 
   if (existsSync(installerPath)) {
     await rm(installerPath, { force: true });
   }
 
-  console.log(`Compiling installer: ${installerPath}`);
+  // Use a platform-specific installer wizard: Windows targets get a dedicated
+  // Windows-native installer; all POSIX targets share the existing Linux one.
+  const wizardEntry = target.startsWith("bun-windows")
+    ? "installer-wizard-windows.ts"
+    : "installer-wizard.ts";
+
+  console.log(`Compiling installer (${wizardEntry}): ${installerPath}`);
   const proc = Bun.spawn(
     [
       "bun",
       "build",
-      join(ROOT, "scripts", "installer-wizard.ts"),
+      join(ROOT, "scripts", wizardEntry),
       "--compile",
       "--outfile",
       installerPath,
@@ -210,9 +284,8 @@ export const VEC0_SO_FILENAME = "vec0.so";
   await rm(vec0GenPath, { force: true });
   const seededPath = join(GENERATED_DIR, "seeded-data.ts");
   if (existsSync(seededPath)) await rm(seededPath, { force: true });
-  const basePath = join(PACKAGE_DIR, portableName);
-  if (existsSync(basePath) && basePath !== installerPath) {
-    await rm(basePath, { force: true });
+  if (existsSync(portablePath) && portablePath !== installerPath) {
+    await rm(portablePath, { force: true });
   }
 
   console.log("=== Installer build complete ===");

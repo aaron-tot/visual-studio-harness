@@ -924,25 +924,30 @@ onStepFinish: async (info) => {
     };
   } catch (err: unknown) {
     console.log("[runTurn] streamChat:exception", { sessionId, error: err instanceof Error ? err.message : String(err) });
-    // Abort trace on exception - preserve error context for "aborted" turns
-    const abortErrInfo = isAbortError(err)
-      ? classifyLlmError(err, { provider: provider.displayName, model: model.displayName })
-      : undefined;
-    abortTurnTrace(traceTurnId, dataDir, abortErrInfo ? { errorMessage: abortErrInfo.message, errorRaw: abortErrInfo.raw, errorIsCustom: abortErrInfo.isCustom } : undefined);
-    unregisterSession(sessionId);
-    if (!isAbortError(err)) {
-      const errInfo: LlmErrorInfo = err instanceof LlmError ? err.toInfo() : classifyLlmError(err, { provider: provider.displayName, model: model.displayName });
-      await bus?.emit("turn.error", hookCtx, { sessionId, error: errInfo.message, durationMs: Date.now() - turnStarted });
-      const errAssistantMsg = buildErrorAssistantMessage(errInfo, { modelName: model.displayName, providerName: provider.displayName, turnId: turnNumber });
-      let failedMeta = { id: sessionId, title: "", providerName: "", modelName: "", created: "", updated: "" };
-      try { const failedSession = await getSession(dataDir, sessionId); if (failedSession?.meta) failedMeta = failedSession.meta; } catch {}
-      return {
-        sessionId, created, meta: failedMeta, workspaceRoot, userMessage,
-        assistantMessage: errAssistantMsg,
-        error: errInfo.message, rawError: errInfo.raw, errorIsCustom: errInfo.isCustom,
-        modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber, success: false,
-      };
+    if (isAbortError(err)) {
+      // Signal-aborted turn (user stop or SDK abort) — persist as "aborted",
+      // preserving whatever error context the SDK surfaced.
+      const abortErrInfo = classifyLlmError(err, { provider: provider.displayName, model: model.displayName });
+      abortTurnTrace(traceTurnId, dataDir, { errorMessage: abortErrInfo.message, errorRaw: abortErrInfo.raw, errorIsCustom: abortErrInfo.isCustom });
+      unregisterSession(sessionId);
+      throw err;
     }
-    throw err;
+
+    // Genuine provider/model error thrown mid-stream — persist as an "error" turn so the
+    // actual message survives a reload. (Previously mis-labeled "aborted" with a null
+    // errorMessage, which hid the OpenRouter/provider 400 details after refresh.)
+    const errInfo: LlmErrorInfo = err instanceof LlmError ? err.toInfo() : classifyLlmError(err, { provider: provider.displayName, model: model.displayName });
+    finalizeTurnTrace(traceTurnId, { success: false, errorMessage: errInfo.message, errorRaw: errInfo.raw, errorIsCustom: errInfo.isCustom }, dataDir);
+    unregisterSession(sessionId);
+    await bus?.emit("turn.error", hookCtx, { sessionId, error: errInfo.message, durationMs: Date.now() - turnStarted });
+    const errAssistantMsg = buildErrorAssistantMessage(errInfo, { modelName: model.displayName, providerName: provider.displayName, turnId: turnNumber });
+    let failedMeta = { id: sessionId, title: "", providerName: "", modelName: "", created: "", updated: "" };
+    try { const failedSession = await getSession(dataDir, sessionId); if (failedSession?.meta) failedMeta = failedSession.meta; } catch {}
+    return {
+      sessionId, created, meta: failedMeta, workspaceRoot, userMessage,
+      assistantMessage: errAssistantMsg,
+      error: errInfo.message, rawError: errInfo.raw, errorIsCustom: errInfo.isCustom,
+      modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber, success: false,
+    };
   }
 }

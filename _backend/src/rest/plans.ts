@@ -98,7 +98,25 @@ export interface CreateSpecParams {
   content?: Record<string, unknown>;
 }
 
-export async function createSpecDocument(params: CreateSpecParams): Promise<{ path: string; planDir: string; version: number }> {
+/** Documented `content` keys for a spec. `meta` is documented but ignored. */
+const SPEC_KNOWN_KEYS = new Set(["goal", "requirements", "constraints", "assumptions", "acceptanceCriteria", "parts", "meta"]);
+/** Documented `content` keys for a plan. `meta` is documented but ignored. */
+const PLAN_KNOWN_KEYS = new Set(["endGoal", "mainSpec", "tags", "parts", "meta"]);
+
+/** Split content into known fields (handled elsewhere) vs non-standard keys to preserve. */
+function splitContent(c: Record<string, unknown>, known: Set<string>): { custom: Record<string, unknown>; customKeys: string[] } {
+  const custom: Record<string, unknown> = {};
+  const customKeys: string[] = [];
+  for (const k of Object.keys(c)) {
+    if (!known.has(k)) {
+      custom[k] = c[k];
+      customKeys.push(k);
+    }
+  }
+  return { custom, customKeys };
+}
+
+export async function createSpecDocument(params: CreateSpecParams): Promise<{ path: string; planDir: string; version: number; customKeys: string[] }> {
   const scope = params.scope || "global";
   const designsDir = resolveDesignsDir(params.dataDir, scope, params.workspaceRoot, params.sessionId);
   if (!designsDir) {
@@ -141,10 +159,12 @@ export async function createSpecDocument(params: CreateSpecParams): Promise<{ pa
     acceptanceCriteria: Array.isArray(c.acceptanceCriteria) ? (c.acceptanceCriteria as string[]) : [],
     parts: Array.isArray(c.parts) ? (c.parts as SpecPlanPart[]).map(ensurePartsArray) : [],
   };
+  const { custom, customKeys } = splitContent(c, SPEC_KNOWN_KEYS);
+  if (customKeys.length) doc.customContent = custom;
 
   await mkdir(pd, { recursive: true });
   await writeFile(fp, JSON.stringify(doc, null, 2) + "\n");
-  return { path: fp, planDir: pd, version };
+  return { path: fp, planDir: pd, version, customKeys };
 }
 
 export interface CreatePlanParams {
@@ -160,7 +180,7 @@ export interface CreatePlanParams {
   content?: Record<string, unknown>;
 }
 
-export async function createPlanDocument(params: CreatePlanParams): Promise<{ path: string; planDir: string; version: number }> {
+export async function createPlanDocument(params: CreatePlanParams): Promise<{ path: string; planDir: string; version: number; customKeys: string[] }> {
   const scope = params.scope || "global";
   const designsDir = resolveDesignsDir(params.dataDir, scope, params.workspaceRoot, params.sessionId);
   if (!designsDir) {
@@ -202,10 +222,12 @@ export async function createPlanDocument(params: CreatePlanParams): Promise<{ pa
     endGoal,
     parts: Array.isArray(c.parts) ? (c.parts as SpecPlanPart[]).map(ensurePartsArray) : [],
   };
+  const { custom, customKeys } = splitContent(c, PLAN_KNOWN_KEYS);
+  if (customKeys.length) doc.customContent = custom;
 
   await mkdir(pd, { recursive: true });
   await writeFile(fp, JSON.stringify(doc, null, 2) + "\n");
-  return { path: fp, planDir: pd, version };
+  return { path: fp, planDir: pd, version, customKeys };
 }
 
 async function readDesignMeta(dir: string): Promise<DesignMeta> {

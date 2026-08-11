@@ -1,7 +1,7 @@
 import { execSync } from "child_process";
 import type { Page } from "@playwright/test";
-import { test, expect } from "@testing/fixtures";
-import { setupSession, sendInitialMessage, seedWorkspace } from "@testing/components/setup";
+import { test, expect } from "../fixtures";
+import { setupSession, sendInitialMessage, seedWorkspace } from "../components/setup";
 import { getExpectedText } from "../../_backend/src/llm/mock-models";
 
 async function expandAllCollapsibles(page: Page): Promise<void> {

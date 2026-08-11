@@ -125,6 +125,7 @@ export const designTool: ToolDef = {
   description:
     "Create, read, edit, abandon, and move spec/plan design documents. Set 'action' to pick the operation. " +
     "Parameters content, document, and patch accept JSON objects or valid JSON object strings. " +
+    "READ skill:design BEFORE use (mandatory). Non-standard content keys are preserved under customContent and reported. " +
     "See skill:design for the document structure and skill:design-edit for patch semantics.",
   permissionDefault: "allow",
   inputSchema: designMoveChecked,

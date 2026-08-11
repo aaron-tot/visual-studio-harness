@@ -1,4 +1,5 @@
 import { insertStepPart, updateStepPartData } from "./db-trace";
+import { normalizeToolInput } from "./tool-input";
 
 /**
  * Step-scoped stream writer for the trace schema.
@@ -65,14 +66,18 @@ export function createStepStreamWriter(sessionId: string, turnId: number, stepId
   ) => {
     if (!hasBoundStep) return; // no-op until a real step binds
     flushImmediate();             // flush streaming open before creating tool row
+    // Guard: the SDK hands the model's raw `arguments` string through verbatim.
+    // Normalize to a plain object so the wire shape stays valid on replay even
+    // when a model emits malformed/double-encoded JSON.
+    const safeArgs = normalizeToolInput(args);
     const partId = insertStepPart(
       sessionId, turnId, currentStepId, "tool",
-      { toolCallId, toolName, args, stepIndex },
+      { toolCallId, toolName, args: safeArgs, stepIndex },
       seq, "running",
       { toolCallId, toolName, parentToolCallId },
       dataDir,
     );
-    toolPartIds.set(toolCallId, { partId, args, seq, toolName, stepIndex });
+    toolPartIds.set(toolCallId, { partId, args: safeArgs, seq, toolName, stepIndex });
   };
 
   const updateToolResult = (toolCallId: string, result: unknown, isError?: boolean) => {

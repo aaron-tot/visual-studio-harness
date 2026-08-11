@@ -53,6 +53,8 @@ export interface SpecDocument {
   assumptions: string[];
   acceptanceCriteria: string[];
   parts: SpecPlanPart[];
+  /** Non-standard `content` keys from create, preserved verbatim. */
+  customContent?: Record<string, unknown>;
 }
 
 export interface PlanMeta {
@@ -75,4 +77,6 @@ export interface PlanDocument {
   meta: PlanMeta;
   endGoal: string;
   parts: SpecPlanPart[];
+  /** Non-standard `content` keys from create, preserved verbatim. */
+  customContent?: Record<string, unknown>;
 }

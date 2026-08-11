@@ -76,9 +76,10 @@ export class McpManager {
 
       if (existing) {
         await existing.client.disconnect();
+        this.servers.delete(server.name);
       }
 
-      if (!server.enabled ?? true) continue;
+      if (!(server.enabled ?? true)) continue;
 
       const client = new McpClient(server);
       const managed: ManagedServer = { config: server, client, toolDefs: [] };

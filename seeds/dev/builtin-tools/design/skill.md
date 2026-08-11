@@ -1,5 +1,7 @@
 # Design Documents (spec / plan)
 
+> MANDATORY: read this skill before using the `design` / `design_create` tools.
+
 A design is a versioned folder with `spec*.json` and `plan*.json` documents. Use `design_create` / `design_read` / `design_edit` to manage them. Set `scope` to `global`, `project`, or `session`.
 
 ## Document types
@@ -14,6 +16,8 @@ A design is a versioned folder with `spec*.json` and `plan*.json` documents. Use
 - **specs:** `goal` (string), `requirements` (string[]), `constraints` (string[]), `assumptions` (string[]), `acceptanceCriteria` (string[]), `parts` (SpecPlanPart[]).
 - **plans:** `endGoal` (string), `tags` (string[]), `parts` (SpecPlanPart[]).
 - The `meta` key is ignored and auto-generated.
+
+Any key outside the documented set is **not dropped** — it is preserved verbatim in `customContent` and reported (count + names) in the create output.
 
 ## Parts (recursive nesting)
 

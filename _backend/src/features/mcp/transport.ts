@@ -1,8 +1,9 @@
-import type { JsonRpcRequest, JsonRpcResponse, McpServerConfig } from "./types";
+import type { JsonRpcRequest, JsonRpcResponse, JsonRpcNotification, McpServerConfig } from "./types";
 
 export interface McpTransport {
   connect(): Promise<void>;
   send(request: JsonRpcRequest, signal?: AbortSignal): Promise<JsonRpcResponse>;
+  notify(message: JsonRpcNotification): void;
   disconnect(): Promise<void>;
 }
 
@@ -119,6 +120,12 @@ class StdioTransport implements McpTransport {
     }
   }
 
+  notify(message: JsonRpcNotification): void {
+    if (!this.proc || this.closed) return;
+    const line = JSON.stringify(message) + "\n";
+    this.proc.stdin?.write(line);
+  }
+
   private onData(chunk: Uint8Array): void {
     this.buffer += new TextDecoder().decode(chunk);
     const lines = this.buffer.split("\n");
@@ -200,6 +207,21 @@ class HttpTransport implements McpTransport {
 
   async disconnect(): Promise<void> {
     // no-op for HTTP
+  }
+
+  notify(message: JsonRpcNotification): void {
+    const url = this.config.url;
+    if (!url) return;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      ...(this.config.headers ?? {}),
+    };
+    void fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(message),
+    }).catch(() => {});
   }
 }
 
@@ -292,6 +314,12 @@ class TcpTransport implements McpTransport {
       this.socket.end();
       this.socket = null;
     }
+  }
+
+  notify(message: JsonRpcNotification): void {
+    if (!this.socket || this.closed) return;
+    const line = JSON.stringify(message) + "\n";
+    this.socket.write(line);
   }
 
   private onData(data: Buffer): void {

@@ -89,6 +89,81 @@ function FieldSection({ label, mono = true, children }: { label: string; mono?: 
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Dynamic custom (non-standard) fields                                */
+/* ------------------------------------------------------------------ */
+
+/** Doc keys that are part of the standard schema (plus `meta`/`customContent`). */
+const SPEC_KNOWN_KEYS = new Set([
+  "meta",
+  "goal",
+  "requirements",
+  "constraints",
+  "assumptions",
+  "acceptanceCriteria",
+  "parts",
+  "customContent",
+]);
+const PLAN_KNOWN_KEYS = new Set(["meta", "endGoal", "mainSpec", "tags", "parts", "customContent"]);
+
+/**
+ * Collect non-standard fields from a document.
+ * Covers both the documented `customContent` bag and any stray top-level keys
+ * (e.g. older/manually-authored docs that kept custom keys at the root).
+ */
+function collectCustomFields(doc: Record<string, unknown>, known: Set<string>): [string, unknown][] {
+  const out = new Map<string, unknown>();
+  for (const k of Object.keys(doc)) {
+    if (!known.has(k)) out.set(k, doc[k]);
+  }
+  const cc = doc.customContent;
+  if (cc && typeof cc === "object" && !Array.isArray(cc)) {
+    for (const [k, v] of Object.entries(cc as Record<string, unknown>)) {
+      if (!out.has(k)) out.set(k, v);
+    }
+  }
+  return Array.from(out.entries());
+}
+
+/** Best-effort value renderer for an arbitrary custom field value. */
+function CustomValueView({ value }: { value: unknown }) {
+  if (typeof value === "string") {
+    return <div className="whitespace-pre-wrap break-words">{value}</div>;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return <div className="font-mono">{String(value)}</div>;
+  }
+  if (Array.isArray(value)) {
+    if (value.every((v) => typeof v === "string")) {
+      return (
+        <ul className="list-disc list-inside text-sm text-zinc-300 space-y-0.5">
+          {value.map((v, i) => <li key={i}>{v}</li>)}
+        </ul>
+      );
+    }
+    return <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-zinc-900/50 rounded p-2">{JSON.stringify(value, null, 2)}</pre>;
+  }
+  if (value && typeof value === "object") {
+    return <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-zinc-900/50 rounded p-2">{JSON.stringify(value, null, 2)}</pre>;
+  }
+  return <div className="font-mono">null</div>;
+}
+
+/** Renders the dynamic list of non-standard fields, if any. */
+function CustomFieldsSection({ fields }: { fields: [string, unknown][] }) {
+  if (fields.length === 0) return null;
+  return (
+    <div className="space-y-3 pt-2 border-t border-zinc-800">
+      <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Custom Fields ({fields.length})</div>
+      {fields.map(([key, value]) => (
+        <FieldSection key={key} label={key} mono={false}>
+          <CustomValueView value={value} />
+        </FieldSection>
+      ))}
+    </div>
+  );
+}
+
 /** Structured read-only view of a spec document */
 export function SpecPrettyView({ spec, vNum }: { spec: SpecDocument; vNum: number }) {
   const partCount = spec.parts ? countPartsDone(spec.parts) : null;
@@ -160,6 +235,7 @@ export function SpecPrettyView({ spec, vNum }: { spec: SpecDocument; vNum: numbe
           <PartsTree parts={spec.parts} showSummary />
         </FieldSection>
       )}
+      <CustomFieldsSection fields={collectCustomFields(spec as unknown as Record<string, unknown>, SPEC_KNOWN_KEYS)} />
     </div>
   );
 }
@@ -208,6 +284,7 @@ export function PlanPrettyView({ plan, vNum }: { plan: PlanDocument; vNum: numbe
           <PartsTree parts={plan.parts} showSummary />
         </FieldSection>
       )}
+      <CustomFieldsSection fields={collectCustomFields(plan as unknown as Record<string, unknown>, PLAN_KNOWN_KEYS)} />
     </div>
   );
 }

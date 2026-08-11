@@ -137,6 +137,42 @@ export async function listNotes(
   return results.sort((a, b) => b.meta.createdAt.localeCompare(a.meta.createdAt));
 }
 
+/** Batch list notes for multiple workspace roots (project scope) or session IDs (session scope).
+ *  Returns a map keyed by workspaceRoot/sessionId to NoteEntry[]. */
+export async function listNotesBatch(
+  dataDir: string,
+  scope: NotesScope,
+  workspaceRoots?: string[],
+  sessionIds?: string[]
+): Promise<Map<string, NoteEntry[]>> {
+  const results = new Map<string, NoteEntry[]>();
+
+  if (scope === "project" && workspaceRoots?.length) {
+    await Promise.all(
+      workspaceRoots.map(async (root) => {
+        const notes = await listNotes(dataDir, "project", root);
+        results.set(root, notes);
+      })
+    );
+    return results;
+  }
+
+  if (scope === "session" && sessionIds?.length) {
+    await Promise.all(
+      sessionIds.map(async (sid) => {
+        const notes = await listNotes(dataDir, "session", undefined, sid);
+        results.set(sid, notes);
+      })
+    );
+    return results;
+  }
+
+  // Global scope - just return single entry
+  const notes = await listNotes(dataDir, "global");
+  results.set("global", notes);
+  return results;
+}
+
 export interface CreateNoteParams {
   name: string;
   title: string;
@@ -289,6 +325,24 @@ export function registerNotesRoutes(app: FastifyInstance, dataDir: string) {
     const q = request.query as { scope?: string; workspaceRoot?: string; sessionId?: string };
     const scope = (q.scope as NotesScope) || "global";
     return listNotes(dataDir, scope, q.workspaceRoot, q.sessionId);
+  });
+
+  app.post<{
+    Body: { scope?: string; workspaceRoots?: string[]; sessionIds?: string[] };
+  }>("/api/notes/batch", async (request, reply) => {
+    const { scope, workspaceRoots, sessionIds } = request.body;
+    const sc = (scope as NotesScope) || "global";
+    if (sc === "project" && (!workspaceRoots?.length)) {
+      return reply.code(400).send({ error: "workspaceRoots required for project scope" });
+    }
+    if (sc === "session" && (!sessionIds?.length)) {
+      return reply.code(400).send({ error: "sessionIds required for session scope" });
+    }
+    const results = await listNotesBatch(dataDir, sc, workspaceRoots, sessionIds);
+    // Convert Map to object for JSON serialization
+    const obj: Record<string, NoteEntry[]> = {};
+    for (const [key, value] of results) obj[key] = value;
+    return obj;
   });
 
   app.post<{

@@ -5,16 +5,7 @@ import { setupSession, sendInitialMessage, seedWorkspace } from "../components/s
 import { getExpectedText } from "../../_backend/src/llm/mock-models";
 
 async function expandAllCollapsibles(page: Page): Promise<void> {
-  const expandPass = async () => {
-    return page.evaluate(() => {
-      const msg = document.querySelector("[data-assistant-msg]");
-      if (!msg) return 0;
-      const buttons = msg.querySelectorAll("button[data-collapsible='true'][data-collapsible-state='closed']");
-      buttons.forEach((btn) => (btn as HTMLElement).click());
-      return buttons.length;
-    });
-  };
-
+  // Force-open native <details> (thinking, grouped context, summary blocks).
   await page.evaluate(() => {
     const msg = document.querySelector("[data-assistant-msg]");
     if (!msg) return;
@@ -23,6 +14,7 @@ async function expandAllCollapsibles(page: Page): Promise<void> {
     });
   });
 
+  // Expand thinking ("brain") if present.
   await page.evaluate(() => {
     const msg = document.querySelector("[data-assistant-msg]");
     if (!msg) return;
@@ -31,10 +23,23 @@ async function expandAllCollapsibles(page: Page): Promise<void> {
   });
   await page.waitForTimeout(200);
 
-  for (let pass = 0; pass < 5; pass++) {
-    const count = await expandPass();
+  // Click every closed collapsible. The main tool-card collapsible is a
+  // <div role="button"> (not a <button>), and detail blocks nest under it
+  // (Input → Output → tool output → additional_system_info). Nested content
+  // only mounts after the parent is opened, so iterate multiple passes and
+  // let React commit between each.
+  for (let pass = 0; pass < 10; pass++) {
+    const count = await page.evaluate(() => {
+      const msg = document.querySelector("[data-assistant-msg]");
+      if (!msg) return 0;
+      const closed = Array.from(
+        msg.querySelectorAll("[data-collapsible='true'][data-collapsible-state='closed']")
+      ) as HTMLElement[];
+      closed.forEach((el) => el.click());
+      return closed.length;
+    });
     if (count === 0) break;
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
   }
 }
 

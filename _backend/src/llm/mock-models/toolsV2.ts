@@ -28,9 +28,9 @@ export const actions: MockAction[] = [
   { type: "text", prefix: "h", count: 500 },
   { type: "tool", toolName: "read_symbol", args: { name: "Calculator" } },
   { type: "text", prefix: "i", count: 500 },
-  { type: "tool", toolName: "todoread", args: {} },
+  { type: "tool", toolName: "todo", args: { action: "read" } },
   { type: "text", prefix: "j", count: 500 },
-  { type: "tool", toolName: "todowrite", args: { content: "implement feature X", status: "pending", priority: "high" } },
+  { type: "tool", toolName: "todo", args: { action: "write", todos: [{ id: "1", content: "implement feature X", status: "pending", priority: "high" }] } },
   { type: "text", prefix: "k", count: 10 },
 ];
 

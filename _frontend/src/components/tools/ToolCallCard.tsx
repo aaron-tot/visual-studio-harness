@@ -70,6 +70,8 @@ function getArgSummary(toolName: string, args: unknown): string {
     }
     case "todoread":
       return "";
+    case "todo":
+      return String(a.action ?? "");
     case "skill":
       return String(a.name ?? "");
     case "agent_change":

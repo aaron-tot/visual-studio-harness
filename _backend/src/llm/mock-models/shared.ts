@@ -96,6 +96,7 @@ function argSummarySingle(toolName: string, args: Record<string, unknown>): stri
     }
     case "find_symbol": return String(a.query ?? "");
     case "read_symbol": return String(a.name ?? "");
+    case "todo": return String(a.action ?? "");
     default: return "";
   }
 }
@@ -361,6 +362,31 @@ export function executeTool(toolName: string, args: Record<string, unknown>, wor
       } catch {
         return "(error writing task)";
       }
+    }
+    case "todo": {
+      const action = String(args.action ?? "read");
+      if (action === "read") {
+        const todoPath = resolvePath(".opencode/tasks.json", workspaceRoot);
+        try {
+          return readFileSync(todoPath, "utf-8").trim();
+        } catch {
+          return "[]";
+        }
+      }
+      if (action === "write") {
+        const todoDir = resolvePath(".opencode", workspaceRoot);
+        const todoPath = resolvePath(".opencode/tasks.json", workspaceRoot);
+        const todos = args.todos;
+        try {
+          mkdirSync(todoDir, { recursive: true });
+          writeFileSync(todoPath, JSON.stringify({ tasks: todos }, null, 2), "utf-8");
+          const open = (todos as any[]).filter((t) => t.status !== "completed" && t.status !== "cancelled").length;
+          return JSON.stringify(todos, null, 2) + `\n\n(${open} open of ${todos.length})`;
+        } catch {
+          return "(error writing task)";
+        }
+      }
+      return `(unknown todo action: ${action})`;
     }
     case "webfetch":
     case "websearch":

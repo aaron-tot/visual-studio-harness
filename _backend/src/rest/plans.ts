@@ -263,6 +263,42 @@ export async function listDesigns(dataDir: string, scope: DesignsScope = "global
   return results.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Batch list designs for multiple workspace roots (project scope) or session IDs (session scope).
+ *  Returns a map keyed by workspaceRoot/sessionId to DesignEntry[]. */
+export async function listDesignsBatch(
+  dataDir: string,
+  scope: DesignsScope,
+  workspaceRoots?: string[],
+  sessionIds?: string[]
+): Promise<Map<string, DesignEntry[]>> {
+  const results = new Map<string, DesignEntry[]>();
+
+  if (scope === "project" && workspaceRoots?.length) {
+    await Promise.all(
+      workspaceRoots.map(async (root) => {
+        const designs = await listDesigns(dataDir, "project", root);
+        results.set(root, designs);
+      })
+    );
+    return results;
+  }
+
+  if (scope === "session" && sessionIds?.length) {
+    await Promise.all(
+      sessionIds.map(async (sid) => {
+        const designs = await listDesigns(dataDir, "session", undefined, sid);
+        results.set(sid, designs);
+      })
+    );
+    return results;
+  }
+
+  // Global scope - just return single entry
+  const designs = await listDesigns(dataDir, "global");
+  results.set("global", designs);
+  return results;
+}
+
 /** Locate which scope holds a design by name (session → project → global). */
 export async function findDesignScope(
   name: string,
@@ -324,6 +360,24 @@ export function registerPlansRoutes(app: FastifyInstance, dataDir: string) {
     const q = request.query as { scope?: string; workspaceRoot?: string; sessionId?: string };
     const scope = (q.scope as DesignsScope) || "global";
     return listDesigns(dataDir, scope, q.workspaceRoot, q.sessionId);
+  });
+
+  app.post<{
+    Body: { scope?: string; workspaceRoots?: string[]; sessionIds?: string[] };
+  }>("/api/plans/batch", async (request, reply) => {
+    const { scope, workspaceRoots, sessionIds } = request.body;
+    const sc = (scope as DesignsScope) || "global";
+    if (sc === "project" && (!workspaceRoots?.length)) {
+      return reply.code(400).send({ error: "workspaceRoots required for project scope" });
+    }
+    if (sc === "session" && (!sessionIds?.length)) {
+      return reply.code(400).send({ error: "sessionIds required for session scope" });
+    }
+    const results = await listDesignsBatch(dataDir, sc, workspaceRoots, sessionIds);
+    // Convert Map to object for JSON serialization
+    const obj: Record<string, DesignEntry[]> = {};
+    for (const [key, value] of results) obj[key] = value;
+    return obj;
   });
 
   app.post<{ Body: { name: string; goal?: string; endGoal?: string; scope?: string; workspaceRoot?: string; sessionId?: string; createdBy?: string; content?: Record<string, unknown> } }>(

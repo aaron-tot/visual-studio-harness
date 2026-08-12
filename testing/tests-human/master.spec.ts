@@ -80,7 +80,7 @@ async function assertCompletedToolCacheFormat(page: Page, label: string): Promis
   const sample = () => page.evaluate(() => {
     const CACHE_RE = /^\d+(?:\.\d+)?(?:k|M)?\s*\/\s*\d+(?:\.\d+)?(?:k|M)?\s*\(\d+(?:\.\d+)?%\)\s*cache$/i;
     const headers = Array.from(
-      document.querySelectorAll("[data-assistant-msg] button[data-collapsible='true'][data-collapsible-level='main']")
+      document.querySelectorAll("[data-assistant-msg] [data-collapsible='true'][data-collapsible-level='main']")
     ) as HTMLElement[];
 
     const completed: Array<{ name: string; cache: string | null }> = [];
@@ -253,9 +253,43 @@ const TEST_CONFIG = {
   provider: "Test",
 };
 
+/**
+ * Pin the Coding agent's runtime settings for the master test:
+ *  - additionalSystemInfo: todoList only (no runtime/workspaceManifest), collapsed
+ *  - systemPromptSections: runtime + todoList + workspaceManifest baked into the base
+ */
+async function applyAgentRuntimeConfig(page: Page): Promise<void> {
+  const get = await page.request.get("/api/config");
+  const cfg = (await get.json()) as any;
+  const merged = {
+    ...cfg,
+    agents: {
+      ...(cfg.agents ?? {}),
+      Coding: {
+        ...(cfg.agents?.Coding ?? {}),
+        additionalSystemInfo: {
+          sections: ["todoList"],
+          visibility: "collapsed",
+          includeTime: false,
+          always: false,
+        },
+        systemPromptSections: {
+          runtime: true,
+          todoList: true,
+          workspaceManifest: true,
+        },
+      },
+    },
+  };
+  const put = await page.request.put("/api/config", { data: merged });
+  if (!put.ok()) throw new Error(`config PUT failed: ${put.status()}`);
+  await page.waitForTimeout(500);
+}
+
 test("multi-session flick", async ({ page, settings, chat }) => {
   test.setTimeout(5 * 60 * 1000);
   await page.goto("/");
+  await applyAgentRuntimeConfig(page);
 
   const seedPathA = timestampDir();
   const { loop, workspaceRoot: workspaceRootA } = await setupSession(page, settings, {

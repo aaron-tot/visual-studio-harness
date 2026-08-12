@@ -57,26 +57,38 @@ describe("additional_system_info no-op tool registration", () => {
   });
 });
 
-describe("additional_system_info once-per-batch emission", () => {
-  test("skips non-final steps and emits exactly once on the final step", async () => {
+describe("additional_system_info per-step emission (spec §6.1)", () => {
+  test("emits at the end of EVERY step on change — no final-step gating", async () => {
     const persisted: unknown[] = [];
     const perStep = createPerStepSystemInfo(makeCtx(persisted));
 
-    // Two intermediate (non-final) tool steps of the same batch must not emit.
-    await perStep.emitAtStepEnd(0, false);
-    await perStep.emitAtStepEnd(1, false);
-    expect(persisted).toHaveLength(0);
-
-    // The final step emits the single injection.
-    await perStep.emitAtStepEnd(2, true);
-    expect(persisted).toHaveLength(1);
+    // always=true ⇒ each step's end emits (bypasses the emit-on-change compare).
+    await perStep.emitAtStepEnd(0);
+    await perStep.emitAtStepEnd(1);
+    await perStep.emitAtStepEnd(2);
+    expect(persisted).toHaveLength(3);
+    expect((persisted[0] as { stepIndex: number }).stepIndex).toBe(0);
+    expect((persisted[1] as { stepIndex: number }).stepIndex).toBe(1);
+    expect((persisted[2] as { stepIndex: number }).stepIndex).toBe(2);
   });
 
-  test("still emits when isFinalStep defaults to true (backward compat)", async () => {
+  test("emits only on change when always=false (emit-on-change baseline)", async () => {
     const persisted: unknown[] = [];
-    const perStep = createPerStepSystemInfo(makeCtx(persisted));
+    // Same-day turnStart so step 0's day-granular datetime matches later steps'.
+    const ctx = {
+      ...makeCtx(persisted),
+      additionalSystemInfoAlways: false,
+      turnStartNow: new Date(),
+    };
+    const perStep = createPerStepSystemInfo(ctx);
 
+    // First step: fresh tail ≠ lastEmitted (null) ⇒ emit.
     await perStep.emitAtStepEnd(0);
+    expect(persisted).toHaveLength(1);
+
+    // Second step: content unchanged (day-granular datetime, no manifest/todo
+    // change) ⇒ equal to lastEmitted ⇒ no new injection.
+    await perStep.emitAtStepEnd(1);
     expect(persisted).toHaveLength(1);
   });
 });

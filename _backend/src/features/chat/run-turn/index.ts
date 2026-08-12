@@ -685,15 +685,13 @@ export async function runTurn(
         },
 onStepFinish: async (info) => {
           if (currentStepId != null) {
-            // Build+compare+emit the ASI once per batch: only at the END of the
-            // batch's final step (the step where the model stops calling tools).
-            // Intermediate tool steps do not inject, so we don't emit one per step.
-            // The injection reflects the final step's changes and is persisted
-            // against that step (attributed to the part that caused it), then carried
-            // into a (future) step's request by prepareStep.
+            // Build+compare+emit the ASI at the END of EVERY step (after its tools
+            // executed). The injection reflects THIS step's changes and is persisted
+            // against THIS step (attributed to the part that caused it), then carried
+            // into the next step's request by prepareStep. Emit-on-change decides
+            // whether an injection fires; there is no final-step gating (spec §6.1).
             try {
-              const isFinalStep = info.finishReason !== "tool-calls";
-              await perStep.emitAtStepEnd(info.stepIndex, isFinalStep);
+              await perStep.emitAtStepEnd(info.stepIndex);
             } catch (err) {
               console.error("[asi] emitAtStepEnd failed", err);
             }

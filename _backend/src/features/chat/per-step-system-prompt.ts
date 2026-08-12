@@ -83,15 +83,17 @@ export interface PerStepRebuildContext {
 }
 
 /**
-* The injection is built+compared+emitted at the END of the batch's final step
-  * (after its tools have run) — once per batch, not per intermediate step — so it
-  * reflects the changes that step caused and is attributed to that step.
-  * `prepareStep` (start of the next step) only CARRIES the pending injection from
-  * the previous step's end into the outgoing request.
-  */
+ * The injection is built+compared+emitted at the END of EVERY step (after its
+ * tools have run) — per step, on change (spec §6.1). The emit-on-change
+ * comparison alone decides whether an injection is emitted; there is no
+ * "final step" gating. Each emission reflects the changes the step caused and
+ * is attributed to (persisted under) that step. `prepareStep` (start of the
+ * next step) only CARRIES the pending injection from the previous step's end
+ * into the outgoing request.
+ */
 export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
   prepareStep: PrepareStepFunction<ToolSet>;
-  emitAtStepEnd: (stepNumber: number, isFinalStep?: boolean) => Promise<void>;
+  emitAtStepEnd: (stepNumber: number) => Promise<void>;
 } {
   return {
     prepareStep: async ({ messages }) => {
@@ -122,11 +124,8 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
       return {};
     },
 
-    emitAtStepEnd: async (stepNumber, isFinalStep = true) => {
+    emitAtStepEnd: async (stepNumber) => {
       if (ctx.noSystemPrompt) return;
-      // Emit only once per batch of tool steps, at the batch's final step —
-      // intermediate steps (more tool calls to follow) must not inject.
-      if (isFinalStep === false) return;
       const content = await buildAdditionalSystemInfoBlock({
         dataDir: ctx.dataDir,
         workspaceRoot: ctx.workspaceRoot,

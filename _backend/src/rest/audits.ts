@@ -68,6 +68,42 @@ export async function listAudits(
   );
 }
 
+/** Batch list audits for multiple workspace roots (project scope) or session IDs (session scope).
+ *  Returns a map keyed by workspaceRoot/sessionId to AuditEntry[]. */
+export async function listAuditsBatch(
+  dataDir: string,
+  scope: AuditScope,
+  workspaceRoots?: string[],
+  sessionIds?: string[]
+): Promise<Map<string, AuditEntry[]>> {
+  const results = new Map<string, AuditEntry[]>();
+
+  if (scope === "project" && workspaceRoots?.length) {
+    await Promise.all(
+      workspaceRoots.map(async (root) => {
+        const audits = await listAudits(dataDir, "project", root);
+        results.set(root, audits);
+      })
+    );
+    return results;
+  }
+
+  if (scope === "session" && sessionIds?.length) {
+    await Promise.all(
+      sessionIds.map(async (sid) => {
+        const audits = await listAudits(dataDir, "session", undefined, sid);
+        results.set(sid, audits);
+      })
+    );
+    return results;
+  }
+
+  // Global scope - just return single entry
+  const audits = await listAudits(dataDir, "global");
+  results.set("global", audits);
+  return results;
+}
+
 export interface CreateAuditParams {
   name: string;
   document: AuditDocument;
@@ -395,5 +431,23 @@ export function registerAuditsRoutes(app: FastifyInstance, dataDir: string) {
       if (err instanceof MoveError) return reply.code(err.code).send({ error: err.message });
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  app.post<{
+    Body: { scope?: string; workspaceRoots?: string[]; sessionIds?: string[] };
+  }>("/api/audits/batch", async (request, reply) => {
+    const { scope, workspaceRoots, sessionIds } = request.body;
+    const sc = (scope as AuditScope) || "global";
+    if (sc === "project" && (!workspaceRoots?.length)) {
+      return reply.code(400).send({ error: "workspaceRoots required for project scope" });
+    }
+    if (sc === "session" && (!sessionIds?.length)) {
+      return reply.code(400).send({ error: "sessionIds required for session scope" });
+    }
+    const results = await listAuditsBatch(dataDir, sc, workspaceRoots, sessionIds);
+    // Convert Map to object for JSON serialization
+    const obj: Record<string, AuditEntry[]> = {};
+    for (const [key, value] of results) obj[key] = value;
+    return obj;
   });
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listResearch, listSessions, listWorkspaces } from "../../../lib/api";
+import { listResearch, listResearchBatched, listSessions, listWorkspaces } from "../../../lib/api";
 import type { ResearchGroup, PlanScope } from "../types";
 import { workspaceLabel } from "../types";
 
@@ -49,18 +49,18 @@ export function useResearchDocs({
           if (w?.trim()) roots.add(w.trim());
         }
 
-        const loaded = await Promise.all(
-          [...roots].map(async (root) => {
-            const docs = await listResearch({ scope: "project", workspaceRoot: root });
-            return {
-              key: `project:${root}`,
-              label: workspaceLabel(root),
-              isCurrent: !!current && root === current,
-              docs,
-              location: { scope: "project" as const, workspaceRoot: root },
-            };
-          })
-        );
+        const batchResult = await listResearchBatched({
+          scope: "project",
+          workspaceRoots: [...roots],
+        });
+
+        const loaded = [...roots].map((root) => ({
+          key: `project:${root}`,
+          label: workspaceLabel(root),
+          isCurrent: !!current && root === current,
+          docs: batchResult[root] || [],
+          location: { scope: "project" as const, workspaceRoot: root },
+        }));
 
         const currentGroup = loaded.find((g) => g.isCurrent);
         const others = loaded
@@ -81,20 +81,22 @@ export function useResearchDocs({
       if (currentSessionId) ids.add(currentSessionId);
       for (const s of sessionList) ids.add(s.id);
 
-      const loaded = await Promise.all(
-        [...ids].map(async (sid) => {
-          const docs = await listResearch({ scope: "session", sessionId: sid });
-          const meta = byId.get(sid);
-          const title = meta?.title?.trim() || sid;
-          return {
-            key: `session:${sid}`,
-            label: title,
-            isCurrent: sid === currentSessionId,
-            docs,
-            location: { scope: "session" as const, sessionId: sid },
-          };
-        })
-      );
+      const batchResult = await listResearchBatched({
+        scope: "session",
+        sessionIds: [...ids],
+      });
+
+      const loaded = [...ids].map((sid) => {
+        const meta = byId.get(sid);
+        const title = meta?.title?.trim() || sid;
+        return {
+          key: `session:${sid}`,
+          label: title,
+          isCurrent: sid === currentSessionId,
+          docs: batchResult[sid] || [],
+          location: { scope: "session" as const, sessionId: sid },
+        };
+      });
 
       const currentGroup = loaded.find((g) => g.isCurrent);
       const others = loaded

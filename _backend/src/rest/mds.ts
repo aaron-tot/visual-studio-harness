@@ -4,7 +4,7 @@ import { mkdir, writeFile, stat, rename, rm, readFile, readdir } from "node:fs/p
 import { existsSync } from "node:fs";
 import { getSession } from "../storage/session";
 import { resolveDataDirInfo, getMode } from "../paths";
-import { resolveMdsScopeDir, globalSystemPromptPath } from "../features/mds/paths";
+import { resolveMdsScopeDir, globalSystemPromptPath, projectAgentsMdPath } from "../features/mds/paths";
 import { listAgentsMdAtRoot } from "../features/mds/reader";
 import {
   collectScopeTags,
@@ -261,16 +261,46 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
 
   /** Resolve the global system prompt base + project AGENTS.md paths for the editor (AGENTS.md is separate from MDS items). */
   app.get("/api/mds/agents-paths", async (request) => {
-    const q = request.query as { sessionId?: string };
-    const { dataDir: resolvedDataDir } = resolveDataDirInfo();
-    let wsRoot = "";
-    if (q.sessionId) {
-      const session = await getSession(resolvedDataDir, q.sessionId);
-      if (session) wsRoot = session.meta.workspaceRoot || "";
-    }
+    const q = request.query as { sessionId?: string; workspaceRoot?: string };
+    const { resolvedDataDir, wsRoot } = await resolveMdsContext(q);
     const globalBase = globalSystemPromptPath(resolvedDataDir);
     const workspaceAgents = wsRoot ? (await listAgentsMdAtRoot(wsRoot))[0] ?? null : null;
     return { globalBase, workspaceAgents, workspaceRoot: wsRoot ? resolve(wsRoot) : null };
+  });
+
+  /** Project-scope AGENTS.md (workspace root). Resolves the existing agents.md/AGENTS.md file, else the canonical create path. */
+  app.get("/api/mds/agents-file", async (request, reply) => {
+    const q = request.query as { sessionId?: string; workspaceRoot?: string };
+    const { wsRoot } = await resolveMdsContext(q);
+    if (!wsRoot) return reply.code(400).send({ error: "no workspace selected" });
+
+    const existing = (await listAgentsMdAtRoot(wsRoot))[0];
+    const path = existing ?? projectAgentsMdPath(wsRoot);
+    let content = "";
+    if (existing) {
+      try {
+        content = await readFile(existing, "utf-8");
+      } catch {
+        return reply.code(404).send({ error: "AGENTS.md exists but could not be read" });
+      }
+    }
+    return { path, exists: Boolean(existing), content };
+  });
+
+  /** Write the project-scope AGENTS.md (creates the canonical file when missing). */
+  app.put("/api/mds/agents-file", async (request, reply) => {
+    const q = request.query as { sessionId?: string; workspaceRoot?: string };
+    const body = (request.body || {}) as { content?: string };
+    if (typeof body.content !== "string") return reply.code(400).send({ error: "content required" });
+
+    const { wsRoot } = await resolveMdsContext(q);
+    if (!wsRoot) return reply.code(400).send({ error: "no workspace selected" });
+
+    const existing = (await listAgentsMdAtRoot(wsRoot))[0];
+    const path = existing ?? projectAgentsMdPath(wsRoot);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, body.content, "utf-8");
+    return { ok: true, path };
   });
 
   app.get("/api/mds/scope-read-file", async (request, reply) => {

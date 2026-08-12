@@ -66,6 +66,42 @@ export async function listResearch(
   );
 }
 
+/** Batch list research for multiple workspace roots (project scope) or session IDs (session scope).
+ *  Returns a map keyed by workspaceRoot/sessionId to ResearchEntry[]. */
+export async function listResearchBatch(
+  dataDir: string,
+  scope: ResearchScope,
+  workspaceRoots?: string[],
+  sessionIds?: string[]
+): Promise<Map<string, ResearchEntry[]>> {
+  const results = new Map<string, ResearchEntry[]>();
+
+  if (scope === "project" && workspaceRoots?.length) {
+    await Promise.all(
+      workspaceRoots.map(async (root) => {
+        const docs = await listResearch(dataDir, "project", root);
+        results.set(root, docs);
+      })
+    );
+    return results;
+  }
+
+  if (scope === "session" && sessionIds?.length) {
+    await Promise.all(
+      sessionIds.map(async (sid) => {
+        const docs = await listResearch(dataDir, "session", undefined, sid);
+        results.set(sid, docs);
+      })
+    );
+    return results;
+  }
+
+  // Global scope - just return single entry
+  const docs = await listResearch(dataDir, "global");
+  results.set("global", docs);
+  return results;
+}
+
 export interface CreateResearchParams {
   name: string;
   document: ResearchDoc;
@@ -253,5 +289,23 @@ export function registerResearchRoutes(app: FastifyInstance, dataDir: string) {
     }
     await deleteResearch(name, dataDir, result.sc, workspaceRoot, sessionId);
     return { ok: true };
+  });
+
+  app.post<{
+    Body: { scope?: string; workspaceRoots?: string[]; sessionIds?: string[] };
+  }>("/api/research/batch", async (request, reply) => {
+    const { scope, workspaceRoots, sessionIds } = request.body;
+    const sc = (scope as ResearchScope) || "global";
+    if (sc === "project" && (!workspaceRoots?.length)) {
+      return reply.code(400).send({ error: "workspaceRoots required for project scope" });
+    }
+    if (sc === "session" && (!sessionIds?.length)) {
+      return reply.code(400).send({ error: "sessionIds required for session scope" });
+    }
+    const results = await listResearchBatch(dataDir, sc, workspaceRoots, sessionIds);
+    // Convert Map to object for JSON serialization
+    const obj: Record<string, ResearchEntry[]> = {};
+    for (const [key, value] of results) obj[key] = value;
+    return obj;
   });
 }

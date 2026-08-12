@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { FileText, Edit3, Plus, AlertTriangle, Undo2 } from "lucide-react";
 import type {
   AgentSettings,
@@ -21,10 +21,12 @@ const ATTACHMENT_MODES: { value: "inject" | "hard" | "soft"; label: string; desc
   { value: "soft", label: "Soft", desc: "Reference — use skill tool" },
 ];
 import { useConfigStore } from "../../stores/config";
-import { readMd, getMdsScopePaths, getMdsAgentsPaths, type ScopeItem, type ScopePathEntry } from "../../lib/api";
+import { readMd, getMdsScopePaths, getMdsAgentsPaths, getMdsAgentsFile, type ScopeItem, type ScopePathEntry, type MdsAgentsFile } from "../../lib/api";
 import type { PlanScope } from "../../features/info-panel/types";
 import { MdsEditModal } from "../../features/mds/MdsEditModal";
+import { AgentsMdEditModal } from "../../features/mds/AgentsMdEditModal";
 import { useSessionStore } from "../../stores/sessions";
+import { useChatStore } from "../../stores/chat";
 
 const EFFORTS: ThinkingEffort[] = ["off", "low", "medium", "high"];
 
@@ -55,9 +57,16 @@ export function AgentRuntimeEditor({
   const [customAgentMdPath, setCustomAgentMdPath] = useState("");
 
   const sessionId = useSessionStore((s) => s.activeId ?? s.sessions[0]?.id);
+  // AGENTS.md is a project (workspace) concept: resolve it against the CHAT session's
+  // workspace — the same source the Prompts & Skills MDS view uses — so both settings
+  // panels always agree on which workspace's AGENTS.md they show.
+  const chatSessionId = useChatStore((s) => s.sessionId);
+  const chatWorkspaceRoot = useChatStore((s) => s.workspaceRoot);
   const [globalSystemPromptBasePath, setGlobalSystemPromptBasePath] = useState<string | null>(null);
   const [workspaceAgentsMd, setWorkspaceAgentsMd] = useState<string | null>(null);
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
+  const [agentsFile, setAgentsFile] = useState<MdsAgentsFile | null>(null);
+  const [agentsEditOpen, setAgentsEditOpen] = useState(false);
   const [scopeItems, setScopeItems] = useState<ScopeItem[]>([]);
   const [scopeIndex, setScopeIndex] = useState<Record<string, { scope: PlanScope; relPath: string }>>({});
   const [editTarget, setEditTarget] = useState<{ scope: PlanScope; relPath: string; ext: string } | null>(null);
@@ -86,14 +95,26 @@ export function AgentRuntimeEditor({
     })).then(() => setFileErrors(errors));
   }, [value.agentMd, value.skillMds, sessionId]);
 
-  useEffect(() => {
-    if (!sessionId) return;
-    getMdsAgentsPaths(sessionId).then((paths) => {
+  const refreshWorkspaceAgents = useCallback(() => {
+    const wsSessionId = chatSessionId || sessionId || undefined;
+    const wsRoot = chatWorkspaceRoot || undefined;
+    if (!wsSessionId && !wsRoot) {
+      setAgentsFile(null);
+      return;
+    }
+    getMdsAgentsPaths(wsSessionId, wsRoot).then((paths) => {
       setGlobalSystemPromptBasePath(paths.globalBase);
       setWorkspaceAgentsMd(paths.workspaceAgents);
       setWorkspaceRoot(paths.workspaceRoot);
     }).catch(() => {});
-  }, [sessionId]);
+    getMdsAgentsFile({ sessionId: wsSessionId, workspaceRoot: wsRoot })
+      .then((r) => setAgentsFile(r))
+      .catch(() => setAgentsFile(null));
+  }, [chatSessionId, chatWorkspaceRoot, sessionId]);
+
+  useEffect(() => {
+    refreshWorkspaceAgents();
+  }, [refreshWorkspaceAgents]);
 
   // V2 scope items: tags come from each item's own prompt.json (not folder location).
   useEffect(() => {
@@ -757,12 +778,22 @@ export function AgentRuntimeEditor({
                 )}
               </div>
             </div>
-            {/* AGENTS.md is a separate mechanism (project root, not an MDS scope item) — display only. */}
-            {workspaceAgentsMd && (
-              <span className="shrink-0 rounded border border-zinc-800 px-1.5 py-1 text-[10px] uppercase tracking-wide text-zinc-600">
-                auto-loaded
-              </span>
-            )}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {workspaceAgentsMd && (
+                <span className="rounded border border-zinc-800 px-1.5 py-1 text-[10px] uppercase tracking-wide text-zinc-600">
+                  auto-loaded
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setAgentsEditOpen(true)}
+                disabled={!agentsFile}
+                title={agentsFile ? `Open ${agentsFile.path}` : "Resolving workspace…"}
+                className="shrink-0 rounded bg-zinc-700 px-2 py-1 text-[10px] text-zinc-100 hover:bg-zinc-600 disabled:opacity-40"
+              >
+                {agentsFile ? (agentsFile.exists ? "Edit" : "Create") : "…"}
+              </button>
+            </div>
           </div>
           <p className="mt-1.5 text-[11px] text-zinc-500">
             Project-level rules from AGENTS.md at the workspace root. Tied to the current
@@ -940,11 +971,19 @@ export function AgentRuntimeEditor({
           onClose={() => setEditTarget(null)}
           onSaved={() => {
             setEditTarget(null);
-            getMdsAgentsPaths(sessionId).then((paths) => {
-              setGlobalSystemPromptBasePath(paths.globalBase);
-              setWorkspaceAgentsMd(paths.workspaceAgents);
-            }).catch(() => {});
+            refreshWorkspaceAgents();
           }}
+        />
+      )}
+
+      {agentsEditOpen && agentsFile && (
+        <AgentsMdEditModal
+          path={agentsFile.path}
+          initialContent={agentsFile.content}
+          sessionId={chatSessionId || sessionId || undefined}
+          workspaceRoot={chatWorkspaceRoot || undefined}
+          onClose={() => setAgentsEditOpen(false)}
+          onSaved={refreshWorkspaceAgents}
         />
       )}
 

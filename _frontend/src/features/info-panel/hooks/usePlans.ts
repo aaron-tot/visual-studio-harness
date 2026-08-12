@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listPlans, listSessions, listWorkspaces } from "../../../lib/api";
+import { listPlans, listPlansBatched, listSessions, listWorkspaces } from "../../../lib/api";
 import type { DesignGroup, PlanScope } from "../types";
 import { workspaceLabel } from "../types";
 
@@ -59,22 +59,18 @@ export function usePlans({
           if (w?.trim()) roots.add(w.trim());
         }
 
-        const loaded = await Promise.all(
-          [...roots].map(async (root) => {
-            const designs = await listPlans({
-              scope: "project",
-              workspaceRoot: root,
-            });
-            return {
-              key: `project:${root}`,
-              label: workspaceLabel(root),
-              isCurrent: !!current && root === current,
-              designs,
-              location: { scope: "project" as const, workspaceRoot: root },
-              _root: root,
-            };
-          })
-        );
+        const batchResult = await listPlansBatched({
+          scope: "project",
+          workspaceRoots: [...roots],
+        });
+
+        const loaded = [...roots].map((root) => ({
+          key: `project:${root}`,
+          label: workspaceLabel(root),
+          isCurrent: !!current && root === current,
+          designs: batchResult[root] || [],
+          location: { scope: "project" as const, workspaceRoot: root },
+        }));
 
         // Current first (even if empty); others only if they have ideas.
         const currentGroup = loaded.find((g) => g.isCurrent);
@@ -112,20 +108,22 @@ export function usePlans({
       if (currentSessionId) ids.add(currentSessionId);
       for (const s of sessionList) ids.add(s.id);
 
-      const loaded = await Promise.all(
-        [...ids].map(async (sid) => {
-          const designs = await listPlans({ scope: "session", sessionId: sid });
-          const meta = byId.get(sid);
-          const title = meta?.title?.trim() || sid;
-          return {
-            key: `session:${sid}`,
-            label: title,
-            isCurrent: sid === currentSessionId,
-            designs,
-            location: { scope: "session" as const, sessionId: sid },
-          };
-        })
-      );
+      const batchResult = await listPlansBatched({
+        scope: "session",
+        sessionIds: [...ids],
+      });
+
+      const loaded = [...ids].map((sid) => {
+        const meta = byId.get(sid);
+        const title = meta?.title?.trim() || sid;
+        return {
+          key: `session:${sid}`,
+          label: title,
+          isCurrent: sid === currentSessionId,
+          designs: batchResult[sid] || [],
+          location: { scope: "session" as const, sessionId: sid },
+        };
+      });
 
       const currentGroup = loaded.find((g) => g.isCurrent);
       const others = loaded

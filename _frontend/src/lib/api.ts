@@ -280,9 +280,24 @@ export interface MdsAgentsPaths {
   workspaceRoot: string | null;
 }
 
-export async function getMdsAgentsPaths(sessionId?: string) {
-  return fetchJson<MdsAgentsPaths>(
-    `${BASE}/mds/agents-paths${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""}`
+export async function getMdsAgentsPaths(sessionId?: string, workspaceRoot?: string) {
+  return fetchJson<MdsAgentsPaths>(`${BASE}/mds/agents-paths${mdsScopeQuery({ sessionId, workspaceRoot })}`);
+}
+
+export interface MdsAgentsFile {
+  path: string;
+  exists: boolean;
+  content: string;
+}
+
+export function getMdsAgentsFile(opts: { sessionId?: string; workspaceRoot?: string }) {
+  return fetchJson<MdsAgentsFile>(`${BASE}/mds/agents-file${mdsScopeQuery(opts)}`);
+}
+
+export function writeMdsAgentsFile(opts: { content: string; sessionId?: string; workspaceRoot?: string }) {
+  return fetchJson<{ ok: boolean; path: string }>(
+    `${BASE}/mds/agents-file${mdsScopeQuery(opts)}`,
+    { method: "PUT", body: JSON.stringify({ content: opts.content }) }
   );
 }
 
@@ -641,6 +656,13 @@ export function listPlans(opts?: { scope?: string; workspaceRoot?: string; sessi
   return fetchJson<PlanEntry[]>(`${BASE}/plans${qs ? `?${qs}` : ""}`);
 }
 
+export function listPlansBatched(opts: { scope: string; workspaceRoots?: string[]; sessionIds?: string[] }) {
+  return fetchJson<Record<string, PlanEntry[]>>(`${BASE}/plans/batch`, {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+}
+
 export function createSpecViaApi(body: {
   name: string;
   endGoal?: string;
@@ -908,6 +930,13 @@ export function listNotes(opts?: { scope?: string; workspaceRoot?: string; sessi
   return fetchJson<NoteEntry[]>(`${BASE}/notes${qs ? `?${qs}` : ""}`);
 }
 
+export function listNotesBatched(opts: { scope: string; workspaceRoots?: string[]; sessionIds?: string[] }) {
+  return fetchJson<Record<string, NoteEntry[]>>(`${BASE}/notes/batch`, {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+}
+
 export function createNoteViaApi(body: {
   name: string;
   title: string;
@@ -992,6 +1021,13 @@ export function listAudits(opts?: { scope?: string; workspaceRoot?: string; sess
   if (opts?.sessionId) params.set("sessionId", opts.sessionId);
   const qs = params.toString();
   return fetchJson<AuditEntry[]>(`${BASE}/audits${qs ? `?${qs}` : ""}`);
+}
+
+export function listAuditsBatched(opts: { scope: string; workspaceRoots?: string[]; sessionIds?: string[] }) {
+  return fetchJson<Record<string, AuditEntry[]>>(`${BASE}/audits/batch`, {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
 }
 
 export function createAuditViaApi(body: {
@@ -1139,6 +1175,13 @@ export function listResearch(opts?: {
   if (opts?.sessionId) params.set("sessionId", opts.sessionId);
   const qs = params.toString();
   return fetchJson<ResearchEntry[]>(`${BASE}/research${qs ? `?${qs}` : ""}`);
+}
+
+export function listResearchBatched(opts: { scope: string; workspaceRoots?: string[]; sessionIds?: string[] }) {
+  return fetchJson<Record<string, ResearchEntry[]>>(`${BASE}/research/batch`, {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
 }
 
 export function createResearchViaApi(body: {

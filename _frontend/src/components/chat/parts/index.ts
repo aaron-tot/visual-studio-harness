@@ -5,3 +5,4 @@ export { ToolCallPart } from "./ToolCallPart";
 export { AgentPart } from "./AgentPart";
 export { SubtaskPart } from "./SubtaskPart";
 export { ErrorPart } from "./ErrorPart";
+export { ErrorLogPart } from "./ErrorLogPart";

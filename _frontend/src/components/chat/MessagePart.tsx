@@ -15,6 +15,7 @@ import { ToolCallPart } from "./parts/ToolCallPart";
 import { QuestionPart } from "./parts/QuestionPart";
 import { AgentPart } from "./parts/AgentPart";
 import { SubtaskPart } from "./parts/SubtaskPart";
+import { ErrorLogPart } from "./parts/ErrorLogPart";
 import { MemoSystemInfoBubble } from "./SystemInfoBubble";
 import { isAdditionalSystemInfoPart, extractSystemInfoContent } from "./system-info";
 
@@ -128,9 +129,16 @@ export function MessagePart({ part, allParts, toolCacheByCallId, isStreaming, ag
       );
 
     case "error":
-      // Errors are collected and rendered under the bubble by MessageRow
-      // (data-testid="chat-error"). Skip inline render here.
-      return null;
+      return (
+        <ErrorLogPart
+          message={part.message}
+          raw={part.raw}
+          isCustom={part.isCustom}
+          category={part.category}
+          timestamp={part.timestamp}
+          retries={part.retries}
+        />
+      );
 
     default:
       return null;

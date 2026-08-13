@@ -1,4 +1,5 @@
 import { wsClient } from "../../lib/ws";
+import type { RetryEntry } from "../../../_shared/types";
 import { useChatStore } from "./store";
 import { useSessionViewStore } from "../../stores/sessionView";
 import { useSessionStore } from "../../stores/sessions";
@@ -126,6 +127,8 @@ wsClient.on("done", (data: any) => {
         rawError: bufferedErr.rawError,
         errorIsCustom: bufferedErr.errorIsCustom,
         category: bufferedErr.category,
+        retries: bufferedErr.retries,
+        errorTime: bufferedErr.errorTime,
       });
       return;
     }
@@ -152,12 +155,12 @@ wsClient.on("error", (data: any) => {
   }
   if (awaitingSessionState) {
     chatDebug("error", "buffered (awaiting session state)", { error: data?.error, turnId: data.turnId });
-    bufferDelta({ kind: "error", sessionId: errSid || store.sessionId || "new", error: data?.error || "Unknown error", rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, status: data.status });
+    bufferDelta({ kind: "error", sessionId: errSid || store.sessionId || "new", error: data?.error || "Unknown error", rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, status: data.status, retries: data?.retries, errorTime: data?.errorTime });
     return;
   }
   chatDebug("error", "applied" + (!store.streaming ? " (streaming was false)" : ""), { error: data?.error, turnId: data.turnId, category: data?.category });
   console.error("chat error", data?.error, data?.rawError);
-  store.failStreaming(data?.error || "Unknown error", { modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, status: data.status, category: data?.category });
+  store.failStreaming(data?.error || "Unknown error", { modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, status: data.status, category: data?.category, retries: data?.retries, errorTime: data?.errorTime });
 });
 
 wsClient.on("stream_pulse", (data: any) => {
@@ -170,13 +173,26 @@ wsClient.on("stream_pulse", (data: any) => {
 wsClient.on("retry_start", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
-  useChatStore.getState().setRetryCountdown({
+  const entry: RetryEntry = {
     attempt: data.attempt,
     maxAttempts: data.maxAttempts,
-    totalDelayMs: data.totalDelayMs,
-    remainingMs: data.totalDelayMs,
+    message: data.message ?? data.errorLabel ?? "Retryable error",
+    raw: data.raw,
+    isCustom: data.isCustom,
+    category: data.category,
     errorLabel: data.errorLabel,
-  });
+    errorCode: data.errorCode ?? null,
+    errorTime: data.errorTime ?? new Date().toISOString(),
+    delayMs: data.totalDelayMs ?? 0,
+    wasRetried: true,
+    status: "pending",
+  };
+  const seq = typeof data.seq === "number" ? data.seq : useChatStore.getState().lastSeq + 1;
+  if (awaitingSessionState) {
+    bufferDelta({ kind: "retry_error", sessionId: data.sessionId || useChatStore.getState().sessionId || "new", entry, seq });
+    return;
+  }
+  useChatStore.getState().onRetryError({ entry, seq });
 });
 
 wsClient.on("retry_tick", (data: any) => {

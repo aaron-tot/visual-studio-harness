@@ -20,6 +20,7 @@ import { MessagePart } from "./MessagePart";
 import { TextPart } from "./parts/TextPart";
 import { ThinkingPart } from "./parts/ThinkingPart";
 import { ErrorPart } from "./parts/ErrorPart";
+import { ErrorLogPart } from "./parts/ErrorLogPart";
 import { ContextToolGroup, groupContextParts } from "./tools/ContextToolGroup";
 import { StepToolGroup } from "./tools/StepToolGroup";
 import { groupByStep, type GroupedParts } from "./tools/group-by-step";
@@ -100,11 +101,6 @@ function collectErrors(message: Message): Array<{ message: string; raw?: string;
   if (message.errorDetail?.message) {
     push(message.errorDetail.message, message.errorDetail.raw, message.errorDetail.isCustom);
   }
-  for (const p of message.parts ?? []) {
-    if (p.type === "error") {
-      push(p.message, p.raw, p.isCustom);
-    }
-  }
   if (message.content?.startsWith("[Error:")) {
     push(message.content.replace(/^\[Error:\s*/, "").replace(/\]$/, ""));
   }
@@ -129,9 +125,19 @@ function renderPart(
     );
   }
 
-  // Errors render under the bubble, not inline in the card body
+  // Errors render INSIDE the bubble as a collapsible error log
   if (part.type === "error") {
-    return null;
+    return (
+      <ErrorLogPart
+        key={i}
+        message={part.message}
+        raw={part.raw}
+        isCustom={part.isCustom}
+        category={part.category}
+        timestamp={part.timestamp}
+        retries={part.retries}
+      />
+    );
   }
 
   // Thinking gets its own section
@@ -327,7 +333,7 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
   }
 
   // Single card per assistant turn
-  const bodyParts = message.parts?.filter((p) => p.type !== "error") ?? [];
+  const bodyParts = message.parts ?? [];
   const groupedParts = bodyParts.length ? attachAsiToTools(groupByStep(bodyParts)) : undefined;
   const hasReasoning = message.parts?.some((p) => p.type === "reasoning") ?? false;
   const errors = collectErrors(message);

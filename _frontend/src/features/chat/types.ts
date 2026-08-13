@@ -1,4 +1,4 @@
-import type { Message, MessagePartType, PermissionDecision, SessionMeta, SessionConfig, ThinkingEffort, ToolCallStatus, TurnsFile } from "../../../_shared/types";
+import type { Message, MessagePartType, PermissionDecision, RetryEntry, SessionMeta, SessionConfig, ThinkingEffort, ToolCallStatus, TurnsFile } from "../../../_shared/types";
 
 export interface RetryCountdownState {
   attempt: number;
@@ -64,7 +64,13 @@ export interface ChatState {
     errorIsCustom?: boolean;
     category?: "config" | "auth" | "network" | "streaming" | "server" | "abort" | "unknown";
     status?: string;
+    /** Retry log from the backend (authoritative on final failure). */
+    retries?: RetryEntry[];
+    /** When the final error occurred (ISO). */
+    errorTime?: string;
   }) => void;
+  /** Live retryable-error event: upserts the error part in streamingParts + starts the countdown bar. */
+  onRetryError: (payload: { entry: RetryEntry; seq: number }) => void;
   onToolStart: (e: {
     toolCallId: string;
     toolName: string;
@@ -215,4 +221,7 @@ export type BufferedDelta =
       turnId?: number;
       agentName?: string;
       status?: string;
-    };
+      retries?: RetryEntry[];
+      errorTime?: string;
+    }
+  | { kind: "retry_error"; sessionId: string; entry: RetryEntry; seq: number };

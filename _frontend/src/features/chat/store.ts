@@ -10,6 +10,7 @@ import {
   partsFromSnapshot,
 } from "./parts-util";
 import type { ChatState, RetryCountdownState } from "./types";
+import type { RetryEntry } from "../../../_shared/types";
 import {
   getSession,
   getTurns,
@@ -129,6 +130,44 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setRetryCountdown: (state: RetryCountdownState) => set({ retryCountdown: state }),
   updateRetryCountdown: (remainingMs: number) => set((s) => ({ retryCountdown: s.retryCountdown ? { ...s.retryCountdown, remainingMs } : null })),
   clearRetryCountdown: () => set({ retryCountdown: null }),
+  onRetryError: ({ entry, seq }) => {
+    touchStreamTimeout();
+    return set((state) => {
+      if (seq <= state.lastSeq) return {};
+      const parts = [...state.streamingParts];
+      const idx = parts.findIndex((p) => p.type === "error");
+      const prev = idx >= 0 ? (parts[idx] as { type: "error"; retries?: RetryEntry[] } | undefined) : undefined;
+      // A new failure supersedes the previous pending retry.
+      const retries = (prev?.retries ?? []).map((r) =>
+        r.status === "pending" ? { ...r, status: "failed" as const } : r
+      );
+      retries.push(entry);
+      const errPart = {
+        type: "error" as const,
+        message: entry.message,
+        raw: entry.raw,
+        isCustom: entry.isCustom,
+        category: entry.category,
+        timestamp: entry.errorTime,
+        retries,
+        _seq: seq,
+      };
+      if (idx >= 0) parts[idx] = errPart as any;
+      else parts.push(errPart as any);
+      return {
+        streamingParts: parts,
+        lastSeq: Math.max(state.lastSeq, seq),
+        _partSeq: Math.max(state._partSeq, seq),
+        retryCountdown: {
+          attempt: entry.attempt,
+          maxAttempts: entry.maxAttempts,
+          totalDelayMs: entry.delayMs,
+          remainingMs: entry.delayMs,
+          errorLabel: entry.errorLabel,
+        },
+      };
+    });
+  },
   streamingStartTime: null,
   setStreamingStartTime: (time) => set({ streamingStartTime: time }),
 
@@ -422,7 +461,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       chatDebug("store", "doneStreaming", { turnId, hadContinue: !!hasContinue, nextStreaming: !!hasContinue, wasStopped });
       const msgs = [...state.messages];
       const last = msgs[msgs.length - 1];
-      const parts = state.streamingParts.length > 0 ? sortParts(state.streamingParts) : undefined;
+      // Turn ended — settle any pending retry entries and KEEP the error part
+      // (amber recovered log) so the collapsible survives the committed message.
+      const outcome = wasStopped ? ("aborted" as const) : ("succeeded" as const);
+      const settledParts = state.streamingParts.map((p) => {
+        if (p.type !== "error" || !p.retries || p.retries.length === 0) return p;
+        return {
+          ...p,
+          retries: p.retries.map((r) => (r.status === "pending" ? { ...r, status: outcome } : r)),
+        };
+      });
+      const parts = settledParts.length > 0 ? sortParts(settledParts) : undefined;
       const content = parts ? textContentFromParts(parts) : "";
       const effectiveAgentName = agentName || state._pendingAgentName || last?.agentName;
       const effectiveModelName = modelName || state._pendingModelName || last?.modelName;
@@ -457,11 +506,41 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const raw = meta?.rawError?.trim();
       const isCustom = meta?.errorIsCustom === true && !!raw && raw !== errText;
       const category = meta?.category;
-      const errorPart = { type: "error" as const, message: errText, raw: isCustom ? raw : undefined, isCustom, category };
       const errLine = `[Error: ${errText}]`;
       const msgs = [...state.messages];
       let parts = state.streamingParts.length > 0 ? sortParts(state.streamingParts) : [];
-      parts = [...parts, errorPart as any];
+      // Merge the backend retry log into the error part (authoritative), else fall
+      // back to entries accumulated live; settle pending as failed.
+      const backendRetries = (meta?.retries ?? []).map((r) =>
+        r.status === "pending" ? { ...r, status: "failed" as const } : r
+      );
+      const errIdx = parts.findIndex((p) => p.type === "error");
+      if (errIdx >= 0) {
+        const existing = parts[errIdx] as { type: "error"; message: string; raw?: string; isCustom?: boolean; category?: string; timestamp?: string; retries?: RetryEntry[] };
+        const mergedRetries = backendRetries.length > 0
+          ? backendRetries
+          : (existing.retries ?? []).map((r) => (r.status === "pending" ? { ...r, status: "failed" as const } : r));
+        parts[errIdx] = {
+          ...existing,
+          message: errText,
+          raw: isCustom ? raw : undefined,
+          isCustom,
+          category,
+          timestamp: meta?.errorTime ?? existing.timestamp ?? new Date().toISOString(),
+          ...(mergedRetries.length > 0 ? { retries: mergedRetries } : {}),
+        } as any;
+      } else {
+        const errorPart = {
+          type: "error" as const,
+          message: errText,
+          raw: isCustom ? raw : undefined,
+          isCustom,
+          category,
+          timestamp: meta?.errorTime ?? new Date().toISOString(),
+          ...(backendRetries.length > 0 ? { retries: backendRetries } : {}),
+        };
+        parts = [...parts, errorPart as any];
+      }
       const streamed = textContentFromParts(parts);
       const content = streamed ? `${streamed}\n\n${errLine}` : errLine;
       const last = msgs[msgs.length - 1];

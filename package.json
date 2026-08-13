@@ -15,7 +15,7 @@
     "build:installer": "bun run scripts/build-prod.ts --type=installer",
     "build:linux": "bun run scripts/build-prod.ts --target=bun-linux-x64-modern",
     "build:win": "bun run scripts/build-prod.ts --target=bun-windows-x64-modern",
-    "typecheck": "tsc --noEmit --skipLibCheck",
+    "typecheck": "tsc --build",
     "build:all": "DATA_DIR=../data/prod PACKAGE_DIR=../data/package bun run scripts/build-prod.ts --target=bun-linux-x64-modern && DATA_DIR=../data/prod PACKAGE_DIR=../data/package bun run scripts/build-prod.ts --target=bun-linux-arm64 && DATA_DIR=../data/prod PACKAGE_DIR=../data/package bun run scripts/build-prod.ts --target=bun-windows-x64-modern && DATA_DIR=../data/prod PACKAGE_DIR=../data/package bun run scripts/build-prod.ts --target=bun-windows-arm64"
   },
   "devDependencies": {

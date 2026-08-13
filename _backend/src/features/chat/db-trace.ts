@@ -11,6 +11,7 @@ import {
   toolsSnapshots,
 } from "../../db/schema";
 import type { TraceTurn, TraceStep, TraceStepPart } from "../../../../_shared/types/trace";
+import type { RetryEntry } from "../../../../_shared/types";
 
 function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
@@ -667,62 +668,71 @@ export function getActiveTraceTurn(sessionId: string, dataDir?: string): TraceTu
   return row as unknown as TraceTurn;
 }
 
-// ── Retry logging ─────────────────────────────────────────────────────
+// ── Retry/error part persistence ──────────────────────────────────────
 
-export interface RetryLogEntry {
-  attempt: number;
-  maxAttempts: number;
-  errorLabel: string;
-  errorCode: number | null;
-  errorRaw: string;
-  wasRetried: boolean;
-  rateLimited: boolean;
-  delayMs: number;
-  timestamp: string;
-}
-
-/** Insert a retry log entry as a step part for audit trail */
-export function insertRetryLog(
-  sessionId: string,
-  turnId: number,
-  stepId: number | null,
-  entry: RetryLogEntry,
-  dataDir?: string,
-): number {
-  const db = dbFor(dataDir);
-  const result = db
-    .insert(stepParts)
-    .values({
-      sessionId,
-      turnId,
-      stepId,
-      type: "retry",
-      seq: 999999, // high seq to appear last in step
-      status: "completed",
-      data: JSON.stringify(entry),
-      toolCallId: null,
-      toolName: null,
-      parentToolCallId: null,
-      createdAt: entry.timestamp,
-    })
-    .returning({ id: stepParts.id })
-    .get();
-  return result.id;
-}
-
-/**
- * Check if a turn has an open step to attach retry logs to.
- * Returns the current step ID if one is streaming, null otherwise.
- */
-export function getCurrentStreamingStepId(turnId: number, dataDir?: string): number | null {
+/** ID of the most recent step row for a turn (null when the turn has no steps). */
+export function getLastStepId(turnId: number, dataDir?: string): number | null {
   const db = dbFor(dataDir);
   const row = db
     .select({ id: steps.id })
     .from(steps)
-    .where(and(eq(steps.turnId, turnId), eq(steps.status, "streaming")))
+    .where(eq(steps.turnId, turnId))
     .orderBy(desc(steps.id))
+    .limit(1)
     .get();
   return row?.id ?? null;
+}
+
+/**
+ * Persist a turn's retry/error log as a single custom part (type "error").
+ * Written at turn finalization so it survives the per-attempt part wipe
+ * (clearTurnSteps on retry). Idempotent: no-op when retries is empty or an
+ * "error" part already exists for the turn. Attached to the turn's last step,
+ * or a synthetic audit step when the final attempt produced no steps.
+ */
+export function persistRetryLogPart(
+  sessionId: string,
+  turnId: number,
+  retries: RetryEntry[],
+  dataDir?: string,
+): void {
+  if (!retries || retries.length === 0) return;
+  const db = dbFor(dataDir);
+
+  const existing = db
+    .select({ id: stepParts.id })
+    .from(stepParts)
+    .where(and(eq(stepParts.turnId, turnId), eq(stepParts.type, "error")))
+    .limit(1)
+    .get();
+  if (existing) return;
+
+  let stepId = getLastStepId(turnId, dataDir);
+  if (stepId == null) {
+    stepId = createStep(turnId, sessionId, 0, undefined, dataDir);
+    finalizeStep(stepId, { finishReason: "error" }, dataDir);
+  }
+
+  const seqRow = db
+    .select({ m: max(stepParts.seq) })
+    .from(stepParts)
+    .where(eq(stepParts.turnId, turnId))
+    .get();
+  const seq = Number(seqRow?.m ?? 0) + 1;
+
+  const last = retries[retries.length - 1];
+  insertStepPart(
+    sessionId, turnId, stepId, "error",
+    {
+      message: last.message,
+      raw: last.raw ?? undefined,
+      isCustom: last.isCustom ?? undefined,
+      category: last.category ?? undefined,
+      errorTime: last.errorTime,
+      retries,
+    },
+    seq, "completed", undefined, dataDir,
+  );
 }
 
 /**

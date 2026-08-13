@@ -27,6 +27,7 @@ import {
   recomputeSessionUsage,
   getActiveTraceTurn,
   sessionHasTurns,
+  persistRetryLogPart,
 } from "./db-trace";
 import { createStepStreamWriter } from "./persist-stream";
 import { createSession } from "../sessions/db";
@@ -448,5 +449,44 @@ describe("trace repository", () => {
     expect(row).not.toBeNull();
     expect(row!.success === false || row!.success === 0 || row!.success == null).toBe(true);
     expect(row!.status).toBe("aborted");
+  });
+});
+
+describe("persistRetryLogPart (custom error part)", () => {
+  test("writes one error part with the retry log, attached to the last step, idempotent", () => {
+    const tId = createTurn(SESSION_ID, 500, "retry part", new Date().toISOString(), {}, dataDir);
+    const stepId = createStep(tId, SESSION_ID, 0, undefined, dataDir);
+    finalizeStep(stepId, { finishReason: "stop" }, dataDir);
+    insertStepPart(SESSION_ID, tId, stepId, "text", { content: "hi" }, 1, "completed", undefined, dataDir);
+
+    const retries = [
+      { attempt: 1, maxAttempts: 3, message: "connection reset", errorLabel: "connection reset", errorCode: null, errorTime: new Date().toISOString(), delayMs: 2000, wasRetried: true, status: "failed" as const },
+      { attempt: 2, maxAttempts: 3, message: "connection reset", errorLabel: "connection reset", errorCode: null, errorTime: new Date().toISOString(), delayMs: 5000, wasRetried: true, status: "succeeded" as const },
+    ];
+    persistRetryLogPart(SESSION_ID, tId, retries, dataDir);
+    persistRetryLogPart(SESSION_ID, tId, retries, dataDir); // idempotent
+
+    const errParts = listStepPartsForTurn(tId, dataDir).filter((p) => p.type === "error");
+    expect(errParts).toHaveLength(1);
+    const data = JSON.parse(errParts[0].data);
+    expect(data.message).toBe("connection reset");
+    expect(data.retries).toHaveLength(2);
+    expect(data.retries.map((r: { status: string }) => r.status)).toEqual(["failed", "succeeded"]);
+    expect(errParts[0].seq).toBe(2); // maxSeq(1) + 1
+    expect(errParts[0].stepId).toBe(stepId);
+  });
+
+  test("creates a synthetic completed step when the turn has none", () => {
+    const tId = createTurn(SESSION_ID, 501, "retry part no step", new Date().toISOString(), {}, dataDir);
+    persistRetryLogPart(SESSION_ID, tId, [
+      { attempt: 1, maxAttempts: 3, message: "timeout", errorLabel: "timeout", errorCode: null, errorTime: new Date().toISOString(), delayMs: 0, wasRetried: false, status: "failed" as const },
+    ], dataDir);
+
+    const errParts = listStepPartsForTurn(tId, dataDir).filter((p) => p.type === "error");
+    expect(errParts).toHaveLength(1);
+    const stepsForTurn = listStepsForTurn(tId, dataDir);
+    expect(stepsForTurn).toHaveLength(1);
+    expect(stepsForTurn[0].status).toBe("completed");
+    expect(errParts[0].stepId).toBe(stepsForTurn[0].id);
   });
 });

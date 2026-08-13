@@ -1,5 +1,45 @@
 import type { ToolCallStatus } from "./tools";
 
+/** Stable error category for display routing (shared backend + frontend). */
+export type ErrorCategory =
+  | "config"       // Invalid provider/model/config
+  | "auth"         // API key / auth failure
+  | "network"      // Connection / DNS / timeout
+  | "streaming"    // LLM streaming failure
+  | "server"       // Backend / provider 5xx
+  | "abort"        // User-cancelled
+  | "unknown";
+
+/**
+ * One failed stream attempt (a retryable error event). `status` describes the
+ * OUTCOME OF THE RETRY THAT FOLLOWED this failure:
+ * - "pending"   — a retry is queued/in-flight right now
+ * - "succeeded" — the following attempt completed the turn
+ * - "failed"    — the following attempt failed too, or no retry was left
+ * - "aborted"   — the user stopped during the retry wait
+ */
+export interface RetryEntry {
+  /** 1-based index of the failed attempt. */
+  attempt: number;
+  maxAttempts: number;
+  /** Friendly error message shown to the user. */
+  message: string;
+  /** Raw provider/SDK error text (toggle in UI). */
+  raw?: string;
+  isCustom?: boolean;
+  category?: ErrorCategory;
+  /** Retryable classification label (e.g. "connection reset", "429"). */
+  errorLabel: string;
+  errorCode: number | null;
+  /** ISO timestamp of when this failure occurred. */
+  errorTime: string;
+  /** Wait before the retry that followed (0 = not retried). */
+  delayMs: number;
+  wasRetried: boolean;
+  rateLimited?: boolean;
+  status: "pending" | "succeeded" | "failed" | "aborted";
+}
+
 export type MessagePartType =
   | { type: "text"; content: string; _seq?: number }
   | { type: "tool"; toolCallId: string; toolName: string; status: ToolCallStatus; args: unknown; result?: unknown; error?: string; parentToolCallId?: string; taskId?: string; stepIndex?: number; _seq?: number }
@@ -12,7 +52,18 @@ export type MessagePartType =
   | { type: "subtask"; label: string; _seq?: number }
   | { type: "patch"; files: string[]; hash: string; _seq?: number }
   | { type: "question"; questions: string[]; _seq?: number }
-  | { type: "error"; message: string; raw?: string; isCustom?: boolean; _seq?: number };
+  | {
+      type: "error";
+      message: string;
+      raw?: string;
+      isCustom?: boolean;
+      category?: ErrorCategory;
+      /** When the error occurred (ISO). */
+      timestamp?: string;
+      /** Ordered retry log for this turn's failures (persisted with the part). */
+      retries?: RetryEntry[];
+      _seq?: number;
+    };
 
 export interface Message {
   id?: number;

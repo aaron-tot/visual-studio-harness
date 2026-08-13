@@ -2,6 +2,7 @@ import type { PermissionDecision, ToolCallStatus } from "./tools";
 import type { SessionMeta, ThinkingEffort } from "./session";
 import type { ConfigFile } from "./config";
 import type { StepToolCall, StepToolBatchResult } from "./step-batch";
+import type { ErrorCategory, RetryEntry } from "./message";
 
 export type WsClientMessage =
   | { type: "chat"; sessionId: string; content: string; workspaceRoot?: string; agentName?: string | null }
@@ -16,7 +17,7 @@ export type WsClientMessage =
 export type WsServerMessage =
   | { type: "token"; sessionId: string; content: string }
   | { type: "done"; sessionId: string }
-  | { type: "error"; sessionId: string; error: string; rawError?: string; errorIsCustom?: boolean }
+  | { type: "error"; sessionId: string; error: string; rawError?: string; errorIsCustom?: boolean; retries?: RetryEntry[] }
   | { type: "config_updated"; config: ConfigFile }
   | { type: "session_created"; session: SessionMeta }
   | { type: "session_updated"; session: SessionMeta }
@@ -34,6 +35,6 @@ export type WsServerMessage =
   | { type: "agent_change_request"; sessionId: string; requestId: string; toolCallId?: string; suggestedAgent: string; reason: string; agents: Array<{ name: string; isCurrent: boolean }> }
   | { type: "session_stream_start"; sessionId: string }
   | { type: "session_stream_end"; sessionId: string; success?: boolean }
-  | { type: "retry_start"; sessionId: string; attempt: number; maxAttempts: number; totalDelayMs: number; errorLabel: string }
+  | { type: "retry_start"; sessionId: string; attempt: number; maxAttempts: number; totalDelayMs: number; errorLabel: string; seq: number; message: string; raw?: string; isCustom?: boolean; category?: ErrorCategory; errorTime: string }
   | { type: "retry_tick"; sessionId: string; remainingMs: number }
   | { type: "retry_end"; sessionId: string; aborted: boolean };

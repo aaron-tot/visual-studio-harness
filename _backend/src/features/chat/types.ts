@@ -4,6 +4,7 @@ import type {
   HookContext,
   Message,
   MessagePartType,
+  RetryEntry,
   SessionKind,
   SessionMeta,
   ThinkingEffort,
@@ -52,6 +53,8 @@ export interface TurnEvents {
   onToolBatchEnd?: (e: StepToolBatchAfterPayload) => void | Promise<void>;
   /** Called after a step is finalized & persisted (used to refresh live usage/stats). */
   onStepEnd?: (e: { stepIndex?: number }) => void | Promise<void>;
+  /** Called when a retryable failure is recorded (before the retry wait). seq is turn-global. */
+  onRetryError?: (e: { entry: RetryEntry; seq: number }) => void;
   /** Called when the reasoning/thinking phase ends (text, tool, or step finish after reasoning). */
   onThinkingEnd?: () => void | Promise<void>;
   askPermission?: (toolName: string, args: unknown, callId: string) => Promise<boolean>;
@@ -84,6 +87,8 @@ export interface TurnResult {
   durationMs?: number;
   turnId?: number;
   success?: boolean;
+  /** Retry log for the turn's failures (forwarded in the WS error event). */
+  retries?: RetryEntry[];
 }
 
 export type OpenStreamPart = {

@@ -16,8 +16,12 @@ import type { WebSocket } from "ws";
 import { sendToSession } from "../sessions/view-tracker";
 import { classifyLlmError, isAbortError } from "../../llm/errors";
 import { chatDebug } from "./debug";
+import type { ErrorCategory, RetryEntry } from "../../../../_shared/types";
 
 // ── Types ────────────────────────────────────────────────────────────────
+
+/** Categories the frontend can use to display errors appropriately. (Shared with _shared.) */
+export type { ErrorCategory };
 
 export interface ErrorInfo {
   error?: string | null;
@@ -26,16 +30,6 @@ export interface ErrorInfo {
   /** Optional stable category for frontend display routing. */
   category?: ErrorCategory;
 }
-
-/** Categories the frontend can use to display errors appropriately. */
-export type ErrorCategory =
-  | "config"       // Invalid provider/model/config
-  | "auth"         // API key / auth failure
-  | "network"      // Connection / DNS / timeout
-  | "streaming"    // LLM streaming failure
-  | "server"       // Backend / provider 5xx
-  | "abort"        // User-cancelled
-  | "unknown";
 
 // ── Error classification ─────────────────────────────────────────────────
 
@@ -100,6 +94,7 @@ export function emitErrorAndDone(
   modelName?: string,
   providerName?: string,
   durationMs?: number,
+  retries?: RetryEntry[],
 ): void {
   const { error, rawError, errorIsCustom, category } = info;
 
@@ -113,6 +108,7 @@ export function emitErrorAndDone(
     errorIsCustom: errorIsCustom ?? undefined,
   };
   if (category) errPayload.category = category;
+  if (retries && retries.length > 0) errPayload.retries = retries;
   sendJson(socket, errPayload);
 
   // Always deliver done so the frontend never hangs on "Thinking".
@@ -129,6 +125,7 @@ export function emitErrorAndDone(
       errorIsCustom: errorIsCustom ?? undefined,
     };
     if (category) sessionErrPayload.category = category;
+    if (retries && retries.length > 0) sessionErrPayload.retries = retries;
     sendToSession(sessionId, sessionErrPayload);
     sendToSession(sessionId, { type: "done", sessionId, ...(turnId != null ? { turnId } : {}), agentName, modelName, providerName, durationMs });
   }

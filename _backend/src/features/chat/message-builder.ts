@@ -241,6 +241,11 @@ export async function buildModelMessages(
             }
             break;
           }
+          // Custom UI-only part types (retry/error log) — stripped before the SDK:
+          // the provider/model never sees them, regardless of includeOtherParts.
+          case "error":
+          case "retry":
+            break;
           default: {
             if (options.includeOtherParts) {
               const text = typeof data.content === "string" ? data.content : JSON.stringify(data);

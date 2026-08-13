@@ -19,7 +19,7 @@ import { waitForSlotBusyDecision } from "../subagents/slot-busy-wait";
 import { waitForAgentChange } from "../tools/agent-change-wait";
 import { buildHookContext, getBus } from "../hooks";
 import type { SessionAbortPayload } from "../hooks";
-import { isAbortError } from "../../llm/errors";
+import { isAbortError, LlmError } from "../../llm/errors";
 import { updateSessionMeta } from "../sessions/store";
 import type { TurnResult } from "./types";
 import {
@@ -56,7 +56,7 @@ export async function handleSessionUpdate(msg: SessionUpdateWsMessage, dataDir: 
   return updateSessionMeta(dataDir, msg.sessionId, fields);
 }
 
-function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined, announceStreamStart: () => void): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate" | "onToolBatchStart" | "onToolBatchEnd" | "onStepEnd" | "onThinkingEnd" | "announceStreamStart"> {
+function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined, announceStreamStart: () => void): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate" | "onToolBatchStart" | "onToolBatchEnd" | "onStepEnd" | "onThinkingEnd" | "announceStreamStart" | "onRetryError"> {
   return {
     onToken: (token, seq, tps) => { const sid = getSessionId(); sendToSession(sid, { type: "token", sessionId: sid, content: token, seq, ...(tps != null ? { tps } : {}) }); },
     onReasoning: (delta, seq, tps) => { const sid = getSessionId(); sendToSession(sid, { type: "reasoning", sessionId: sid, content: delta, seq, ...(tps != null ? { tps } : {}) }); },
@@ -67,6 +67,23 @@ function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | 
     onToolBatchEnd: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_end", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls.map((t) => ({ toolCallId: t.toolCallId, toolName: t.toolName, result: t.result, status: t.isError ? "error" : "completed" })) }); },
     onStepEnd: (e) => { const sid = getSessionId(); const tid = getTurnId(); sendToSession(sid, { type: "step_end", sessionId: sid, stepIndex: e.stepIndex, ...(tid != null ? { turnId: tid } : {}) }); },
     onThinkingEnd: () => { const sid = getSessionId(); sendToSession(sid, { type: "thinking_end", sessionId: sid }); },
+    onRetryError: ({ entry, seq }) => {
+      const sid = getSessionId();
+      sendToSession(sid, {
+        type: "retry_start",
+        sessionId: sid,
+        attempt: entry.attempt,
+        maxAttempts: entry.maxAttempts,
+        totalDelayMs: entry.delayMs,
+        errorLabel: entry.errorLabel,
+        seq,
+        message: entry.message,
+        ...(entry.raw ? { raw: entry.raw } : {}),
+        ...(entry.isCustom != null ? { isCustom: entry.isCustom } : {}),
+        ...(entry.category ? { category: entry.category } : {}),
+        errorTime: entry.errorTime,
+      });
+    },
     announceStreamStart,
   };
 }
@@ -176,7 +193,7 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
         rawError: result.rawError,
         errorIsCustom: result.errorIsCustom,
         category: "streaming",
-      }, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs);
+      }, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs, result.retries);
     } else {
       emitDoneOnly(socket, result.sessionId, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs);
     }
@@ -228,8 +245,9 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
         provider: msg.providerName,
         model: msg.modelName,
       });
+      const errRetries = err instanceof LlmError ? err.retries : undefined;
       // Send directly to the originating socket — always guaranteed safe.
-      emitErrorAndDone(socket, effectiveSessionId, info, streamingTurnId);
+      emitErrorAndDone(socket, effectiveSessionId, info, streamingTurnId, undefined, undefined, undefined, undefined, errRetries);
     } else {
       // For abort errors, still send done so the frontend un-sticks
       emitDoneOnly(socket, effectiveSessionId, streamingTurnId);

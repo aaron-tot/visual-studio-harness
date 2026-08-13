@@ -713,6 +713,10 @@ function replayStepPartsToMessages(
         }
         break;
       }
+      // Custom UI-only part types (retry/error log) — stripped before the SDK.
+      case "error":
+      case "retry":
+        break;
       default: {
         if (opts.includeOther) {
           const text = typeof data.content === "string" ? data.content : JSON.stringify(data);

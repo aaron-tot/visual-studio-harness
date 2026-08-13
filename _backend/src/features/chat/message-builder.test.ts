@@ -184,6 +184,32 @@ describe("buildModelMessages tool parts", () => {
   });
 });
 
+describe("buildModelMessages custom part stripping", () => {
+  test("error/retry parts never reach the model, even with includeOtherParts", async () => {
+    const tId = await makeTurn(
+      30,
+      [
+        { type: "text", data: { content: "ok text" } },
+        { type: "error", data: { message: "conn reset", retries: [{ attempt: 1, status: "failed" }] } },
+        { type: "retry", data: { attempt: 1 } },
+      ],
+      true,
+    );
+    const { messages } = await buildModelMessages(
+      SESSION_ID,
+      "sys",
+      options({ contextTurnIds: [tId], includeOtherParts: true, currentTurnNumber: 31, currentUserMessage: "current" }),
+      dataDir,
+    );
+
+    const assistant = messages.find((m) => m.role === "assistant");
+    expect(assistant?.content).not.toContainEqual(expect.objectContaining({ type: "error" } as any));
+    expect(assistant?.content).not.toContainEqual(expect.objectContaining({ type: "retry" } as any));
+    expect(JSON.stringify(assistant?.content)).not.toContain("conn reset");
+    expect(JSON.stringify(assistant?.content)).toContain("ok text");
+  });
+});
+
 describe("buildModelMessages additional_system_info replay", () => {
   const stored = "<additional_system_info>\n<runtime>1.2.3</runtime>\n</additional_system_info>";
 

@@ -35,6 +35,7 @@ import { getWorkspaceGraphManager } from "../../../core/workspaceGraph/service-s
 import type { WorkspaceGraphService } from "../../../core/workspaceGraph/api/types";
 import { createStepStreamWriter } from "../persist-stream";
 import { buildErrorAssistantMessage } from "../turn-errors";
+import type { RetryEntry } from "../../../../../_shared/types";
 import { createTpsTracker } from "../thinking-tps";
 import {
   getNextTurnNumber,
@@ -53,6 +54,7 @@ import {
   updateTurnConfigSnapshot,
   updateTurnPricing,
   writeStepRaw,
+  persistRetryLogPart,
 } from "../db-trace";
 import { getModelPricing } from "../../pricing/models-dev";
 import { computeCostUsd } from "../../../../../_shared/types/config";
@@ -313,6 +315,11 @@ export async function runTurn(
 
   const sessionAbortController = new AbortController();
   registerSession(sessionId, sessionAbortController, traceTurnId);
+
+  /** Persist the turn's retry/error log as an "error" part (no-op when empty). */
+  const persistRetries = (retries: RetryEntry[] | undefined) => {
+    if (retries && retries.length > 0) persistRetryLogPart(sessionId, traceTurnId, retries, dataDir);
+  };
 
   // Resolve workspace graph service for this session's workspaceRoot (lazy init if needed)
   let graphService: WorkspaceGraphService | undefined;
@@ -610,13 +617,19 @@ export async function runTurn(
         onRetryAttempt: () => {
           if (traceTurnId != null) {
             clearTurnSteps(traceTurnId, dataDir);
-            partSeq = 0;
+            // NOTE: partSeq intentionally NOT reset — the frontend lastSeq keeps
+            // climbing during the live turn, so seq must stay monotonic across
+            // retries or post-retry tokens/events get dropped by the seq guard.
             stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
             stepIdByIndex = {};
             perStepCtx.pendingInjection = null;
             perStepCtx.lastEmitted = systemAsiBaseline;
             lastPreparedBlock = systemBlock;
           }
+        },
+        onRetryError: (entry) => {
+          const seq = ++partSeq;
+          events.onRetryError?.({ entry, seq });
         },
         onToken: (token) => {
           if (turnEnded) return;
@@ -846,6 +859,7 @@ onStepFinish: async (info) => {
         `Set Settings > Agents > Subagent to a tool-capable model.`;
       const rawEmpty = (rawResponse && JSON.stringify(rawResponse)) || "SDK returned no text, tool, or reasoning output";
       const errInfo: LlmErrorInfo = { message: error, raw: rawEmpty, isCustom: true, kind: "unknown" };
+      persistRetries(streamResult.retries);
       finalizeTurnTrace(traceTurnId, { success: false, errorMessage: error, errorRaw: rawEmpty, errorIsCustom: true }, dataDir, streamResult.steps);
       await bus?.emit("turn.error", hookCtx, { sessionId, error, durationMs: Date.now() - turnStarted });
       unregisterSession(sessionId);
@@ -854,6 +868,7 @@ onStepFinish: async (info) => {
         assistantMessage: buildErrorAssistantMessage(errInfo, { modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber }),
         error: errInfo.message, rawError: errInfo.raw, errorIsCustom: errInfo.isCustom,
         modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber, success: false,
+        retries: streamResult.retries,
       };
     }
 
@@ -862,6 +877,7 @@ onStepFinish: async (info) => {
       const msg = streamError.trim();
       const errInfo: LlmErrorInfo = { message: msg, raw, isCustom: streamErrorIsCustom === true && raw !== msg, kind: "unknown" };
       await bus?.emit("turn.error", hookCtx, { sessionId, error: errInfo.message, durationMs: Date.now() - turnStarted });
+      persistRetries(streamResult.retries);
       finalizeTurnTrace(traceTurnId, { success: false, errorMessage: errInfo.message, errorRaw: errInfo.raw, errorIsCustom: errInfo.isCustom }, dataDir, streamResult.steps);
       unregisterSession(sessionId);
       return {
@@ -869,6 +885,7 @@ onStepFinish: async (info) => {
         assistantMessage: buildErrorAssistantMessage(errInfo, { modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber, priorContent: fullContent }),
         error: errInfo.message, rawError: errInfo.raw, errorIsCustom: errInfo.isCustom,
         modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber, success: false,
+        retries: streamResult.retries,
       };
     }
 
@@ -892,7 +909,11 @@ onStepFinish: async (info) => {
         errorRaw: streamResult.rawError,
         errorIsCustom: streamResult.errorIsCustom,
       });
+      persistRetries((streamResult.retries ?? []).map((r) =>
+        r.status === "pending" ? { ...r, status: "aborted" as const } : r
+      ));
     } else {
+      persistRetries(streamResult.retries);
       finalizeTurnTrace(traceTurnId, {
         success: true,
         finishReason: streamResult.finishReason ?? (lastStepFr != null ? String(lastStepFr) : "stop"),
@@ -935,6 +956,8 @@ onStepFinish: async (info) => {
     // actual message survives a reload. (Previously mis-labeled "aborted" with a null
     // errorMessage, which hid the OpenRouter/provider 400 details after refresh.)
     const errInfo: LlmErrorInfo = err instanceof LlmError ? err.toInfo() : classifyLlmError(err, { provider: provider.displayName, model: model.displayName });
+    const errRetries = err instanceof LlmError ? err.retries : undefined;
+    persistRetries(errRetries);
     finalizeTurnTrace(traceTurnId, { success: false, errorMessage: errInfo.message, errorRaw: errInfo.raw, errorIsCustom: errInfo.isCustom }, dataDir);
     unregisterSession(sessionId);
     await bus?.emit("turn.error", hookCtx, { sessionId, error: errInfo.message, durationMs: Date.now() - turnStarted });
@@ -946,6 +969,7 @@ onStepFinish: async (info) => {
       assistantMessage: errAssistantMsg,
       error: errInfo.message, rawError: errInfo.raw, errorIsCustom: errInfo.isCustom,
       modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber, success: false,
+      retries: errRetries,
     };
   }
 }

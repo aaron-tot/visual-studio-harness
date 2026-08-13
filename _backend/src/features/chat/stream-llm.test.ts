@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { streamChat, normalizeHeaders } from "./stream-llm";
 import { createMockFullStream } from "../../llm/mock-models";
-import type { ProviderConfig } from "../../../../_shared/types";
+import { LlmError } from "../../llm/errors";
+import type { ProviderConfig, RetryEntry } from "../../../../_shared/types";
 
 const testProvider: ProviderConfig = {
   displayName: "Test",
@@ -70,7 +71,8 @@ describe("stream-llm step awareness", () => {
 
   test("retries on thrown 'Streaming response failed' and exhausts after maxAttempts", async () => {
     const retryCalls: number[] = [];
-    let threw = false;
+    const retryErrors: RetryEntry[] = [];
+    let caught: unknown;
     try {
       await streamChat({
         provider: testProvider,
@@ -84,13 +86,24 @@ describe("stream-llm step awareness", () => {
         streamRetryDelayMs: 1,
         onToken: () => {},
         onRetryAttempt: (a) => retryCalls.push(a),
+        // Copy: the backend mutates its in-memory entry to "failed" when a later
+        // attempt fails (the WS event already serialized the pending snapshot).
+        onRetryError: (entry) => retryErrors.push({ ...entry }),
       });
-    } catch {
-      threw = true;
+    } catch (err) {
+      caught = err;
     }
-    expect(threw).toBe(true);
+    expect(caught).toBeInstanceOf(LlmError);
     // 1 initial attempt + 2 retries => onRetryAttempt fires for attempts 1 and 2
     expect(retryCalls).toEqual([1, 2]);
+    // Retry log attached to the thrown error: both attempts failed, both retried.
+    const retries = (caught as LlmError).retries ?? [];
+    expect(retries.map((r) => r.attempt)).toEqual([1, 2]);
+    expect(retries.map((r) => r.status)).toEqual(["failed", "failed"]);
+    expect(retries.every((r) => r.wasRetried)).toBe(true);
+    // Live callback fired per recorded failure with a pending entry.
+    expect(retryErrors).toHaveLength(2);
+    expect(retryErrors[0]).toMatchObject({ attempt: 1, status: "pending", wasRetried: true });
   });
 
   test("retries on 'Streaming response failed' surfaced as an error event", async () => {
@@ -111,6 +124,10 @@ describe("stream-llm step awareness", () => {
     // After exhausting retries on the final attempt, the error is returned (not thrown)
     expect(result.error).toBeTruthy();
     expect(retryCalls).toEqual([1, 2]);
+    // Retry log returned with the result; the final exhausted failure is not retried.
+    const retries = result.retries ?? [];
+    expect(retries.length).toBeGreaterThan(0);
+    expect(retries[retries.length - 1]).toMatchObject({ wasRetried: false, status: "failed" });
   });
 });
 

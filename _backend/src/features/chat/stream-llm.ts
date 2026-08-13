@@ -1,10 +1,10 @@
-import type { Message, MessagePartType, ThinkingEffort } from "../../../../_shared/types";
+import type { Message, MessagePartType, RetryEntry, ThinkingEffort } from "../../../../_shared/types";
 import { streamText, stepCountIs } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { getBus } from "../hooks";
 import { sendToSession } from "../sessions/view-tracker";
 import { thinkingToProviderOptions } from "../../llm/thinking";
-import { classifyLlmError, LlmError, isAbortError } from "../../llm/errors";
+import { classifyLlmError, LlmError, isAbortError, type LlmErrorInfo } from "../../llm/errors";
 import { identityHeaders } from "../../llm/identity";
 import { isStopTurnResult } from "../tools";
 import { assertExactlyOneSystemMessage } from "../mds";
@@ -18,7 +18,6 @@ import { createVerboseFetch } from "./raw-capture-fetch";
 import { parseFinishStepEvent, flattenUsage } from "./step-finish-meta";
 import { StepToolBatch } from "./step-tool-batch";
 import { withAdditionalSystemInfoTool, realToolNames } from "./per-step-system-prompt";
-import { insertRetryLog, getCurrentStreamingStepId } from "./db-trace";
 
 /**
  * Normalize a fetch `HeadersInit` (plain object, array of tuples, or Headers)
@@ -128,6 +127,28 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   // Per-provider:model retry attempt tracking for rate limiting
   const streamRetryAttempts = new Map<string, number[]>();
+
+  // Turn-scoped retry log (in-memory; persisted as an "error" part at finalization).
+  // NOT reset per attempt — it accumulates the whole turn's failure history.
+  const retryEntries: RetryEntry[] = [];
+
+  /** Map LlmErrorInfo.kind → shared ErrorCategory (mirrors error-delivery.classifyError). */
+  const kindToCategory = (kind: LlmErrorInfo["kind"] | undefined): RetryEntry["category"] => {
+    switch (kind) {
+      case "auth": return "auth";
+      case "not_found": return "config";
+      case "unreachable":
+      case "timeout":
+      case "network": return "network";
+      case "server": return "server";
+      default: return "unknown";
+    }
+  };
+
+  /** Settle every pending entry (at most one exists) to a terminal status. */
+  const settleRetries = (status: RetryEntry["status"]) => {
+    for (const r of retryEntries) if (r.status === "pending") r.status = status;
+  };
 
   if (bus && hookCtx) {
     await bus.emit("stream.start", hookCtx, { modelName: model, providerName: provider.displayName, messageCount: messages.length });
@@ -367,6 +388,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
             // Log provider error that won't be retried (exhausted retries or non-retryable)
             // Only log if we have a retry config and this looks like a provider error
             if (retryConfig.enabled && label) {
+              const retryInfo = streamErrorInfo!;
               const e = err as Record<string, unknown>;
               const last = (e.lastError as Record<string, unknown>) ?? (e.cause as Record<string, unknown>) ?? null;
               const providerError =
@@ -381,43 +403,20 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
                 (typeof e.message === "string" && e.message.includes("Upstream error from") ? { message: e.message, raw: e.message } : null) ??
                 (typeof last?.message === "string" && last.message.includes("Upstream error from") ? { message: last.message, raw: last.message } : null);
               const errorCode = providerError && typeof providerError.code === "number" ? providerError.code : null;
-              const errorRaw = providerError && typeof providerError.raw === "string" ? providerError.raw : (err instanceof Error ? err.message : String(err));
-              const willRetry = attempt < retryConfig.maxAttempts;
-
-              const turnId = hookCtx?.turnId;
-              if (turnId && willRetry) {
-                const stepId = getCurrentStreamingStepId(turnId);
-                if (stepId) {
-                  const delay = calculateRetryDelay(attempt, retryConfig.baseDelayMs, retryConfig.progressiveDelayMs);
-                  insertRetryLog(options.sessionId!, turnId, stepId, {
-                    attempt: attempt + 1,
-                    maxAttempts: retryConfig.maxAttempts,
-                    errorLabel: label,
-                    errorCode,
-                    errorRaw,
-                    wasRetried: true,
-                    rateLimited: false,
-                    delayMs: delay,
-                    timestamp: new Date().toISOString(),
-                  });
-                }
-              } else if (turnId && !willRetry) {
-                // Provider error but no more retries left - log as final error
-                const stepId = getCurrentStreamingStepId(turnId);
-                if (stepId) {
-                  insertRetryLog(options.sessionId!, turnId, stepId, {
-                    attempt: attempt + 1,
-                    maxAttempts: retryConfig.maxAttempts,
-                    errorLabel: label,
-                    errorCode,
-                    errorRaw,
-                    wasRetried: false,
-                    rateLimited: false,
-                    delayMs: 0,
-                    timestamp: new Date().toISOString(),
-                  });
-                }
-              }
+              retryEntries.push({
+                attempt: attempt + 1,
+                maxAttempts: retryConfig.maxAttempts,
+                message: retryInfo.message,
+                raw: retryInfo.raw && retryInfo.raw !== retryInfo.message ? retryInfo.raw : undefined,
+                isCustom: retryInfo.isCustom,
+                category: kindToCategory(retryInfo.kind),
+                errorLabel: label,
+                errorCode,
+                errorTime: new Date().toISOString(),
+                delayMs: 0,
+                wasRetried: false,
+                status: "failed",
+              });
             }
           } else if (event.type === "finish") {
             // AI SDK: totalUsage + finishReason on finish event
@@ -439,6 +438,9 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           }
         }
         dbg("streamChat:stream-done", { attempt, evtCounts, partsLen: parts.length, finishReason: streamFinishReason });
+        // The stream completed — the retry (if any) that led to this attempt
+        // succeeded, UNLESS an error event was recorded during the stream.
+        if (attempt > 0 && !streamErrorInfo) settleRetries("succeeded");
         stopPulse();
         break;
       } catch (err: unknown) {
@@ -453,7 +455,26 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           // Check rate limit window
           if (!canRetryInWindow(streamRetryAttempts, provider.displayName + ":" + model, retryConfig.maxAttempts, retryConfig.windowValue, retryConfig.windowUnit)) {
             dbg("streamChat:rate-limited", { provider: provider.displayName, model });
-            throw new LlmError(classifyLlmError(err, errCtx));
+            settleRetries("failed");
+            const rlInfo = classifyLlmError(err, errCtx);
+            retryEntries.push({
+              attempt: attempt + 1,
+              maxAttempts: retryConfig.maxAttempts,
+              message: rlInfo.message,
+              raw: rlInfo.raw && rlInfo.raw !== rlInfo.message ? rlInfo.raw : undefined,
+              isCustom: rlInfo.isCustom,
+              category: kindToCategory(rlInfo.kind),
+              errorLabel: label,
+              errorCode: null,
+              errorTime: new Date().toISOString(),
+              delayMs: 0,
+              wasRetried: false,
+              rateLimited: true,
+              status: "failed",
+            });
+            const rlError = new LlmError(rlInfo);
+            rlError.retries = retryEntries;
+            throw rlError;
           }
           recordRetryAttempt(streamRetryAttempts, provider.displayName + ":" + model);
           const delay = calculateRetryDelay(attempt, retryConfig.baseDelayMs, retryConfig.progressiveDelayMs);
@@ -474,39 +495,33 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
             (typeof e.message === "string" && e.message.includes("Upstream error from") ? { message: e.message, raw: e.message } : null) ??
             (typeof last?.message === "string" && last.message.includes("Upstream error from") ? { message: last.message, raw: last.message } : null);
           const errorCode = providerError && typeof providerError.code === "number" ? providerError.code : null;
-          const errorRaw = providerError && typeof providerError.raw === "string" ? providerError.raw : (err instanceof Error ? err.message : String(err));
 
-          // Log retry attempt to DB (attached to current streaming step if any)
-          const turnId = hookCtx?.turnId;
-          if (turnId) {
-            const stepId = getCurrentStreamingStepId(turnId);
-            if (stepId) {
-              insertRetryLog(options.sessionId!, turnId, stepId, {
-                attempt: attempt + 1,
-                maxAttempts: retryConfig.maxAttempts,
-                errorLabel: label,
-                errorCode,
-                errorRaw,
-                wasRetried: true,
-                rateLimited: false,
-                delayMs: delay,
-                timestamp: new Date().toISOString(),
-              });
-            }
-          }
+          // Record the failure in the turn's retry log (persisted as an "error"
+          // part at finalization — mid-turn writes would be wiped by clearTurnSteps).
+          // The previous pending entry's retry just failed too.
+          settleRetries("failed");
+          const retryInfo = classifyLlmError(err, errCtx);
+          const retryEntry: RetryEntry = {
+            attempt: attempt + 1,
+            maxAttempts: retryConfig.maxAttempts,
+            message: retryInfo.message,
+            raw: retryInfo.raw && retryInfo.raw !== retryInfo.message ? retryInfo.raw : undefined,
+            isCustom: retryInfo.isCustom,
+            category: kindToCategory(retryInfo.kind),
+            errorLabel: label,
+            errorCode,
+            errorTime: new Date().toISOString(),
+            delayMs: delay,
+            wasRetried: true,
+            status: "pending",
+          };
+          retryEntries.push(retryEntry);
+          // Live countdown + error part are driven by the caller (run-turn) so it
+          // can attach a monotonic seq — no direct sendToSession here.
+          options.onRetryError?.(retryEntry);
 
-          // Emit retry_start for live countdown
+          // Retry-tick/end countdown events are still emitted from here.
           const sid = options.sessionId;
-          if (sid) {
-            sendToSession(sid, {
-              type: "retry_start",
-              sessionId: sid,
-              attempt: attempt + 1,
-              maxAttempts: retryConfig.maxAttempts,
-              totalDelayMs: delay,
-              errorLabel: label,
-            });
-          }
 
           // Wait with periodic retry_tick emissions
           let abortedDuringWait = false;
@@ -554,6 +569,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           }
 
           if (signal?.aborted || abortedDuringWait) {
+            settleRetries("aborted");
             aborted = true;
             stopPulse();
             break;
@@ -562,7 +578,11 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           continue;
         }
         dbg("streamChat:fatal-error", { label, message: String(err) });
-        throw new LlmError(classifyLlmError(err, errCtx));
+        settleRetries("failed");
+        const fatalInfo = classifyLlmError(err, errCtx);
+        const fatalError = new LlmError(fatalInfo);
+        fatalError.retries = retryEntries;
+        throw fatalError;
       }
     }
   } finally {
@@ -618,10 +638,16 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
     : undefined);
 
   if (streamErrorInfo) {
-    if (!fullContent && parts.length === 0) throw new LlmError(streamErrorInfo);
+    settleRetries("failed");
+    if (!fullContent && parts.length === 0) {
+      const streamErr = new LlmError(streamErrorInfo);
+      streamErr.retries = retryEntries;
+      throw streamErr;
+    }
     return {
       content: fullContent, parts: finalParts,
       steps: steps.length > 0 ? steps : undefined, totalUsage,
+      retries: retryEntries.length > 0 ? retryEntries : undefined,
       finishReason: streamFinishReason, rawFinishReason: streamRawFinishReason,
       error: streamErrorInfo.message, rawError: streamErrorInfo.raw, errorIsCustom: streamErrorInfo.isCustom,
       rawRequest, rawResponse,
@@ -631,6 +657,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   return {
     content: fullContent, parts: finalParts,
     steps: steps.length > 0 ? steps : undefined, totalUsage,
+    retries: retryEntries.length > 0 ? retryEntries : undefined,
     finishReason: streamFinishReason, rawFinishReason: streamRawFinishReason,
     rawRequest, rawResponse,
   };

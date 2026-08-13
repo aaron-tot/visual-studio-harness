@@ -1,4 +1,4 @@
-import type { Message, MessagePartType, ProviderConfig, ThinkingEffort, TurnDebugInfo } from "../../../../_shared/types";
+import type { Message, MessagePartType, ProviderConfig, ThinkingEffort, TurnDebugInfo, RetryEntry } from "../../../../_shared/types";
 import type { ToolSet, LanguageModelUsage, FinishReason, PrepareStepFunction } from "ai";
 import type { HookContext } from "../hooks";
 import type { StepFinishMeta } from "./step-finish-meta";
@@ -40,6 +40,8 @@ export interface StreamChatOptions {
   onToolCall?: (e: { toolCallId: string; toolName: string; args: unknown; stepIndex: number }) => void;
   onToolResult?: (e: { toolCallId: string; toolName: string; output: unknown; isError?: boolean }) => void;
   onRetryAttempt?: (attempt: number) => void;
+  /** Fires when a retryable failure is recorded (before the retry wait). */
+  onRetryError?: (entry: RetryEntry) => void;
   onStepStart?: (info: { stepIndex: number; request?: unknown; warnings?: unknown[] }) => void;
   /** Full finish-step payload — prefer `meta` for DB writes */
   onStepFinish?: (info: StepFinishMeta) => void;
@@ -82,6 +84,8 @@ export interface StreamChatResult {
   content: string;
   parts?: MessagePartType[];
   steps?: StreamStepSummary[];
+  /** Retry log for this turn's failures (empty/undefined when no retries occurred). */
+  retries?: RetryEntry[];
   totalUsage?: {
     inputTokens?: number;
     outputTokens?: number;

@@ -1,5 +1,7 @@
 /** Normalize LLM / HTTP failures into messages the main agent can act on. */
 
+import type { RetryEntry } from "../../../_shared/types";
+
 export interface LlmErrorInfo {
   /** User-facing text (custom mapping when available, else raw). */
   message: string;
@@ -26,6 +28,8 @@ export class LlmError extends Error {
   readonly raw: string;
   readonly isCustom: boolean;
   readonly kind?: LlmErrorInfo["kind"];
+  /** Retry log accumulated before this error (set by streamChat before throwing). */
+  retries?: RetryEntry[];
 
   constructor(info: LlmErrorInfo) {
     super(info.message);

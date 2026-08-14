@@ -400,12 +400,14 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    // In a session, the session's saved agent/model/thinking are authoritative
-    // (synced from sessionMeta below). Applying the agent's config defaults here
-    // would overwrite the user's last saved per-session values whenever the pill
-    // syncs in (e.g. first session opened after a refresh). Selecting an agent
-    // inside a session is handled by handleAgentSelect, which persists too.
-    if (sessionId) return;
+    // A session's saved agent/model/thinking are authoritative (synced from
+    // sessionMeta below). Only apply the agent's config defaults in new-chat
+    // mode — and never when a session is open, even if the pill is still the
+    // previous session's agent (New Chat nulls sessionId before ChatArea
+    // clears the pill; a sessionId guard would re-fire this effect and clobber
+    // the user's last selection). Selecting an agent inside a session is
+    // handled by handleAgentSelect, which also persists to the session.
+    if (sessionMeta) return;
     if (selectedAgent) {
       const agentConfig = config.agents?.[selectedAgent.id];
       setCurrentConfig({
@@ -415,7 +417,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
         thinkingEffort: agentConfig?.thinking?.effort || "off",
       });
     }
-  }, [selectedAgent?.id, sessionId, config.defaultProvider, config.defaultModel, config.agents]);
+  }, [selectedAgent?.id, config.defaultProvider, config.defaultModel, config.agents]);
 
   useEffect(() => {
     const handler = (e: CustomEvent<{ content: string; position: "start" | "end" }>) => {

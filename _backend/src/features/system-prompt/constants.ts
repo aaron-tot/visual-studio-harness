@@ -1,4 +1,4 @@
-import type { AgentSettings, SystemPromptJoiners, SystemPromptSections, WorkspaceManifestSettings } from "../../../_shared/types";
+import type { AgentSettings, SystemPromptJoiners, SystemPromptSections, WorkspaceManifestSettings } from "../../../../_shared/types";
 import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
 
 export const DEFAULT_SYSTEM_PROMPT_JOINERS: SystemPromptJoiners = {

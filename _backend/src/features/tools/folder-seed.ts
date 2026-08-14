@@ -59,7 +59,7 @@ async function loadEmbeddedSeeds(): Promise<Record<string, string>> {
       embeddedSeedsCache = {};
     }
   }
-  return embeddedSeedsCache;
+  return embeddedSeedsCache ?? {};
 }
 
 /**

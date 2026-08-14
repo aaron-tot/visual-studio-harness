@@ -189,6 +189,7 @@ export const ConfigFileSchema = z.object({
   providers: z.array(ProviderConfigSchema),
   /** @deprecated Search providers now live in each tool's `<name>.json` (`ToolConfig.searchProviders`). Kept so existing configs still load. */
   searchProviders: z.array(SearchProviderConfigSchema).default([]),
+  updatesRepo: z.object({ owner: z.string(), name: z.string() }).optional(),
   knowledge: KnowledgeBaseConfigSchema.optional(),
   agents: z.record(AgentSettingsSchema).default({}),
   /** @deprecated Subagent settings now live in `task.json` (`ToolConfig.subagent`). Kept so existing configs still load. */

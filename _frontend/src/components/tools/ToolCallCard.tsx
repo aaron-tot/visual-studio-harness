@@ -9,7 +9,7 @@
 // Do NOT remove or flatten any of these three collapsibles.
 
 import { useState, useEffect } from "react";
-import type { PermissionDecision, ToolCallStatus } from "../../../_shared/types";
+import type { PermissionDecision, ToolCallStatus } from "../../../../_shared/types";
 import { useChatStore } from "../../stores/chat";
 import { useSessionStore } from "../../stores/sessions";
 import { getToolStatusColor } from "../chat/tools/tool-status-colors";

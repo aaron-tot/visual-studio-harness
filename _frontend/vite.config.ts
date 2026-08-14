@@ -50,17 +50,14 @@ export default defineConfig({
       // can confuse native file watchers, causing HMR to miss changes).
       usePolling: true,
       interval: 1000,
-      // Watch _shared directory for changes since it's outside the frontend root
-      additionalPaths: ["../_shared"],
     },
     proxy: {
       "/api": "http://localhost:3101",
       "/chat": {
         target: "ws://localhost:3101",
         ws: true,
-        filter: (pathname, req) => req.headers.upgrade === "websocket",
         bypass: (req) => {
-          if (req.headers.upgrade !== "websocket") {
+          if (req.headers?.upgrade !== "websocket") {
             return req.url;
           }
         },

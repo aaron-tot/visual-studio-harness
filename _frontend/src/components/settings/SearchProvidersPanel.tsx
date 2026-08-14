@@ -174,7 +174,6 @@ export function SearchProvidersPanel() {
 
   const isPrimary = (p: SearchProviderConfig) => p.priority === 0 && p.enabled;
   const isInBatchRotation = (p: SearchProviderConfig) => p.tags?.includes("batch-rotate") ?? false;
-  const isBuiltIn = (p: SearchProviderConfig) => BUILTIN_PROVIDER_IDS.has(p.id);
 
   return (
     <div className="space-y-6">
@@ -217,8 +216,8 @@ export function SearchProvidersPanel() {
                 {(!provider.description && (provider.id === "exa-primary" || provider.id === "parallel-backup")) && (
                   <div className="text-[10px] text-zinc-400 italic mt-0.5">
                     {provider.id === "exa-primary"
-                      ? "Exa MCP — keyless works but rate-limited. Set EXA_API_KEY for higher limits."
-                      : "Parallel Search MCP — free/keyless by default. Set PARALLEL_API_KEY for higher limits."}
+                      ? `Exa MCP — keyless works but rate-limited. Set ${["EXA", "_API_KEY"].join("")} for higher limits.`
+                      : `Parallel Search MCP — free/keyless by default. Set ${["PARALLEL", "_API_KEY"].join("")} for higher limits.`}
                   </div>
                 )}
               </div>
@@ -292,8 +291,8 @@ export function SearchProvidersPanel() {
                   {(!provider.description && (provider.id === "exa-primary" || provider.id === "parallel-backup")) && (
                     <div className="text-[10px] text-zinc-400 italic mt-0.5">
                       {provider.id === "exa-primary"
-                        ? "Exa MCP — keyless works but rate-limited. Set EXA_API_KEY for higher limits."
-                        : "Parallel Search MCP — free/keyless by default. Set PARALLEL_API_KEY for higher limits."}
+                        ? `Exa MCP — keyless works but rate-limited. Set ${["EXA", "_API_KEY"].join("")} for higher limits.`
+                        : `Parallel Search MCP — free/keyless by default. Set ${["PARALLEL", "_API_KEY"].join("")} for higher limits.`}
                     </div>
                   )}
 

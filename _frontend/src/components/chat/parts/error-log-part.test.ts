@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isRecovered } from "./ErrorLogPart";
-import type { RetryEntry } from "../../../_shared/types";
+import type { RetryEntry } from "../../../../../_shared/types";
 
 function entry(status: RetryEntry["status"]): RetryEntry {
   return {

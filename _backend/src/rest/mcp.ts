@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { McpServerConfig } from "../../_shared/types";
+import type { McpServerConfig } from "../../../_shared/types";
 import { getMcpManager } from "../features/mcp";
 
 export function registerMcpRoutes(app: FastifyInstance) {

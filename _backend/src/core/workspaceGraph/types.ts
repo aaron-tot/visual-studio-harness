@@ -68,7 +68,8 @@ export interface WorkspaceRow {
 
 export interface ImportRow {
   module: string;
-  symbols: string[];
+  /** JSON-encoded symbol names (matches the `imports.symbols` TEXT column). */
+  symbols: string;
   importType: "default" | "named" | "namespace" | "sideEffect";
   fileId: number;
 }

@@ -59,16 +59,15 @@ export function ChatArea({ onOpenSettings }: ChatAreaProps) {
   // New Chat / leaving a session: reset the agent pill to the configured
   // "Defaults for new chats" agent (or none). Gated on the epoch bump so
   // config reloads never clobber an in-progress new-chat selection.
-  // null so the reset runs on mount (first render) and on every epoch bump,
-  // but NOT on unrelated re-renders triggered by dep changes (epoch unchanged).
-  const prevResetEpoch = useRef<number | null>(null);
+  // Leaving a session or mounting on the new-chat page: reset the agent
+  // pill to the configured "Defaults for new chats" agent (or none).
+  // Guarded by sessionId so config reloads and New Chat both apply, but
+  // in-session dep changes are harmless (the guard fires but returns early).
   useEffect(() => {
-    if (composerResetEpoch === prevResetEpoch.current) return;
-    prevResetEpoch.current = composerResetEpoch;
     if (sessionId) return;
     const def = config.defaultAgent && config.agents?.[config.defaultAgent];
     setSelectedAgent(def ? { id: config.defaultAgent!, name: config.defaultAgent! } : null);
-  }, [composerResetEpoch, sessionId, config.defaultAgent, config.agents, setSelectedAgent]);
+  }, [sessionId, config.defaultAgent, config.agents, setSelectedAgent]);
 
   return (
     <main className="flex-1 flex flex-col h-full relative min-w-0">

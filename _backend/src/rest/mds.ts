@@ -56,7 +56,7 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
       workspaceRoot: wsRoot ? resolve(wsRoot) : null,
       sessionId: q.sessionId || null,
       scopes: {
-        global: { available: true as const, path: globalPath, tree: await walkDir(globalPath), tags: await collectScopeTags(globalPath), items: await listScopeItems(globalPath) },
+        global: { available: true as const, path: globalPath, tree: await walkDir(globalPath ?? ""), tags: await collectScopeTags(globalPath ?? ""), items: await listScopeItems(globalPath ?? "") },
         project,
         session: sessionScope,
       },
@@ -430,7 +430,7 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
     const overwritten: string[] = [];
     const errors: string[] = [];
 
-    let seedEntries;
+    let seedEntries: import("node:fs").Dirent[];
     try {
       seedEntries = await readdir(seedToolsDir, { withFileTypes: true });
     } catch {

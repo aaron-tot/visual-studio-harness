@@ -5,7 +5,7 @@
  * Used by ToolCallCard and ToolStatusBorder to render state-appropriate styling.
  */
 
-import type { ToolCallStatus } from "../../../../_shared/types";
+import type { ToolCallStatus } from "../../../../../_shared/types";
 
 export interface ToolStatusColor {
   /** Left-border / accent color */

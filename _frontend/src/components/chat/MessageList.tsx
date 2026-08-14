@@ -4,7 +4,7 @@ import { useChatStore } from "../../stores/chat";
 import { MessageRow } from "./MessageRow";
 import { ContextHistoryLine } from "./ContextHistoryLine";
 import { ThinkingIndicator } from "./parts/ThinkingIndicator";
-import type { MessagePartType } from "../../../_shared/types";
+import type { MessagePartType } from "../../../../_shared/types";
 
 const PIN_EPSILON = 4;
 const PIN_FALLBACK_PX = 96;
@@ -284,7 +284,7 @@ interface SummaryTurnWrapperProps {
   messages: Message[];
 }
 
-import type { Message } from "../../../_shared/types/message";
+import type { Message } from "../../../../_shared/types/message";
 
 function SummaryTurnWrapper({
   userMsg,

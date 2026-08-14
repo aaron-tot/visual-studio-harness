@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { GroupColor, SessionMeta, LayoutNode } from "../../_shared/types";
+import type { GroupColor, SessionMeta, LayoutNode } from "../../../../_shared/types";
 import {
   listSessions,
   deleteSession as apiDelete,

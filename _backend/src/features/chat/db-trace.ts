@@ -407,7 +407,7 @@ export function recomputeTurnUsage(turnId: number, dataDir?: string): void {
       cacheReadTokens: Number(row?.cacheReadTokens ?? 0),
       cacheWriteTokens: Number(row?.cacheWriteTokens ?? 0),
       stepCount: Number(row?.stepCount ?? 0),
-      costUsd: row?.costUsd ?? null,
+      costUsd: row?.costUsd != null ? Number(row.costUsd) : null,
     })
     .where(eq(turns.id, turnId))
     .run();
@@ -444,7 +444,14 @@ export function finalizeTurnTrace(
   turnId: number,
   outcome: { success: boolean; finishReason?: string; errorMessage?: string; errorRaw?: string; errorIsCustom?: boolean },
   dataDir?: string,
-  sdkSteps?: TraceStep[],
+  sdkSteps?: Array<{
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    reasoningTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  }>,
 ): void {
   const db = dbFor(dataDir);
 
@@ -452,7 +459,15 @@ export function finalizeTurnTrace(
   // to avoid race condition where step finalizations haven't completed DB writes yet
   // (param is named `sdkSteps` so it does not shadow the imported `steps` table used below)
   if (sdkSteps && sdkSteps.length > 0) {
-    const agg = sdkSteps.reduce(
+    const agg = sdkSteps.reduce<{
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      reasoningTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      stepCount: number;
+    }>(
       (acc, s) => ({
         inputTokens: acc.inputTokens + (s.inputTokens ?? 0),
         outputTokens: acc.outputTokens + (s.outputTokens ?? 0),
@@ -481,7 +496,7 @@ export function finalizeTurnTrace(
         cacheReadTokens: agg.cacheReadTokens,
         cacheWriteTokens: agg.cacheWriteTokens,
         stepCount: agg.stepCount,
-        costUsd: costRow?.c ?? null,
+        costUsd: costRow?.c != null ? Number(costRow.c) : null,
       })
       .where(eq(turns.id, turnId))
       .run();

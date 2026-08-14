@@ -1,4 +1,4 @@
-import type { Message, MessagePartType, PermissionDecision, RetryEntry, SessionMeta, SessionConfig, ThinkingEffort, ToolCallStatus, TurnsFile } from "../../../_shared/types";
+import type { Message, MessagePartType, PermissionDecision, RetryEntry, SessionMeta, SessionConfig, ThinkingEffort, ToolCallStatus, TurnsFile } from "../../../../_shared/types";
 
 export interface RetryCountdownState {
   attempt: number;
@@ -45,6 +45,10 @@ export interface ChatState {
   sendMessage: (content: string, config: SessionConfig) => void;
   contextFirstTurnNumber: number | null;
   setContextFirstTurnNumber: (tn: number | null) => void;
+  contextConfigMode: "auto" | "manual";
+  contextConfigMaxTurns: number;
+  setContextConfigMode: (mode: "auto" | "manual") => void;
+  setContextConfigMaxTurns: (n: number) => void;
   contextConfigVersion: number;
   bumpContextConfigVersion: () => void;
   clearMessages: () => void;
@@ -165,7 +169,6 @@ export interface ChatState {
   clearRetryCountdown: () => void;
   clearNewChatDraft: () => void;
   startNewChat: () => void;
-  setStreamingStartTime: (time: number | null) => void;
 }
 
 export type BufferedDelta =

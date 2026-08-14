@@ -11,7 +11,7 @@ import {
   GROUP_COLOR_KEYS,
   groupColorClass,
 } from "../../../sessions/layout";
-import type { LayoutNode, GroupColor, SessionMeta } from "../../../../_shared/types";
+import type { LayoutNode, GroupColor, SessionMeta } from "../../../../../../_shared/types";
 
 interface WorkspaceSection {
   root: string;

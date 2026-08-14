@@ -86,7 +86,7 @@ export function SubAgentThread({
           {messages.length === 0 && (
             <p className="text-[10px] text-zinc-500 italic">No messages to display</p>
           )}
-          {messages.filter((m) => m.role !== "system").map((msg, i) => (
+          {messages.map((msg, i) => (
             <div key={i} className={cn("text-[11px] leading-relaxed", msg.role === "user" ? "text-zinc-300" : "text-zinc-400")}>
               <span className="font-medium" style={{ color: msg.role === "assistant" ? colors.text : undefined }}>
                 {msg.role === "user" ? "You" : agentName}:

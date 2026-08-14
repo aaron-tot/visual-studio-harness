@@ -17,7 +17,7 @@ import type { MoveDocumentParams } from "./service-move";
 import type { DocumentMeta, DocumentContent, IngestResult, CreateDocumentInput, DeleteResult } from "./types";
 
 export class KnowledgeBaseService {
-  private readonly dataDir: string;
+  readonly dataDir: string;
   private initialized = false;
   private config: KnowledgeBaseConfig | null = null;
   private providers: ProviderConfig[] = [];

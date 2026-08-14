@@ -4,7 +4,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { getBus } from "../hooks";
 import { sendToSession } from "../sessions/view-tracker";
 import { thinkingToProviderOptions } from "../../llm/thinking";
-import { classifyLlmError, LlmError, isAbortError, type LlmErrorInfo } from "../../llm/errors";
+import { classifyLlmError, extractProviderError, LlmError, isAbortError, type LlmErrorInfo } from "../../llm/errors";
 import { identityHeaders } from "../../llm/identity";
 import { isStopTurnResult } from "../tools";
 import { assertExactlyOneSystemMessage } from "../mds";
@@ -17,7 +17,7 @@ import { getRetryableLabel, DEFAULT_STREAM_RETRY_CONFIG, calculateRetryDelay, ca
 import { createVerboseFetch } from "./raw-capture-fetch";
 import { parseFinishStepEvent, flattenUsage } from "./step-finish-meta";
 import { StepToolBatch } from "./step-tool-batch";
-import { withAdditionalSystemInfoTool, realToolNames } from "./per-step-system-prompt";
+import { isThinkingEffortOn, withThinkingReasoningEcho } from "./thinking-wire";
 
 /**
  * Normalize a fetch `HeadersInit` (plain object, array of tuples, or Headers)
@@ -63,12 +63,12 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   const isTest = provider.displayName === "Test";
   const useMockEndpoint = isTest && hasMockActions(model);
   const sdkTools = useMockEndpoint ? buildMockTools(model, options.workspaceRoot) : tools;
-  // Register the fabricated `additional_system_info` tool in the map so the SDK
-  // accepts the injected tool-call instead of throwing NoSuchToolError, but hide
-  // it from the model's request via activeTools (it is not a real tool).
-  const sdkToolsWithAsi =
-    sdkTools && Object.keys(sdkTools).length > 0 ? withAdditionalSystemInfoTool(sdkTools) : sdkTools;
-  const activeToolNames = sdkToolsWithAsi ? realToolNames(sdkToolsWithAsi) : undefined;
+  // The `additional_system_info` injection is SYSTEM-ONLY: it is never registered
+  // as a callable tool, so the agent cannot invoke it and it never appears in the
+  // model's tool definitions. The fabricated assistant tool-call + tool-result
+  // pair emitted by `prepareStep` is accepted by the SDK natively (unregistered
+  // tool-results pass through); if a model ever emits such a call anyway, the SDK
+  // fails loudly with NoSuchToolError.
 
   const makeSdkProvider = (fetchImpl: typeof fetch) =>
     isTest && !useMockEndpoint
@@ -87,15 +87,15 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           fetch: fetchImpl,
         });
 
-  const hasTools = sdkToolsWithAsi && Object.keys(sdkToolsWithAsi).length > 0;
+  const hasTools = sdkTools && Object.keys(sdkTools).length > 0;
   const bus = hookCtx ? getBus() : null;
   const stepBatch = new StepToolBatch({
     onBefore: async (p) => {
-      await bus?.emit("step.tool_batch.before", hookCtx, p);
+      await bus?.emit("step.tool_batch.before", hookCtx!, p);
       await options.onToolBatchStart?.(p);
     },
     onAfter: async (p) => {
-      await bus?.emit("step.tool_batch.after", hookCtx, p);
+      await bus?.emit("step.tool_batch.after", hookCtx!, p);
       await options.onToolBatchEnd?.(p);
     },
   });
@@ -220,7 +220,14 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
       }
       // Fresh capture per attempt so retried steps don't inherit stale exchanges
       lastCap = createVerboseFetch();
-      const sdkProvider = makeSdkProvider(lastCap.fetch);
+      // Thinking gateways (Console Go / DeepSeek-style) require reasoning_content
+      // on every assistant tool-call message. ASI fabrications and rare tool-only
+      // steps omit it; patch the wire body when thinking is on (see thinking-wire.ts).
+      const fetchForProvider = withThinkingReasoningEcho(
+        lastCap.fetch,
+        isThinkingEffortOn(thinkingEffort),
+      );
+      const sdkProvider = makeSdkProvider(fetchForProvider);
       stepExchangeStart = [];
       if (DEBUG_CHAT_MESSAGES) {
         const ts = new Date().toISOString().slice(11, 19);
@@ -249,10 +256,10 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
               ...(temperature !== undefined ? { temperature } : {}),
               ...(providerOptions ? { providerOptions: providerOptions as never } : {}),
               ...(hasTools
-                ? { tools: sdkToolsWithAsi!, activeTools: activeToolNames as never, stopWhen: stepCountIs(maxSteps) }
+                ? { tools: sdkTools!, stopWhen: stepCountIs(maxSteps) }
                 : {}),
               onError: ({ error }) => {
-                const errObj = error?.lastError ?? error;
+                const errObj = (error as { lastError?: unknown })?.lastError ?? error;
                 const info = classifyLlmError(errObj ?? "stream error", errCtx);
                 console.error(`[LLM] ${provider.displayName} / ${model}: ${info.message}`);
                 if (info.isCustom && info.raw !== info.message) console.error(`[LLM] raw: ${info.raw}`);
@@ -389,19 +396,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
             // Only log if we have a retry config and this looks like a provider error
             if (retryConfig.enabled && label) {
               const retryInfo = streamErrorInfo!;
-              const e = err as Record<string, unknown>;
-              const last = (e.lastError as Record<string, unknown>) ?? (e.cause as Record<string, unknown>) ?? null;
-              const providerError =
-                e.response?.body?.error ??
-                e.response?.error ??
-                last?.response?.body?.error ??
-                last?.response?.error ??
-                e.error?.response?.body?.error ??
-                e.error?.response?.error ??
-                e.body?.error ??
-                last?.body?.error ??
-                (typeof e.message === "string" && e.message.includes("Upstream error from") ? { message: e.message, raw: e.message } : null) ??
-                (typeof last?.message === "string" && last.message.includes("Upstream error from") ? { message: last.message, raw: last.message } : null);
+              const providerError = extractProviderError(err);
               const errorCode = providerError && typeof providerError.code === "number" ? providerError.code : null;
               retryEntries.push({
                 attempt: attempt + 1,
@@ -481,19 +476,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           console.error(`[LLM] ${provider.displayName} / ${model}: ${label} — retry ${attempt + 1}/${retryConfig.maxAttempts} in ${delay / 1000}s`);
 
           // Extract error code from provider error if available
-          const e = err as Record<string, unknown>;
-          const last = (e.lastError as Record<string, unknown>) ?? (e.cause as Record<string, unknown>) ?? null;
-          const providerError =
-            e.response?.body?.error ??
-            e.response?.error ??
-            last?.response?.body?.error ??
-            last?.response?.error ??
-            e.error?.response?.body?.error ??
-            e.error?.response?.error ??
-            e.body?.error ??
-            last?.body?.error ??
-            (typeof e.message === "string" && e.message.includes("Upstream error from") ? { message: e.message, raw: e.message } : null) ??
-            (typeof last?.message === "string" && last.message.includes("Upstream error from") ? { message: last.message, raw: last.message } : null);
+          const providerError = extractProviderError(err);
           const errorCode = providerError && typeof providerError.code === "number" ? providerError.code : null;
 
           // Record the failure in the turn's retry log (persisted as an "error"

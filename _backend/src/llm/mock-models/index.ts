@@ -1,4 +1,3 @@
-import type { AsyncGenerator } from "../../../../_shared/types";
 import { generateExpectedText, type MockAction } from "./shared";
 import { stream as model1000 } from "./model1000";
 import { stream as modelMixed } from "./model-mixed";

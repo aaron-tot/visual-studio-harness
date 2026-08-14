@@ -1,5 +1,5 @@
 import { wsClient } from "../../lib/ws";
-import type { RetryEntry } from "../../../_shared/types";
+import type { RetryEntry } from "../../../../_shared/types";
 import { useChatStore } from "./store";
 import { useSessionViewStore } from "../../stores/sessionView";
 import { useSessionStore } from "../../stores/sessions";
@@ -341,10 +341,10 @@ wsClient.on("session_state", (data: any) => {
       let msgs = data.history.filter((m: any) => m.role !== "system");
       const lastAssistant = [...msgs].reverse().find((m: any) => m.role === "assistant");
       const hasIncomplete = lastAssistant && lastAssistant.success !== true && lastAssistant.success !== false;
-      if (hasIncomplete && lastAssistant) msgs = msgs.filter((m) => m !== lastAssistant);
+      if (hasIncomplete && lastAssistant) msgs = msgs.filter((m: any) => m !== lastAssistant);
       chatDebug("session_state", "apply", {
         awaiting: awaitingSessionState,
-        bufferedDeltas: pendingDeltas.filter((e) => e.sessionId === data.sessionId).length,
+        bufferedDeltas: pendingDeltas.filter((e: { sessionId: string }) => e.sessionId === data.sessionId).length,
         hasIncomplete,
         requestId: data.requestId,
       });

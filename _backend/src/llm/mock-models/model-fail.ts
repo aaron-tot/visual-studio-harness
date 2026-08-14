@@ -1,4 +1,3 @@
-import type { AsyncGenerator } from "../../../../_shared/types";
 
 const FAIL_MSG = "Streaming response failed";
 

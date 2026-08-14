@@ -1,4 +1,4 @@
-import type { AgentSettings, WorkspaceManifestSettings } from "../../../../_shared/types";
+import type { AgentSettings, WorkspaceManifestSettings } from "../../../../../_shared/types";
 import type { WorkspaceGraphService } from "../../../core/workspaceGraph/api/types";
 
 export interface SectionContext {

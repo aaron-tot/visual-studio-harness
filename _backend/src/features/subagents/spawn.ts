@@ -1,7 +1,7 @@
 import { loadConfig } from "../../storage/config";
 import { getSession } from "../../storage/session";
 import { runTurn } from "../../agent/turn";
-import { getAgentSettings, resolveRuntimeFromSettings } from "../../agent/runtime-settings";
+import { getAgentSettings, getSubagentSettings, resolveRuntimeFromSettings } from "../../agent/runtime-settings";
 import { withSubagentSlot } from "./concurrency";
 
 import {
@@ -108,7 +108,7 @@ export async function runSubagentTurn(
     const runtime = resolveRuntimeFromSettings(settings, config.providers);
 
     // Before nested LLM call: check local server parallel slots (llama.cpp /slots)
-    const gateSettings = normalizeSlotGateSettings(settings);
+    const gateSettings = normalizeSlotGateSettings(getSubagentSettings(config));
     const slotRequestId = `slot-${ctx.parent.callId}`;
     const slotGate = await ensureLlmSlotAvailable({
       provider: runtime.provider,

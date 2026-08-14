@@ -239,7 +239,7 @@ function normalizeSnapshot(
     snapshot.tiers = cost.tiers
       .filter((t): t is Record<string, unknown> => t && typeof t === "object")
       .map((t) => ({
-        size: t.tier?.size ?? t.size ?? 0,
+        size: Number((t.tier as { size?: unknown } | undefined)?.size ?? t.size ?? 0),
         input: typeof t.input === "number" ? t.input : 0,
         output: typeof t.output === "number" ? t.output : 0,
         cacheRead: typeof t.cache_read === "number" ? t.cache_read : undefined,
@@ -296,14 +296,16 @@ export async function getModelPricing(
 
   // Fetch catalog (shared download — TTL throttles the network), then resolve the
   // provider id by URL (or explicit override). URL resolution requires the catalog.
+  let providerId: string | null | undefined;
+  let key: string | undefined;
   try {
     const catalog = await getCatalog(sourceUrl, ttlMinutes);
-    const providerId = provider.pricingProviderId ?? resolveByUrl(catalog, provider.baseUrl);
+    providerId = provider.pricingProviderId ?? resolveByUrl(catalog, provider.baseUrl);
     if (!providerId) {
       return notFound("Provider not in models.dev catalog (local/self-hosted or unknown)");
     }
 
-    const key = cacheKey(sourceUrl, providerId, modelName);
+    key = cacheKey(sourceUrl, providerId, modelName);
 
     // Check memory cache
     const cached = memoryCache.get(key);
@@ -352,7 +354,7 @@ export async function getModelPricing(
     return snapshot;
   } catch (err) {
     const snap: PricingSnapshot = {
-      providerId,
+      providerId: providerId ?? "",
       providerDisplayName: provider.displayName,
       modelId: modelName,
       found: false,
@@ -361,7 +363,7 @@ export async function getModelPricing(
       rates: { inputPerM: 0, outputPerM: 0, cacheReadPerM: 0, cacheWritePerM: 0 },
       error: err instanceof Error ? err.message : String(err),
     };
-    memoryCache.set(key, snap);
+    if (key) memoryCache.set(key, snap);
     await persistPricingCache();
     return snap;
   }

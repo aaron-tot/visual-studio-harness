@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { loadConfig } from "../../storage/config";
-import type { Provider } from "../../storage/config";
+import type { ProviderConfig as Provider } from "../../../../_shared/types/config";
 
 const DEFAULT_SUMMARIZATION_PROMPT = [
   "You are a meticulous summarizer. Read the user and agent turns below and produce a concise, faithful",
@@ -124,12 +124,12 @@ export async function runSummarizer(
         const err = "error" in event ? (event as { error?: unknown }).error : undefined;
         throw err instanceof Error ? err : new Error(String(err));
       } else if (event.type === "finish") {
-        finalUsage = event.usage
+        finalUsage = event.totalUsage
           ? {
-              inputTokens: event.usage.inputTokens,
-              outputTokens: event.usage.outputTokens,
-              totalTokens: event.usage.totalTokens,
-              reasoningTokens: event.usage.reasoningTokens,
+              inputTokens: event.totalUsage.inputTokens ?? 0,
+              outputTokens: event.totalUsage.outputTokens ?? 0,
+              totalTokens: event.totalUsage.totalTokens ?? 0,
+              reasoningTokens: (event.totalUsage as { reasoningTokens?: number }).reasoningTokens,
             }
           : null;
       }

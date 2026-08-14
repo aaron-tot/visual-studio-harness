@@ -35,7 +35,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function ensureTestServer(): string {
   if (server) return `http://127.0.0.1:${port}/v1`;
   server = Bun.serve({ port: 0, fetch: handle });
-  port = server.port;
+  port = server.port ?? 0;
   console.log(`[mock-model] test server listening on :${port}`);
   return `http://127.0.0.1:${port}/v1`;
 }

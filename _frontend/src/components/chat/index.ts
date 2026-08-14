@@ -37,10 +37,6 @@ export { ToolErrorCard } from "./tools/ToolErrorCard";
 export { TOOL_STATUS_COLORS, DEFAULT_TOOL_COLOR, getToolStatusColor } from "./tools/tool-status-colors";
 export type { ToolStatusColor } from "./tools/tool-status-colors";
 
-export { SessionTodoDisplay } from "./tasks/SessionTodoDisplay";
-export { TodoItem } from "./tasks/TodoItem";
-export type { TodoItemData, TodoStatus, TodoPriority } from "./tasks/TodoItem";
-
 export { StreamingTimer } from "./StreamingTimer";
 
 export { ChatInput } from "./ChatInput";

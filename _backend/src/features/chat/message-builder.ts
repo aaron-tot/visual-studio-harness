@@ -1,8 +1,29 @@
 import { inArray, eq } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
 import { turns, stepParts } from "../../db/schema";
-import type { CoreMessage } from "ai";
+import type { ModelMessage as CoreMessage, TextPart, ToolCallPart } from "ai";
 import { normalizeToolInput } from "./tool-input";
+
+/** Reasoning parts emitted by this builder. `ai` does not re-export ReasoningPart; this shape is structurally compatible. */
+type EmittedReasoningPart = { type: "reasoning"; text: string };
+
+type ContentPart = TextPart | ToolCallPart | EmittedReasoningPart;
+
+export interface ReplayPartRow {
+  type: string;
+  data: string;
+  status: string | null;
+  toolCallId: string | null;
+  toolName: string | null;
+}
+
+export interface ReplayPartOptions {
+  includeTextParts: boolean;
+  includeTools: boolean;
+  includeReasoningParts: boolean;
+  includePatchParts: boolean;
+  includeOtherParts: boolean;
+}
 
 function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
@@ -55,6 +76,150 @@ export function readAdditionalSystemInfoData(
   return { content, toolCallId: callId };
 }
 
+function ensureReasoningBeforeTools(content: ContentPart[]): ContentPart[] {
+  const hasTool = content.some((p) => p.type === "tool-call");
+  if (!hasTool) return content;
+  const hasReasoning = content.some((p) => p.type === "reasoning");
+  if (hasReasoning) return content;
+  // Thinking-mode gateways require reasoning_content on assistant tool-call
+  // messages. Empty text is enough for fabrications / tool-only steps; the
+  // wire shim also forces the key if the SDK omits empty reasoning.
+  return [{ type: "reasoning", text: "" }, ...content];
+}
+
+function pushAssistant(
+  out: CoreMessage[],
+  content: ContentPart[],
+): void {
+  const next = ensureReasoningBeforeTools(content);
+  if (next.length === 0) return;
+  out.push({ role: "assistant", content: next });
+}
+
+/**
+ * Replay ordered step_parts into SDK messages without collapsing multi-step
+ * rounds. Real model tool rounds stay as assistant → tool result(s). ASI is
+ * always its own assistant tool_call + tool result pair (spec: after the
+ * causing step's tools; never merged into a mega tool_calls list).
+ *
+ * Parts must already be in turn order (typically global `seq`).
+ */
+export function replayPartsToMessages(
+  parts: ReplayPartRow[],
+  opts: ReplayPartOptions,
+): CoreMessage[] {
+  const out: CoreMessage[] = [];
+  let pendingContent: ContentPart[] = [];
+  let pendingToolResults: CoreMessage[] = [];
+
+  const flushModel = () => {
+    if (pendingContent.length === 0 && pendingToolResults.length === 0) return;
+    pushAssistant(out, pendingContent);
+    out.push(...pendingToolResults);
+    pendingContent = [];
+    pendingToolResults = [];
+  };
+
+  for (const part of parts) {
+    const data = parsePartData(part.data);
+
+    switch (part.type) {
+      case "text": {
+        if (opts.includeTextParts) {
+          const text = typeof data.content === "string" ? data.content : "";
+          if (text) pendingContent.push({ type: "text", text });
+        }
+        break;
+      }
+      case "tool": {
+        const asi = readAdditionalSystemInfoData(data, part.toolCallId);
+        if (asi) {
+          if (!opts.includeTools) break;
+          // Spec: ASI is a separate fabricated pair after the step's real tools.
+          flushModel();
+          pushAssistant(out, [
+            { type: "reasoning", text: "" },
+            {
+              type: "tool-call",
+              toolCallId: asi.toolCallId,
+              toolName: "additional_system_info",
+              input: {},
+            },
+          ]);
+          out.push({
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: asi.toolCallId,
+                toolName: "additional_system_info",
+                output: { type: "text", value: asi.content },
+              },
+            ],
+          });
+          break;
+        }
+        if (opts.includeTools && part.toolCallId) {
+          const args = normalizeToolInput(data.args);
+          pendingContent.push({
+            type: "tool-call",
+            toolCallId: part.toolCallId,
+            toolName: part.toolName ?? "",
+            input: args,
+          });
+          const rawOutput = data.result ?? data.output ?? "";
+          pendingToolResults.push({
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: part.toolCallId,
+                toolName: part.toolName ?? "",
+                output:
+                  part.status === "completed"
+                    ? { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) }
+                    : { type: "error-text", value: `Tool call ${part.status} before returning a result` },
+              },
+            ],
+          });
+        }
+        break;
+      }
+      case "reasoning": {
+        if (opts.includeReasoningParts) {
+          pendingContent.push({
+            type: "reasoning",
+            text: typeof data.content === "string" ? data.content : "",
+          });
+        }
+        break;
+      }
+      case "patch": {
+        if (opts.includePatchParts) {
+          pendingContent.push({
+            type: "text",
+            text: typeof data.patch === "string" ? data.patch : JSON.stringify(data.patch),
+          });
+        }
+        break;
+      }
+      case "error":
+      case "retry":
+        break;
+      default: {
+        if (opts.includeOtherParts) {
+          const text = typeof data.content === "string" ? data.content : JSON.stringify(data);
+          if (text) pendingContent.push({ type: "text", text });
+        }
+        break;
+      }
+    }
+  }
+
+  flushModel();
+  return out;
+}
+
 export async function buildModelMessages(
   sessionId: string,
   systemBlock: string,
@@ -82,7 +247,7 @@ export async function buildModelMessages(
 
     const completedIds = new Set(
       turnRows
-        .filter((t) => t.success === 1 && t.status === "success" && t.turnNumber < options.currentTurnNumber)
+        .filter((t) => t.success === true && t.status === "success" && t.turnNumber < options.currentTurnNumber)
         .map((t) => t.id)
     );
 
@@ -116,7 +281,7 @@ export async function buildModelMessages(
 
     const turnById = new Map(turnRows.map((t) => [t.id, t]));
 
-    // Fetch ALL stepParts for these turns in one query
+    // Fetch ALL stepParts for these turns in one query (seq is turn-global).
     const partRows = db
       .select({
         turnId: stepParts.turnId,
@@ -132,7 +297,7 @@ export async function buildModelMessages(
       .orderBy(stepParts.turnId, stepParts.seq)
       .all();
 
-    // Group parts by turnId
+    // Group parts by turnId (already seq-ordered within each turn)
     const partsByTurnId = new Map<number, typeof partRows>();
     for (const p of partRows) {
       const list = partsByTurnId.get(p.turnId);
@@ -143,126 +308,26 @@ export async function buildModelMessages(
       }
     }
 
-    // 3. Build messages for each turn in order
+    const replayOpts: ReplayPartOptions = {
+      includeTextParts: options.includeTextParts,
+      includeTools: options.includeTools,
+      includeReasoningParts: options.includeReasoningParts,
+      includePatchParts: options.includePatchParts,
+      includeOtherParts: options.includeOtherParts,
+    };
+
+    // 3. Build messages for each turn in order — step-faithful (no mega-collapse)
     for (const turnId of filteredTurnIds) {
       const turn = turnById.get(turnId);
       if (!turn) continue;
 
-      // User message
       messages.push({
         role: "user",
         content: turn.userContent,
       });
 
-      // Assistant message with multi-part content
       const parts = partsByTurnId.get(turnId) ?? [];
-      const contentParts: CoreMessage["content"] = [];
-      const toolResultMessages: CoreMessage[] = [];
-
-      for (const part of parts) {
-        const data = parsePartData(part.data);
-
-        switch (part.type) {
-          case "text": {
-            if (options.includeTextParts) {
-              const text = typeof data.content === "string" ? data.content : "";
-              if (text) contentParts.push({ type: "text", text });
-            }
-            break;
-          }
-          case "tool": {
-            const asi = readAdditionalSystemInfoData(data, part.toolCallId);
-            if (asi) {
-              if (options.includeTools === false) break; // hide injection when tools hidden
-              contentParts.push({
-                type: "tool-call",
-                toolCallId: asi.toolCallId,
-                toolName: "additional_system_info",
-                input: {},
-              });
-              toolResultMessages.push({
-                role: "tool",
-                content: [
-                  {
-                    type: "tool-result",
-                    toolCallId: asi.toolCallId,
-                    toolName: "additional_system_info",
-                    output: { type: "text", value: asi.content },
-                  },
-                ],
-              });
-              break;
-            }
-            if (options.includeTools && part.toolCallId) {
-              // Guard: heal legacy rows whose `args` were persisted as a raw
-              // malformed JSON string (SDK forwards the model's arguments
-              // verbatim). Coerce to a plain object so the replayed request
-              // keeps a valid `function.arguments` object on the wire.
-              const args = normalizeToolInput(data.args);
-              contentParts.push({
-                type: "tool-call",
-                toolCallId: part.toolCallId,
-                toolName: part.toolName ?? "",
-                input: args,
-              });
-              const rawOutput = data.result ?? data.output ?? "";
-              toolResultMessages.push({
-                role: "tool",
-                content: [
-                  {
-                    type: "tool-result",
-                    toolCallId: part.toolCallId,
-                    toolName: part.toolName ?? "",
-                    output:
-                      part.status === "completed"
-                        ? { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) }
-                        : { type: "error-text", value: `Tool call ${part.status} before returning a result` },
-                  },
-                ],
-              });
-            }
-            break;
-          }
-          case "reasoning": {
-            if (options.includeReasoningParts) {
-              contentParts.push({
-                type: "reasoning",
-                text: typeof data.content === "string" ? data.content : "",
-              });
-            }
-            break;
-          }
-          case "patch": {
-            if (options.includePatchParts) {
-              contentParts.push({
-                type: "text",
-                text: typeof data.patch === "string" ? data.patch : JSON.stringify(data.patch),
-              });
-            }
-            break;
-          }
-          // Custom UI-only part types (retry/error log) — stripped before the SDK:
-          // the provider/model never sees them, regardless of includeOtherParts.
-          case "error":
-          case "retry":
-            break;
-          default: {
-            if (options.includeOtherParts) {
-              const text = typeof data.content === "string" ? data.content : JSON.stringify(data);
-              if (text) contentParts.push({ type: "text", text });
-            }
-            break;
-          }
-        }
-      }
-
-      // Push assistant message if it has content parts
-      if (contentParts.length > 0) {
-        messages.push({ role: "assistant", content: contentParts });
-      }
-
-      // Push tool result messages
-      messages.push(...toolResultMessages);
+      messages.push(...replayPartsToMessages(parts, replayOpts));
     }
   }
 

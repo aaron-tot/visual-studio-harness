@@ -13,8 +13,8 @@
 
 import { memo, useEffect, useState } from "react";
 import { Brain } from "lucide-react";
-import type { Message } from "../../../_shared/types";
-import type { MessagePartType } from "../../../_shared/types";
+import type { Message } from "../../../../_shared/types";
+import type { MessagePartType } from "../../../../_shared/types";
 import { AgentMessageCard } from "./agents/AgentMessageCard";
 import { MessagePart } from "./MessagePart";
 import { TextPart } from "./parts/TextPart";
@@ -108,7 +108,7 @@ function collectErrors(message: Message): Array<{ message: string; raw?: string;
 }
 
 function renderPart(
-  part: MessagePartType,
+  part: GroupedParts,
   i: number,
   message: Message,
   toolCacheByCallId: Record<string, string>,
@@ -152,9 +152,6 @@ function renderPart(
         key={i}
         content={part.content}
         isStreaming={isStreaming}
-        agentName={message.agentName || "Default (no system prompt)"}
-        modelName={message.modelName}
-        durationMs={message.durationMs}
       />
     );
   }
@@ -371,7 +368,7 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
 
         {/* Live retry countdown - shows during backend retry wait */}
         {useChatStore.getState().retryCountdown && (
-          <RetryCountdown {...useChatStore.getState().retryCountdown} />
+          <RetryCountdown {...useChatStore.getState().retryCountdown!} />
         )}
 
         {/* Errors ALWAYS under the bubble (red shaded), with stable test id */}

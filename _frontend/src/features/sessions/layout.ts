@@ -1,9 +1,48 @@
-import type { GroupColor, LayoutNode, SessionMeta } from "../../../_shared/types";
+import type { GroupColor, LayoutNode, SessionMeta } from "../../../../_shared/types";
 import type { TreeItem, TreeItems } from "../info-panel/components/testing/sortable-tree/types";
 
 export interface WorkspaceSection {
   root: string;
   tree: LayoutNode[];
+}
+
+/** A session group in the workspace list UI (id + display name + children). */
+export interface SessionGroupLayout {
+  id: string;
+  name: string;
+  color?: GroupColor;
+  sessionIds: string[];
+}
+
+/**
+ * Flatten a LayoutNode[] workspace tree into list rows: ordered groups (with
+ * their session ids) plus ungrouped sessions. Sessions in the tree but absent
+ * from the live session list are skipped.
+ */
+export function buildWorkspaceLayout(
+  _workspace: string,
+  sessions: SessionMeta[],
+  tree?: LayoutNode[]
+): { groups: SessionGroupLayout[]; ungrouped: string[] } {
+  const validIds = new Set(sessions.map((s) => s.id));
+  const groups: SessionGroupLayout[] = [];
+  const groupedIds = new Set<string>();
+
+  const walk = (nodes: LayoutNode[]) => {
+    for (const n of nodes) {
+      if (n.kind !== "group") continue;
+      const sessionIds = (n.children ?? [])
+        .filter((c): c is LayoutNode & { kind: "session" } => c.kind === "session" && validIds.has(c.id))
+        .map((c) => c.id);
+      sessionIds.forEach((id) => groupedIds.add(id));
+      groups.push({ id: n.id, name: n.name ?? "", color: n.color, sessionIds });
+      walk(n.children ?? []);
+    }
+  };
+  walk(buildWorkspaceTree(sessions, tree));
+
+  const ungrouped = sessions.map((s) => s.id).filter((id) => !groupedIds.has(id));
+  return { groups, ungrouped };
 }
 
 export const GROUP_COLOR_KEYS: GroupColor[] = [

@@ -1,5 +1,5 @@
 import type { Message, MessagePartType, ProviderConfig, ThinkingEffort, TurnDebugInfo, RetryEntry } from "../../../../_shared/types";
-import type { ToolSet, LanguageModelUsage, FinishReason, PrepareStepFunction } from "ai";
+import type { ToolSet, LanguageModelUsage, FinishReason, PrepareStepFunction, ModelMessage } from "ai";
 import type { HookContext } from "../hooks";
 import type { StepFinishMeta } from "./step-finish-meta";
 import type { StepToolBatchBeforePayload, StepToolBatchAfterPayload } from "../../../../_shared/types/step-batch";
@@ -34,9 +34,9 @@ export interface StreamStepSummary {
 export interface StreamChatOptions {
   provider: ProviderConfig;
   model: string;
-  messages: Message[];
-  onToken: (token: string, seq: number, tps?: number) => void;
-  onReasoning?: (delta: string, seq: number, tps?: number) => void;
+  messages: ModelMessage[];
+  onToken: (token: string, seq?: number, tps?: number) => void;
+  onReasoning?: (delta: string, seq?: number, tps?: number) => void;
   onToolCall?: (e: { toolCallId: string; toolName: string; args: unknown; stepIndex: number }) => void;
   onToolResult?: (e: { toolCallId: string; toolName: string; output: unknown; isError?: boolean }) => void;
   onRetryAttempt?: (attempt: number) => void;
@@ -65,6 +65,8 @@ export interface StreamChatOptions {
   hookCtx?: HookContext;
   modelSpeed?: number;
   workspaceRoot?: string;
+  /** @deprecated Backward-compat alias for baseDelayMs; sets base and disables progressive delay. */
+  streamRetryDelayMs?: number;
   /** Error message substring that triggers a retry (case-insensitive) */
   streamRetryErrorName?: string;
   /** Maximum number of retries for the streamRetryErrorName error */

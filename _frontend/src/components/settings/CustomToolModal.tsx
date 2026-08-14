@@ -25,7 +25,7 @@ export function CustomToolModal({ mode, tool, onClose, onSaved }: Props) {
   const [enabled, setEnabled] = useState(tool?.enabled ?? true);
   const [skillGuide, setSkillGuide] = useState(tool?.skillGuide ?? "");
   const [skillPushMode, setSkillPushMode] = useState<"soft" | "hard" | "custom">(tool?.skillPushMode ?? "soft");
-  const [skillPushText, setSkillPushText] = useState(tool?.skillCustomPushText ?? tool?.skillPushText ?? "");
+  const [skillPushText, setSkillPushText] = useState(tool?.skillCustomPushText ?? "");
   const [skillId, setSkillId] = useState(tool?.skillId ?? "");
   const [showSkillEditor, setShowSkillEditor] = useState(!!tool?.skillGuide);
   const [error, setError] = useState<string | null>(null);

@@ -4,7 +4,7 @@
  * data/{mode}/sessions/ is created as an empty placeholder directory and is
  * not read or written for session data. No file fallbacks.
  */
-import type { Session, SessionMeta, TurnData, TurnsFile, LayoutNode } from "../../../_shared/types";
+import type { Session, SessionMeta, TurnData, TurnsFile, LayoutNode } from "../../../../_shared/types";
 import {
   createSession as dbCreateSession,
   getSession as dbGetSession,

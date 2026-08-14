@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Plus } from "lucide-react";
-import type { SessionMeta } from "../../../_shared/types";
+import type { SessionMeta } from "../../../../_shared/types";
 import { useSessionStore } from "../../features/sessions/store";
 import { buildWorkspaceLayout } from "../../features/sessions/layout";
 import { SortableRow } from "./SortableRow";

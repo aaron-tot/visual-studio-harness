@@ -1,3 +1,5 @@
+import { extractProviderError } from "../../llm/errors";
+
 export interface StreamRetryConfig {
   /** Number of retries attempted after the initial failure (total attempts = maxAttempts + 1). */
   maxAttempts: number;
@@ -68,17 +70,7 @@ export function getRetryableLabel(err: unknown, errorName?: string): string | nu
 
   // Check if this is a provider error (has provider response structure)
   // Provider errors come with response object containing the upstream API's error JSON
-  const providerError =
-    e.response?.body?.error ??
-    e.response?.error ??
-    last?.response?.body?.error ??
-    last?.response?.error ??
-    e.error?.response?.body?.error ??
-    e.error?.response?.error ??
-    e.body?.error ??
-    last?.body?.error ??
-    (typeof e.message === "string" && e.message.includes("Upstream error from") ? { message: e.message, raw: e.message } : null) ??
-    (typeof last?.message === "string" && last.message.includes("Upstream error from") ? { message: last.message, raw: last.message } : null);
+  const providerError = extractProviderError(err);
 
   // If we found a provider error structure, it's a provider error -> retry
   if (providerError) {

@@ -35,7 +35,7 @@ function SessionIdCopy({ id }: { id: string }) {
   );
 }
 
-type SettingsTab = "providers" | "agents" | "global" | "mdsV2";
+type SettingsTab = "general" | "providers" | "agents" | "prompts" | "tools" | "context" | "knowledge";
 
 function App() {
   useBackendReload();
@@ -61,15 +61,16 @@ function App() {
     startNewChat();
   };
 
-  const openSettings = (tab: SettingsTab = "providers") => {
-    setSettingsTab(tab);
+  const openSettings = (tab?: string) => {
+    const t = tab === "global" ? "general" : tab === "workspaces" ? "context" : tab === "model" ? "providers" : tab;
+    setSettingsTab((t as SettingsTab) || "providers");
     setSettingsOpen(true);
   };
 
   const handleSettingsOpen = () => openSettings("providers");
 
   const [searchHover, setSearchHover] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const onSearchEnter = useCallback(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);

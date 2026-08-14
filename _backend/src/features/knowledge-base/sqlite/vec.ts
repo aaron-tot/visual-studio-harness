@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
 
 /**
  * Known embedding model dimensions for common models.
@@ -89,19 +89,19 @@ export function deleteDocumentEmbeddings(
   const hashIn = chunkHashes.map(() => "?").join(",");
 
   try {
-    sqlite.run(`DELETE FROM knowledge_embeddings WHERE chunk_id IN (${idIn})`, ...chunkIds);
+    sqlite.run(`DELETE FROM knowledge_embeddings WHERE chunk_id IN (${idIn})`, chunkIds);
   } catch (err: any) {
     console.warn("[knowledge] Failed to delete vectors:", err.message);
   }
 
   if (chunkHashes.length > 0) {
     try {
-      sqlite.run(`DELETE FROM knowledge_embedding_cache WHERE chunk_hash IN (${hashIn})`, ...chunkHashes);
+      sqlite.run(`DELETE FROM knowledge_embedding_cache WHERE chunk_hash IN (${hashIn})`, chunkHashes);
     } catch (err: any) {
       console.warn("[knowledge] Failed to delete embedding cache:", err.message);
     }
     try {
-      sqlite.run(`DELETE FROM knowledge_embedding_meta WHERE chunk_hash IN (${hashIn})`, ...chunkHashes);
+      sqlite.run(`DELETE FROM knowledge_embedding_meta WHERE chunk_hash IN (${hashIn})`, chunkHashes);
     } catch (err: any) {
       console.warn("[knowledge] Failed to delete embedding meta:", err.message);
     }

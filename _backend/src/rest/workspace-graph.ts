@@ -1,14 +1,14 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WorkspaceGraphManager } from "../core/workspaceGraph/graph-manager";
 
 export function registerWorkspaceGraphRoutes(
   app: FastifyInstance,
   getManager: () => WorkspaceGraphManager | null
 ) {
-  function getGraph(request: { query: { workspaceRoot?: string } }) {
+  function getGraph(request: FastifyRequest) {
     const manager = getManager();
     if (!manager) return null;
-    const workspaceRoot = request.query.workspaceRoot;
+    const workspaceRoot = (request.query as { workspaceRoot?: string }).workspaceRoot;
     if (workspaceRoot) return manager.get(workspaceRoot);
     return manager.getFirstWorkspace();
   }
@@ -17,7 +17,7 @@ export function registerWorkspaceGraphRoutes(
     const graph = getGraph(request);
     if (!graph) return { error: "Workspace graph not initialized. Pass workspaceRoot query param." };
     const q = request.query as { name?: string; kind?: string; workspaceRoot?: string };
-    return graph.query.findSymbol(q.name, q.kind);
+    return graph.query.findSymbol(q.name ?? "", q.kind as Parameters<typeof graph.query.findSymbol>[1]);
   });
 
   app.get("/api/workspace-graph/functions", async (request) => {

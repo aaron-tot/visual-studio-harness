@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
-import type { TurnDetail, StepSummary, TurnRawCapture } from "../../../_shared/types/trace";
+import type { TurnDetail, StepSummary, TurnRawCapture } from "../../../../_shared/types/trace";
 import { getTurn, getReconstructedRequests, getTurnRaw } from "../../lib/api";
 import { ToolCacheGroups } from "./ToolCacheGroups";
 
@@ -352,14 +352,14 @@ export function TurnInspectorModal({ sessionId, turnNumber, onClose }: TurnInspe
                     {tool.description && (
                       <div className="text-[11px] text-zinc-400 mb-1">{tool.description}</div>
                     )}
-                    {tool.parameters && (
+                    {tool.parameters ? (
                       <details className="mt-1">
                         <summary className="text-[10px] text-zinc-500 cursor-pointer">parameters</summary>
                         <pre className="text-[10px] text-zinc-400 font-mono whitespace-pre-wrap break-all mt-1 pl-2 border-l border-zinc-800 max-h-[20vh] overflow-auto">
                           <JsonValue value={tool.parameters} />
                         </pre>
                       </details>
-                    )}
+                    ) : null}
                   </div>
                 ))}
               </div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { TurnDetail, StepPart } from "../../../_shared/types/trace";
+import type { TurnDetail, StepPart } from "../../../../_shared/types/trace";
 import { computeToolGroups } from "../../lib/turn-inspector/cache-hit";
 
 interface ToolCacheGroupsProps {

@@ -12,7 +12,10 @@ import type {
   TurnStepRawDetail,
   TurnRawCapture,
   AppInfo,
+  UpdateState,
 } from "@shared/types";
+
+export type { AppInfo };
 
 const BASE = "/api";
 
@@ -47,6 +50,20 @@ export function updateConfig(config: ConfigFile) {
     method: "PUT",
     body: JSON.stringify(config),
   });
+}
+
+export interface UpdatesInfo {
+  appCommit: string;
+  repoUrl: string;
+  updates: UpdateState;
+}
+
+export function getUpdates() {
+  return fetchJson<UpdatesInfo>(`${BASE}/updates`);
+}
+
+export function checkUpdates() {
+  return fetchJson<UpdatesInfo>(`${BASE}/updates/check`, { method: "POST" });
 }
 
 export function listSessions() {
@@ -144,8 +161,8 @@ export function postMessage(body: {
     created: boolean;
     meta: SessionMeta;
     workspaceRoot: string;
-    userMessage: import("../../_shared/types").Message;
-    assistantMessage: import("../../_shared/types").Message | null;
+    userMessage: import("../../../_shared/types").Message;
+    assistantMessage: import("../../../_shared/types").Message | null;
     error: string | null;
   }>(`${BASE}/messages`, {
     method: "POST",
@@ -599,7 +616,7 @@ export function toggleCustomTool(name: string) {
 }
 
 export function getTurn(sessionId: string, turnId: number) {
-  return fetchJson<{ turn: import("../../_shared/types/trace").TurnDetail }>(
+  return fetchJson<{ turn: import("../../../_shared/types/trace").TurnDetail }>(
     `${BASE}/sessions/${encodeURIComponent(sessionId)}/turns/${turnId}`
   );
 }
@@ -626,7 +643,7 @@ export function deleteAgent(key: string) {
   });
 }
 
-import type { SpecDocument, PlanDocument, SpecPlanPart } from "../../_shared/types";
+import type { SpecDocument, PlanDocument, SpecPlanPart } from "../../../_shared/types";
 
 export type { SpecDocument, PlanDocument, SpecPlanPart };
 
@@ -763,14 +780,14 @@ export function getMcpStatus() {
   return fetchJson<{ servers: McpConnectionStatus[] }>(`${BASE}/mcp-servers/status`);
 }
 
-export function testMcpConnection(server: import("../../_shared/types").McpServerConfig) {
+export function testMcpConnection(server: import("../../../_shared/types").McpServerConfig) {
   return fetchJson<{ ok: boolean; error?: string; toolCount?: number; tools?: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }>(
     `${BASE}/mcp-servers/test`,
     { method: "POST", body: JSON.stringify(server) }
   );
 }
 
-export function callMcpTool(server: import("../../_shared/types").McpServerConfig, toolName: string, args: Record<string, unknown>) {
+export function callMcpTool(server: import("../../../_shared/types").McpServerConfig, toolName: string, args: Record<string, unknown>) {
   return fetchJson<{ ok: boolean; result?: string; error?: string }>(
     `${BASE}/mcp-servers/call-tool`,
     { method: "POST", body: JSON.stringify({ server, toolName, args }) }
@@ -883,9 +900,7 @@ export function getGraphExports(filePath: string, workspaceRoot?: string) {
   return fetchJson<GraphExportRecord[]>(`${BASE}/workspace-graph/exports?${qs}`);
 }
 
-// AppInfo now comes from _shared/types/app-info
-import { type AppInfo } from "../../../_shared/types";
-
+// AppInfo is imported from @shared/types at the top of this file.
 export function updateDocViaApi(body: {
   name: string;
   docType: "spec" | "plan";
@@ -1004,9 +1019,9 @@ export function moveNoteViaApi(body: {
 
 // ── Audits ─────────────────────────────────────────────────────────
 
-import type { AuditDocument } from "../../_shared/types/audit";
+import type { AuditDocument } from "../../../_shared/types/audit";
 
-export type { AuditDocument } from "../../_shared/types/audit";
+export type { AuditDocument, AuditFinding } from "../../../_shared/types/audit";
 
 export interface AuditEntry {
   name: string;
@@ -1095,7 +1110,7 @@ export function moveAuditViaApi(body: {
 
 // ── Audit Prompts ──────────────────────────────────────────────────
 
-import type { AuditPrompt } from "../../_shared/types/audit";
+import type { AuditPrompt } from "../../../_shared/types/audit";
 
 export interface AuditPromptEntry {
   id: string;
@@ -1153,10 +1168,8 @@ export function deleteAuditPromptViaApi(body: { id: string }) {
 
 // ── Research ──────────────────────────────────────────────────────
 
-import type { ResearchDoc as _ResearchDoc } from "../../_shared/types/research";
-
-export type { _ResearchDoc as ResearchDoc };
-export type ResearchDoc = _ResearchDoc;
+import type { ResearchDoc } from "../../../_shared/types/research";
+export type { ResearchDoc, ResearchPoint, ResearchConfidence } from "../../../_shared/types/research";
 
 export interface ResearchEntry {
   name: string;

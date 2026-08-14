@@ -1,4 +1,4 @@
-import type { MessagePartType } from "../../../_shared/types";
+import type { MessagePartType } from "../../../../_shared/types";
 
 /** True for a persisted `additional_system_info` injection (context, not a tool). */
 export function isAdditionalSystemInfoPart(part: MessagePartType): boolean {

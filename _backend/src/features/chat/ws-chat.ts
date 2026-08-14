@@ -1,6 +1,6 @@
 import type { WebSocket } from "ws";
 import { broadcastToAll } from "../../ws/configPush";
-import type { ConfigFile, SessionMeta, ThinkingEffort } from "../../../_shared/types";
+import type { ConfigFile, SessionMeta, ThinkingEffort } from "../../../../_shared/types";
 import { runTurn } from "./run-turn";
 import type { TurnEvents } from "./types";
 import type { StepToolBatchBeforePayload, StepToolBatchAfterPayload } from "../../../../_shared/types/step-batch";

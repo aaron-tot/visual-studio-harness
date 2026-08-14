@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type { HookContext } from "../hooks/types";
 import type { SearchProviderConfig, ThinkingEffort, ToolSettings } from "../../../../_shared/types";
 import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
+import type { ToolFieldDef } from "./schema";
 
 export type PermissionMode = "allow" | "ask" | "deny";
 
@@ -20,11 +21,8 @@ export interface SubagentConfigRequest {
   reason: string;
   suggestedProvider?: string;
   suggestedModel?: string;
-  suggestedProvider?: string;
-  suggestedModel?: string;
   temperature?: number;
   thinkingEffort?: ThinkingEffort;
-  maxSteps?: number;
   maxSteps?: number;
 }
 
@@ -34,7 +32,6 @@ export interface SubagentConfigReply {
   modelName?: string;
   temperature?: number;
   thinkingEffort?: ThinkingEffort;
-  maxSteps?: number;
   maxSteps?: number;
 }
 
@@ -96,7 +93,7 @@ export interface BaseToolContext {
   /** Model name (modelName) of the LLM that invoked this tool */
   modelName?: string;
   /** Agent settings for the current turn (includes skillAccess, skillMds, etc.) */
-  agentSettings?: import("../../../../../_shared/types").AgentSettings;
+  agentSettings?: import("../../../../_shared/types").AgentSettings;
   /**
    * Ordered skill-discovery roots for the folder `skill` entry. run-turn threads
    * the runtime roots here so the folder entry honors them (fallback: mds dirs).
@@ -120,15 +117,17 @@ export interface ExtendedToolContext extends BaseToolContext {
     toolCallId: string;
     toolName: string;
     args: unknown;
+    parentToolCallId?: string;
   }) => void;
   bridgeToolResult?: (e: {
     toolCallId: string;
     toolName: string;
-    args: unknown;
+    args?: unknown;
     output: unknown;
     isError?: boolean;
+    parentToolCallId?: string;
   }) => void;
-  bridgeToolUpdate?: (e: { toolCallId: string; status: string; taskId?: string }) => void;
+  bridgeToolUpdate?: (e: { toolCallId: string; status: string; taskId?: string; parentToolCallId?: string }) => void;
   /**
    * Prompt the user to pick provider/model for this subagent task.
    */

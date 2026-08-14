@@ -59,6 +59,53 @@ async function makeTurn(
   return turnId;
 }
 
+/** Multi-step turn: each inner array is one step's parts (stepIndex = array index). */
+async function makeMultiStepTurn(
+  turnNumber: number,
+  stepsParts: { type: string; data: Record<string, unknown>; status?: string; toolCallId?: string; toolName?: string }[][],
+  finalize: boolean,
+): Promise<number> {
+  const turnId = createTurn(SESSION_ID, turnNumber, `user ${turnNumber}`, new Date().toISOString(), {}, dataDir);
+  let seq = 0;
+  for (let stepIndex = 0; stepIndex < stepsParts.length; stepIndex++) {
+    const stepId = createStep(turnId, SESSION_ID, stepIndex, {}, dataDir);
+    for (const p of stepsParts[stepIndex]!) {
+      seq += 1;
+      insertStepPart(
+        SESSION_ID,
+        turnId,
+        stepId,
+        p.type,
+        p.data,
+        seq,
+        p.status ?? "completed",
+        p.toolCallId ? { toolCallId: p.toolCallId, toolName: p.toolName ?? "read" } : {},
+        dataDir,
+      );
+    }
+  }
+  if (finalize) {
+    finalizeTurnTrace(turnId, { success: true, finishReason: "stop" }, dataDir);
+  }
+  return turnId;
+}
+
+function roleSequence(messages: { role: string }[]): string[] {
+  return messages.map((m) => m.role);
+}
+
+function assistantToolNames(m: { role: string; content?: unknown }): string[] {
+  if (m.role !== "assistant" || !Array.isArray(m.content)) return [];
+  return (m.content as { type?: string; toolName?: string }[])
+    .filter((p) => p.type === "tool-call")
+    .map((p) => p.toolName ?? "");
+}
+
+function assistantHasReasoning(m: { role: string; content?: unknown }): boolean {
+  if (m.role !== "assistant" || !Array.isArray(m.content)) return false;
+  return (m.content as { type?: string }[]).some((p) => p.type === "reasoning");
+}
+
 beforeAll(async () => {
   const base = join(tmpdir(), `vsh-mb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   dataDir = join(base, "data");
@@ -286,5 +333,145 @@ describe("additionalSystemInfo replay byte-stability (R3 acceptance)", () => {
     const tool = first.messages.find((m) => m.role === "tool");
     const output = (tool?.content as any[])?.[0]?.output;
     expect(output?.value).toBe(stored); // verbatim string replayed, never re-rendered
+  });
+});
+
+describe("buildModelMessages step-faithful multi-step history (thinking mode)", () => {
+  const asi0 = "<additional_system_info>\n<runtime>s0</runtime>\n</additional_system_info>";
+  const asi1 = "<additional_system_info>\n<runtime>s1</runtime>\n</additional_system_info>";
+
+  test("does not collapse multi-step tools into one assistant message", async () => {
+    // Live shape that Console Go requires on replay:
+    //   assistant(R0 + bash0) → tool → assistant(ASI) → tool → assistant(R1 + bash1) → tool → assistant(text)
+    const tId = await makeMultiStepTurn(
+      40,
+      [
+        [
+          { type: "reasoning", data: { content: "think-step-0" } },
+          { type: "tool", data: { toolCallId: "c0", args: { cmd: "ls" }, result: "out0" }, toolCallId: "c0", toolName: "bash" },
+          {
+            type: "tool",
+            data: { content: asi0, kind: "system-info", additionalSystemInfo: true },
+            toolCallId: "asi-40-0",
+            toolName: "additional_system_info",
+          },
+        ],
+        [
+          { type: "reasoning", data: { content: "think-step-1" } },
+          { type: "tool", data: { toolCallId: "c1", args: { path: "a" }, result: "out1" }, toolCallId: "c1", toolName: "read" },
+          {
+            type: "tool",
+            data: { content: asi1, kind: "system-info", additionalSystemInfo: true },
+            toolCallId: "asi-40-1",
+            toolName: "additional_system_info",
+          },
+        ],
+        [{ type: "text", data: { content: "final answer" } }],
+      ],
+      true,
+    );
+
+    const { messages } = await buildModelMessages(
+      SESSION_ID,
+      "sys",
+      options({
+        contextTurnIds: [tId],
+        includeReasoningParts: true,
+        currentTurnNumber: 41,
+        currentUserMessage: "next",
+      }),
+      dataDir,
+    );
+
+    // Drop system + trailing current user for the turn body.
+    const body = messages.filter((m, i) => !(i === 0 && m.role === "system") && !(m.role === "user" && m.content === "next"));
+    // user + 2*(asst real, tool, asst asi, tool) + asst text
+    expect(roleSequence(body)).toEqual([
+      "user",
+      "assistant", // step0 real
+      "tool",
+      "assistant", // step0 ASI
+      "tool",
+      "assistant", // step1 real
+      "tool",
+      "assistant", // step1 ASI
+      "tool",
+      "assistant", // final text
+    ]);
+
+    const assistants = body.filter((m) => m.role === "assistant");
+    expect(assistantToolNames(assistants[0]!)).toEqual(["bash"]);
+    expect(assistantToolNames(assistants[1]!)).toEqual(["additional_system_info"]);
+    expect(assistantToolNames(assistants[2]!)).toEqual(["read"]);
+    expect(assistantToolNames(assistants[3]!)).toEqual(["additional_system_info"]);
+    expect(assistantToolNames(assistants[4]!)).toEqual([]);
+
+    // Per-step reasoning stays on the matching real-tool assistant (not one mega blob).
+    const r0 = (assistants[0]!.content as { type: string; text?: string }[]).find((p) => p.type === "reasoning");
+    const r1 = (assistants[2]!.content as { type: string; text?: string }[]).find((p) => p.type === "reasoning");
+    expect(r0?.text).toBe("think-step-0");
+    expect(r1?.text).toBe("think-step-1");
+
+    // ASI assistants carry a reasoning part (empty) so thinking gateways see the key.
+    expect(assistantHasReasoning(assistants[1]!)).toBe(true);
+    expect(assistantHasReasoning(assistants[3]!)).toBe(true);
+
+    // ASI content still verbatim.
+    const asiTools = body.filter((m) => m.role === "tool");
+    const asiValues = asiTools
+      .map((m) => (m.content as { output?: { value?: string } }[])?.[0]?.output?.value)
+      .filter((v): v is string => typeof v === "string" && v.includes("additional_system_info"));
+    expect(asiValues).toContain(asi0);
+    expect(asiValues).toContain(asi1);
+
+    // Must NOT be a single assistant with all tool names collapsed.
+    const mega = assistants.find((a) => assistantToolNames(a).length >= 3);
+    expect(mega).toBeUndefined();
+  });
+
+  test("ASI after real tools on same step is its own assistant/tool pair", async () => {
+    const stored = "<additional_system_info>\n<x>1</x>\n</additional_system_info>";
+    const tId = await makeTurn(
+      41,
+      [
+        { type: "reasoning", data: { content: "r" } },
+        { type: "tool", data: { toolCallId: "t1", args: {}, result: "ok" }, toolCallId: "t1", toolName: "bash" },
+        {
+          type: "tool",
+          data: { content: stored, kind: "system-info", additionalSystemInfo: true },
+          toolCallId: "asi-41",
+          toolName: "additional_system_info",
+        },
+      ],
+      true,
+    );
+    const { messages } = await buildModelMessages(
+      SESSION_ID,
+      "sys",
+      options({ contextTurnIds: [tId], includeReasoningParts: true, currentTurnNumber: 42 }),
+      dataDir,
+    );
+    const body = messages.filter((m) => m.role !== "system" && !(m.role === "user" && m.content === "current"));
+    expect(roleSequence(body)).toEqual(["user", "assistant", "tool", "assistant", "tool"]);
+    const assts = body.filter((m) => m.role === "assistant");
+    expect(assistantToolNames(assts[0]!)).toEqual(["bash"]);
+    expect(assistantToolNames(assts[1]!)).toEqual(["additional_system_info"]);
+  });
+
+  test("tool-call assistant without stored reasoning still gets a reasoning part", async () => {
+    const tId = await makeTurn(
+      42,
+      [{ type: "tool", data: { toolCallId: "tx", args: {}, result: "y" }, toolCallId: "tx", toolName: "bash" }],
+      true,
+    );
+    const { messages } = await buildModelMessages(
+      SESSION_ID,
+      "sys",
+      options({ contextTurnIds: [tId], includeReasoningParts: false, currentTurnNumber: 43 }),
+      dataDir,
+    );
+    const asst = messages.find((m) => m.role === "assistant");
+    expect(assistantHasReasoning(asst!)).toBe(true);
+    expect(assistantToolNames(asst!)).toEqual(["bash"]);
   });
 });

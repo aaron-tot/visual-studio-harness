@@ -2,7 +2,7 @@ import type {
   StepSummary,
   StepPart,
   TurnDetail,
-} from "../../../_shared/types/trace";
+} from "../../../../_shared/types/trace";
 
 export interface CacheHitInfo {
   pct: number;

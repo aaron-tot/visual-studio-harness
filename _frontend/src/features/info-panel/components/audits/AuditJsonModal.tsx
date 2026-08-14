@@ -255,6 +255,7 @@ export function AuditJsonModal({ audit, onClose, onSave }: AuditJsonModalProps) 
             <PrettyEditView
               doc={editDoc}
               onMetaChange={handleMetaChange}
+              onRawReportChange={(v) => setEditDoc((d) => ({ ...d, rawReport: v }))}
               onFindingChange={handleFindingChange}
               onDeleteFinding={handleDeleteFinding}
               onAddFinding={handleAddFinding}
@@ -397,10 +398,10 @@ function PrettyReadView({ doc }: { doc: AuditDocument }) {
       </Section>
 
       {/* rawReport */}
-      {m.rawReport && (
+      {doc.rawReport && (
         <Section title="Raw Report">
           <pre className="text-xs text-zinc-400 whitespace-pre-wrap break-words leading-relaxed font-mono">
-            {m.rawReport}
+            {doc.rawReport}
           </pre>
         </Section>
       )}
@@ -414,12 +415,14 @@ function PrettyReadView({ doc }: { doc: AuditDocument }) {
 function PrettyEditView({
   doc,
   onMetaChange,
+  onRawReportChange,
   onFindingChange,
   onDeleteFinding,
   onAddFinding,
 }: {
   doc: AuditDocument;
   onMetaChange: (patch: Partial<AuditDocument["meta"]>) => void;
+  onRawReportChange: (value: string | undefined) => void;
   onFindingChange: (index: number, patch: Partial<AuditFinding>) => void;
   onDeleteFinding: (index: number) => void;
   onAddFinding: () => void;
@@ -456,7 +459,7 @@ function PrettyEditView({
               <input
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200"
                 value={m.auditType}
-                onChange={(e) => onMetaChange({ auditType: e.target.value })}
+                onChange={(e) => onMetaChange({ auditType: e.target.value as AuditDocument["meta"]["auditType"] })}
               />
             </Field>
             <Field label="Created At">
@@ -470,7 +473,7 @@ function PrettyEditView({
               <input
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200"
                 value={m.createdBy}
-                onChange={(e) => onMetaChange({ createdBy: e.target.value })}
+                onChange={(e) => onMetaChange({ createdBy: e.target.value as "agent" })}
               />
             </Field>
           </div>
@@ -509,7 +512,7 @@ function PrettyEditView({
               <input
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200"
                 value={m.scope}
-                onChange={(e) => onMetaChange({ scope: e.target.value })}
+                onChange={(e) => onMetaChange({ scope: e.target.value as "global" | "project" | "session" })}
               />
             </Field>
           </div>
@@ -532,8 +535,8 @@ function PrettyEditView({
               <textarea
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200 resize-none font-mono"
                 rows={2}
-                value={m.rawReport || ""}
-                onChange={(e) => onMetaChange({ rawReport: e.target.value || undefined })}
+                value={doc.rawReport || ""}
+                onChange={(e) => onRawReportChange(e.target.value || undefined)}
               />
             </Field>
           </div>

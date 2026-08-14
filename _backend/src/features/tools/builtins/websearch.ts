@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ToolDef, BaseToolContext } from "../types";
+import type { SearchProviderConfig } from "../../../../../_shared/types";
 import { getSearchProviderRegistry, SearchProviderRegistry } from "../host/search-provider-registry";
 
 /**
@@ -188,7 +189,7 @@ function buildProviderSequence(
   registry: SearchProviderRegistry,
   options: SearchCallOptions,
   sessionId: string
-): SearchProviderRegistry["prototype"]["getAll"] {
+): SearchProviderConfig[] {
   // Explicit provider requested
   if (options.providerId) {
     const p = registry.getById(options.providerId);
@@ -216,7 +217,7 @@ function buildProviderSequence(
 
 /** Attempt search with a specific provider. */
 async function attemptSearch(
-  provider: SearchProviderRegistry["prototype"]["getAll"][0],
+  provider: SearchProviderConfig[][0],
   options: SearchCallOptions,
   ctx: BaseToolContext,
   registry: SearchProviderRegistry
@@ -254,7 +255,7 @@ async function attemptSearch(
   }
 }
 
-function buildHeaders(provider: SearchProviderRegistry["prototype"]["getAll"][0]): Record<string, string> {
+function buildHeaders(provider: SearchProviderConfig[][0]): Record<string, string> {
   const headers: Record<string, string> = {
     "User-Agent": "VisualStudioHarness/websearch",
   };

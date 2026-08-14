@@ -26,6 +26,8 @@ import { registerCustomToolsRoutes } from "./rest/custom-tools";
 import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
 import { registerPricingRoutes } from "./rest/pricing";
+import { registerUpdatesRoutes } from "./features/updates/rest";
+import { checkForUpdates } from "./features/updates/check";
 import { initPricingCache } from "./features/pricing/models-dev";
 import { setWorkspaceGraphManager, getWorkspaceGraphManager } from "./core/workspaceGraph/service-singleton";
 import { WorkspaceGraphManager } from "./core/workspaceGraph/graph-manager";
@@ -258,6 +260,12 @@ async function main() {
   // Workspace graph: create manager, register REST routes (per-workspace lookup via query param)
   registerWorkspaceGraphRoutes(app, () => getWorkspaceGraphManager());
   registerPricingRoutes(app, DATA_DIR, () => currentConfig);
+  registerUpdatesRoutes(app, DATA_DIR, MODE, () => currentConfig);
+
+  // Startup update check (prod-only; internal daily skip applies). Non-blocking.
+  checkForUpdates({ dataDir: DATA_DIR, config: currentConfig, mode: MODE }).catch((err) => {
+    console.error("[updates] startup check failed:", err);
+  });
 
   registerKnowledgeRoutes(app, knowledgeService);
 

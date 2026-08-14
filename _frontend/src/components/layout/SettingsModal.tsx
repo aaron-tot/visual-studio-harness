@@ -238,11 +238,7 @@ export function SettingsModal({
             </div>
           )}
 
-          {tab === "search-providers" && (
-            <div key={`search-providers-${tabVersion}`} className="flex-1 p-4 overflow-y-auto">
-              <SearchProvidersPanel />
-            </div>
-          )}
+
         </div>
       </div>
     </div>

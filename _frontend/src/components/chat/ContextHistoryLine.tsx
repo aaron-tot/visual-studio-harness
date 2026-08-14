@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { putSessionContextConfig, getEffectiveContextConfig, summarizeRange } from "../../lib/api";
+import { putSessionContextConfig, getEffectiveContextConfig, summarizeRange, type SessionContextConfig } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
 import type { ConfigFile } from "../../../../_shared/types";
 
@@ -31,7 +31,7 @@ export function ContextHistoryLine({
   const [summarizing, setSummarizing] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [summarizeError, setSummarizeError] = useState<string | null>(null);
-  const [config, setConfig] = useState<ConfigFile | null>(null);
+  const [config, setConfig] = useState<SessionContextConfig | null>(null);
 
   // Turn Y positions (scroll-dependent — recalculated on every scroll)
   const [turnPositions, setTurnPositions] = useState<{ number: number; y: number }[]>([]);
@@ -343,7 +343,7 @@ setStoreCtxTn(firstTurnNumber);
         sessionId,
         workspaceRoot: workspaceRoot || undefined,
         endTurnNum: summarizeEndTurn,
-        includePriorSummary: config?.summarizeIncludePriorSummary ?? true,
+        includePriorSummary: (config as { summarizeIncludePriorSummary?: boolean }).summarizeIncludePriorSummary ?? true,
       });
       console.info("[summarize] ok", result);
       if (result.created === false) {
@@ -362,12 +362,8 @@ setStoreCtxTn(firstTurnNumber);
         /* ignore */
       }
       window.setTimeout(() => {
-        const nodes = document.querySelectorAll<HTMLElement>("[data-summary-end]");
-        let target: HTMLElement | null = null;
-        nodes.forEach((n) => {
-          const end = Number(n.dataset.summaryEnd || 0);
-          if (end === (result.endTurn ?? summarizeEndTurn)) target = n;
-        });
+        const nodes = [...document.querySelectorAll<HTMLElement>("[data-summary-end]")];
+        const target = nodes.find((n) => Number(n.dataset.summaryEnd || 0) === (result.endTurn ?? summarizeEndTurn));
         target?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 500);
     } catch (e) {

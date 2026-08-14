@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
-import type { RetryEntry } from "../../../_shared/types";
+import type { RetryEntry } from "../../../../../_shared/types";
 import { cn } from "../../../lib/utils";
 
 interface ErrorLogPartProps {

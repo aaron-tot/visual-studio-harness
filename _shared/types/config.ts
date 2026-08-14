@@ -240,10 +240,32 @@ export interface KnowledgeBaseConfig {
   };
 }
 
+/** Persisted state of the last update check (prod-only feature). */
+export interface UpdateState {
+  /** ISO timestamp of the last *successful* check. Failures leave this unchanged so it retries. */
+  lastChecked: string | null;
+  available: boolean;
+  /** Git SHA the running binary was built from. */
+  buildCommit: string;
+  /** Latest main-branch SHA observed at last successful check. */
+  latestCommit: string | null;
+  /** Number of commits this build is behind main (0 when up to date). */
+  commitsBehind: number;
+  lastError: string | null;
+}
+
+/** Where the update indicator looks for new commits. Overridable via config.updatesRepo. */
+export const DEFAULT_UPDATE_REPO: { owner: string; name: string } = {
+  owner: "aaron-tot",
+  name: "visual-studio-harness",
+};
+
 export interface ConfigFile {
   providers: ProviderConfig[];
   /** @deprecated Search providers now live in `tools/builtin/searchOnline/searchOnline.json` (`ToolConfig.searchProviders`). Kept so existing configs still load. */
   searchProviders?: SearchProviderConfig[];
+  /** GitHub repo the update indicator checks for new commits. Defaults to DEFAULT_UPDATE_REPO. */
+  updatesRepo?: { owner: string; name: string };
   knowledge?: KnowledgeBaseConfig;
   agents?: Record<string, AgentSettings>;
   /** @deprecated Subagent settings now live in `tools/builtin/task/task.json` (`ToolConfig.subagent`). Kept so existing configs still load. */

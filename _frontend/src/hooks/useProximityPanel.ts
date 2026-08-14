@@ -75,7 +75,7 @@ export function useProximityPanel(options: UseProximityPanelOptions): ProximityP
 
   const [visible, setVisible] = useState(false);
   const [pinned, setPinned] = useState(() => loadPinned(side));
-  const hideTimer = useRef<ReturnType<typeof setTimeout>>();
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isOpen = visible || pinned;
   const isOpenRef = useRef(isOpen);
   isOpenRef.current = isOpen;

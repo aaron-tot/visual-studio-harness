@@ -15,7 +15,7 @@ export function createStepStreamWriter(sessionId: string, turnId: number, stepId
   let currentStepId = stepId;
   let hasBoundStep = stepId > 0;
   let open: { type: "text" | "reasoning"; partId: number; content: string; seq: number } | null = null;
-  const toolPartIds = new Map<string, { partId: number; args: unknown; seq: number; toolName: string }>();
+  const toolPartIds = new Map<string, { partId: number; args: unknown; seq: number; toolName: string; stepIndex?: number }>();
   const writerId = ++createdStepIdCounter;
 
   // ── Debounce state ──────────────────────────────────────────────────

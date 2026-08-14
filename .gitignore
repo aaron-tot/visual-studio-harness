@@ -77,3 +77,7 @@ _frontend/tailwind.config.d.ts.map
 
 # Local test fixture with fake keys — never commit
 /test-secret-leak.txt
+
+# Temporary scratch files
+/new.txt
+/patch.txt

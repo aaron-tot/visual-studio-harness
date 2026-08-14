@@ -4,6 +4,7 @@ import type { ConfigFile } from "../../../../_shared/types";
 import { AgentSelector, type AgentOption } from "../chat/input/AgentSelector";
 import { ModelDropdown } from "../chat/ModelDropdown";
 import { PricingSettingsCard } from "./PricingSettingsCard";
+import { UpdateIndicator } from "./UpdateIndicator";
 
 const WINDOW_UNITS = ["seconds", "minutes", "hours"] as const;
 
@@ -524,6 +525,9 @@ export function GeneralPanel() {
             </div>
           </div>
         </div>
+
+        {/* Update indicator (prod-only) */}
+        <UpdateIndicator />
 
         {/* Coming Soon section */}
         <div className="border border-zinc-800 rounded-lg p-3 opacity-60 select-none">

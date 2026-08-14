@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ToolDef, BaseToolContext, ToolResult } from "../tools/types";
-import type { McpServerConfig, McpConnectionStatus } from "./types";
+import type { McpConnectionStatus } from "./types";
+import type { McpServerConfig } from "../../../../_shared/types";
 import { McpClient } from "./client";
 import { jsonSchemaToZod } from "./schema-util";
 

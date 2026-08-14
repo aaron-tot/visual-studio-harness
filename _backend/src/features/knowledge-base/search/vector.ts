@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
 import type { SearchResult, SearchFilters } from "./types";
 
 /**
@@ -28,7 +28,7 @@ export async function vectorSearch(
 
   // Build filter WHERE clause
   const whereClauses: string[] = [];
-  const params: unknown[] = [embeddingStr, topK];
+  const params: SQLQueryBindings[] = [embeddingStr, topK];
 
   if (filters?.extension) {
     // Use LIKE on filename since there's no extension column

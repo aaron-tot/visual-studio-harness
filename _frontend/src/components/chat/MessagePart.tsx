@@ -7,7 +7,7 @@
  * parent task tool card.
  */
 
-import type { MessagePartType } from "../../../_shared/types";
+import type { MessagePartType } from "../../../../_shared/types";
 import { useChatStore } from "../../stores/chat";
 import { TextPart } from "./parts/TextPart";
 import { ThinkingPart } from "./parts/ThinkingPart";

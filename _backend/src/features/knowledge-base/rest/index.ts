@@ -122,7 +122,7 @@ export function registerKnowledgeRoutes(
     if (!result.ok) {
       return reply.code(400).send(result);
     }
-    return { ok: true, ...result };
+    return { ...result };
   });
 
   // ── Ingest ──────────────────────────────────────────────────────

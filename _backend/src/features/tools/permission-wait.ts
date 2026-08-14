@@ -17,7 +17,7 @@ export function waitForPermission(
   return new Promise((resolve) => {
     const existing = pending.get(toolCallId);
     if (existing) {
-      clearTimeout(existing.timer);
+      clearTimeout(existing.timer ?? undefined);
       existing.resolve(false);
     }
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -34,7 +34,7 @@ export function waitForPermission(
 export function resolvePermission(toolCallId: string, approved: boolean): boolean {
   const p = pending.get(toolCallId);
   if (!p) return false;
-  clearTimeout(p.timer);
+  clearTimeout(p.timer ?? undefined);
   pending.delete(toolCallId);
   p.resolve(approved);
   return true;

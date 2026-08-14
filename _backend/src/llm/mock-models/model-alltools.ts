@@ -1,5 +1,4 @@
 import { emitTokens, emitToolFn as emitTool, emitThinkingFn as emitThinking } from "./shared";
-import type { AsyncGenerator } from "../../../../_shared/types";
 
 export async function* stream(speed: number, signal?: AbortSignal): AsyncGenerator<any> {
   const ti = { v: 0 };

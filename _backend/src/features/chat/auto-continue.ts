@@ -4,7 +4,8 @@
  */
 import type WebSocket from "ws";
 import type { ConfigFile, MessagePartType } from "../../../../_shared/types";
-import { runTurn, type TurnResult } from "./run-turn";
+import { runTurn } from "./run-turn";
+import type { TurnEvents, TurnResult } from "./types";
 import { sendSessionStateToSession, sendToSession } from "../sessions/view-tracker";
 import { waitForPermission } from "../tools/permission-wait";
 import { classifyLlmError, isAbortError } from "../../llm/errors";
@@ -130,7 +131,7 @@ export async function runContinuationTurn(opts: {
   content: string;
   agentName?: string;
   /** streamWsHandlers(...) result */
-  streamHandlers: Record<string, unknown>;
+  streamHandlers: Partial<TurnEvents>;
   sessionAborts: Map<string, AbortController>;
   cancelSession: (sessionId: string, dataDir?: string) => void;
   /** Originating WebSocket for guaranteed error delivery. */
@@ -184,7 +185,7 @@ export async function runContinuationTurn(opts: {
             toolCallId: callId,
             status: "awaiting_permission",
           });
-          const ok = await waitForPermission(callId);
+          const ok = await waitForPermission(callId, undefined);
           sendToSession(sessionId, {
             type: "tool_update",
             sessionId,

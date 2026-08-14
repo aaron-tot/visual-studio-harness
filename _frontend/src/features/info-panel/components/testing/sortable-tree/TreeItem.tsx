@@ -1,7 +1,7 @@
 import {forwardRef, type HTMLAttributes, type ReactNode} from 'react';
 import {cn} from '../../../../../lib/utils';
 
-export interface TreeItemProps extends Omit<HTMLAttributes<HTMLLIElement>, 'id'> {
+export interface TreeItemProps extends Omit<HTMLAttributes<HTMLDivElement>, 'id'> {
   childCount?: number;
   clone?: boolean;
   collapsed?: boolean;
@@ -24,7 +24,7 @@ export interface TreeItemProps extends Omit<HTMLAttributes<HTMLLIElement>, 'id'>
   wrapperRef?(node: HTMLLIElement): void;
 }
 
-export const TreeItem = forwardRef<HTMLLIElement, TreeItemProps>(
+export const TreeItem = forwardRef<HTMLDivElement, TreeItemProps>(
   (
     {
       childCount,

@@ -12,6 +12,7 @@
     "declarationMap": true,
     "sourceMap": true
   },
+  "files": [],
   "references": [
     { "path": "./_backend" },
     { "path": "./_frontend" },

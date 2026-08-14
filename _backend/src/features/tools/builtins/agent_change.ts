@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ToolDef, ToolFieldDef } from "../types";
+import type { ExtendedToolContext, ToolDef, ToolFieldDef } from "../types";
 import { getSessionMetaPublic } from "../../../storage/session";
 import { listAgents } from "../../../rest/agents";
 export const agentChangeTool: ToolDef = {
@@ -17,6 +17,7 @@ export const agentChangeTool: ToolDef = {
     continueAfter: z.boolean().optional().describe("Continue immediately after switch"),
   }),
   execute: async (args, ctx) => {
+    const tctx = ctx as ExtendedToolContext;
     // Read agents from data/{mode}/agents/*.json (the canonical agent list)
     const fileAgents = await listAgents(ctx.dataDir);
 
@@ -44,7 +45,7 @@ export const agentChangeTool: ToolDef = {
       };
     }
 
-    if (!ctx.requestAgentChange) {
+    if (!tctx.requestAgentChange) {
       return {
         title: "Agent change not available",
         output: "Agent change UI is not connected.",
@@ -52,7 +53,7 @@ export const agentChangeTool: ToolDef = {
       };
     }
 
-    const reply = await ctx.requestAgentChange({
+    const reply = await tctx.requestAgentChange({
       requestId: ctx.callId,
       toolCallId: ctx.callId,
       suggestedAgent: args.suggestedAgent,
@@ -84,6 +85,12 @@ export const agentChangeTool: ToolDef = {
           output: "User chose to stop the turn.",
           metadata: { stopped: true },
           _stopTurn: true,
+        };
+      default:
+        return {
+          title: "Agent change not applied",
+          output: `Unhandled reply action: ${(reply as { action?: string }).action ?? "unknown"}`,
+          isError: true,
         };
     }
   },

@@ -1,7 +1,7 @@
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import { constants, existsSync } from "node:fs";
 import { join, resolve, basename } from "node:path";
-import type { SkillMdConfig, AgentMdConfig } from "../../../_shared/types";
+import type { SkillMdConfig, AgentMdConfig } from "../../../../_shared/types";
 import { resolveMdsScopeDir } from "./paths";
 
 async function fileExists(path: string): Promise<boolean> {

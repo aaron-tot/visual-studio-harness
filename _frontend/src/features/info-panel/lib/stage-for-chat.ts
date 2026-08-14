@@ -19,7 +19,7 @@ export function stageForChat(content: string, e: { shiftKey: boolean; ctrlKey: b
       agentName: null,
       providerName: "",
       modelName: "",
-      thinkingEffort: "default",
+      thinkingEffort: "default" as import("../../../../../_shared/types").ThinkingEffort,
     });
     return e.shiftKey ? "Sent to session top" : "Sent to session";
   }

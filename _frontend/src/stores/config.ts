@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ConfigFile } from "../../_shared/types";
+import type { ConfigFile } from "../../../_shared/types";
 import { getConfig, updateConfig as apiUpdateConfig, listAgents } from "../lib/api";
 import { wsClient } from "../lib/ws";
 

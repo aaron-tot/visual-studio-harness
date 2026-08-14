@@ -10,5 +10,4 @@ export {
   recordAutoContinue,
   AUTO_CONTINUE_MSG,
   AUTO_CONTINUE_THINKING_MSG,
-  sendDone,
 } from "./auto-continue";

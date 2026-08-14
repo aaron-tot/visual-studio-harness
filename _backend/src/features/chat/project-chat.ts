@@ -1,11 +1,11 @@
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sum, count, sql } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
 import { turns, turnContext, steps, stepParts, promptSnapshots, toolsSnapshots, sessions, summaryRanges } from "../../db/schema";
-import type { CoreMessage } from "ai";
+import type { ModelMessage as CoreMessage } from "ai";
 import type { Message, MessagePartType } from "../../../../_shared/types";
 import type { TurnSummary, StepSummary, TurnDetail, SessionUsage, TurnStatus, StepPart, TurnRawCapture, TurnStepRawDetail } from "../../../../_shared/types/trace";
 import { listContextTurnIds } from "./db-trace";
-import { buildModelMessages, readAdditionalSystemInfoData } from "./message-builder";
+import { buildModelMessages, replayPartsToMessages } from "./message-builder";
 import { buildSummarizationMessages } from "../sessions/summarizer";
 
 function dbFor(dataDir?: string) {
@@ -600,7 +600,7 @@ export function getStepWithParts(
       }
       catch { return { type: p.type, content: p.data, _seq: p.seq }; }
     }),
-  };
+  } as TurnDetail["steps"][number] & { parts: unknown[] };
 }
 
 export function maxStepPartSeq(turnId: number, dataDir?: string): number {
@@ -623,14 +623,7 @@ interface ReplayOptions {
   includeOther: boolean;
 }
 
-function parsePartData(data: string): Record<string, unknown> {
-  try {
-    return JSON.parse(data);
-  } catch {
-    return { content: data };
-  }
-}
-
+/** Step-faithful replay (shared with message-builder) — never collapses multi-step tool rounds. */
 function replayStepPartsToMessages(
   parts: Array<{
     type: string;
@@ -641,96 +634,13 @@ function replayStepPartsToMessages(
   }>,
   opts: ReplayOptions,
 ): CoreMessage[] {
-  const contentParts: NonNullable<CoreMessage["content"]> = [];
-  const toolResultMessages: CoreMessage[] = [];
-
-  for (const part of parts) {
-    const data = parsePartData(part.data);
-    switch (part.type) {
-      case "text": {
-        if (opts.includeText) {
-          const text = typeof data.content === "string" ? data.content : "";
-          if (text) contentParts.push({ type: "text", text });
-        }
-        break;
-      }
-      case "tool": {
-        // Replay a persisted additional_system_info injection verbatim (balanced
-        // assistant tool-call + tool result), NOT as a normal tool call — its data
-        // has no `result`, so the generic path would render it empty.
-        const asi = readAdditionalSystemInfoData(data, part.toolCallId);
-        if (asi) {
-          if (!opts.includeTools) break;
-          contentParts.push({
-            type: "tool-call",
-            toolCallId: asi.toolCallId,
-            toolName: "additional_system_info",
-            input: {},
-          });
-          toolResultMessages.push({
-            role: "tool",
-            content: [{
-              type: "tool-result",
-              toolCallId: asi.toolCallId,
-              toolName: "additional_system_info",
-              output: { type: "text", value: asi.content },
-            }],
-          });
-          break;
-        }
-        if (opts.includeTools && part.toolCallId) {
-          const args = data.args ?? {};
-          contentParts.push({
-            type: "tool-call",
-            toolCallId: part.toolCallId,
-            toolName: part.toolName ?? "",
-            input: args,
-          });
-          const rawOutput = data.result ?? data.output ?? "";
-          toolResultMessages.push({
-            role: "tool",
-            content: [{
-              type: "tool-result",
-              toolCallId: part.toolCallId,
-              toolName: part.toolName ?? "",
-              output: part.status === "completed"
-                ? { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) }
-                : { type: "error-text", value: `Tool call ${part.status} before returning a result` },
-            }],
-          });
-        }
-        break;
-      }
-      case "reasoning": {
-        if (opts.includeReasoning) {
-          contentParts.push({ type: "reasoning", text: typeof data.content === "string" ? data.content : "" });
-        }
-        break;
-      }
-      case "patch": {
-        if (opts.includePatch) {
-          contentParts.push({ type: "text", text: typeof data.patch === "string" ? data.patch : JSON.stringify(data.patch) });
-        }
-        break;
-      }
-      // Custom UI-only part types (retry/error log) — stripped before the SDK.
-      case "error":
-      case "retry":
-        break;
-      default: {
-        if (opts.includeOther) {
-          const text = typeof data.content === "string" ? data.content : JSON.stringify(data);
-          if (text) contentParts.push({ type: "text", text });
-        }
-        break;
-      }
-    }
-  }
-
-  const out: CoreMessage[] = [];
-  if (contentParts.length > 0) out.push({ role: "assistant", content: contentParts });
-  out.push(...toolResultMessages);
-  return out;
+  return replayPartsToMessages(parts, {
+    includeTextParts: opts.includeText,
+    includeTools: opts.includeTools,
+    includeReasoningParts: opts.includeReasoning,
+    includePatchParts: opts.includePatch,
+    includeOtherParts: opts.includeOther,
+  });
 }
 
 /**

@@ -10,7 +10,7 @@ import {
   partsFromSnapshot,
 } from "./parts-util";
 import type { ChatState, RetryCountdownState } from "./types";
-import type { RetryEntry } from "../../../_shared/types";
+import type { RetryEntry } from "../../../../_shared/types";
 import {
   getSession,
   getTurns,
@@ -18,7 +18,7 @@ import {
   getSessionDraftInput,
   putSessionDraftInput,
 } from "../../lib/api";
-import type { SessionConfig } from "../../../_shared/types";
+import type { SessionConfig } from "../../../../_shared/types";
 import { chatDebug } from "./debug";
 
 import {

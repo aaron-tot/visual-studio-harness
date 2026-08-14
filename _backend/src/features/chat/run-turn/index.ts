@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { ConfigFile, Message, MessagePartType, ThinkingEffort } from "../../../_shared/types";
+import type { ConfigFile, Message, MessagePartType, ThinkingEffort } from "../../../../../_shared/types";
 import { toJSONSchema } from "zod/v4";
 import {
   createSession,
@@ -16,8 +16,9 @@ import {
   getWorkspaceRoot,
   toolsEnabled,
   isStopTurnResult,
-  type ResolveContext,
+  type ExtendedToolContext,
 } from "../../tools";
+import type { ResolveContext } from "../../tools/perms/resolve";
 import { normalizeWorkspace } from "../../sessions/rest";
 import { getMcpManager } from "../../mcp";
 import {
@@ -95,7 +96,7 @@ export async function runTurn(
   let runtime: ResolvedRuntime;
 
   if (isNew) {
-    const baseSettings: import("../../_shared/types").AgentSettings = {
+    const baseSettings: import("../../../../../_shared/types").AgentSettings = {
       providerName: config.defaultProvider,
       modelName: config.defaultModel,
       thinking: { effort: "off" },
@@ -366,19 +367,19 @@ export async function runTurn(
           bridgeToolResult: events.onToolResult,
           bridgeToolUpdate: events.onToolUpdate,
           requestSubagentConfig: events.requestSubagentConfig
-            ? async (req) => {
+            ? async (req: Parameters<NonNullable<ExtendedToolContext["requestSubagentConfig"]>>[0]) => {
                 events.onToolUpdate?.({ toolCallId: req.toolCallId || callId, status: "awaiting_config" });
                 return events.requestSubagentConfig!(req);
               }
             : undefined,
           requestSlotBusyDecision: events.requestSlotBusyDecision
-            ? async (req) => {
+            ? async (req: Parameters<NonNullable<ExtendedToolContext["requestSlotBusyDecision"]>>[0]) => {
                 events.onToolUpdate?.({ toolCallId: req.toolCallId || callId, status: "awaiting_config" });
                 return events.requestSlotBusyDecision!(req);
               }
             : undefined,
           requestAgentChange: events.requestAgentChange
-            ? async (req) => {
+            ? async (req: Parameters<NonNullable<ExtendedToolContext["requestAgentChange"]>>[0]) => {
                 events.onToolUpdate?.({ toolCallId: req.toolCallId || callId, status: "awaiting_agent_change" });
                 return events.requestAgentChange!(req);
               }
@@ -493,7 +494,7 @@ export async function runTurn(
     let resolvedThinkingEffort = runtime.thinkingEffort;
     if (sessionId) {
       try {
-        const { getSessionModelConfigJson } = await import("../sessions/db");
+        const { getSessionModelConfigJson } = await import("../../sessions/db");
         const modelCfgRaw = getSessionModelConfigJson(sessionId, dataDir);
         if (modelCfgRaw) {
           const modelCfg = JSON.parse(modelCfgRaw);
@@ -513,7 +514,7 @@ export async function runTurn(
       let parameters: unknown = { type: "object", properties: {} };
       if (tool.inputSchema != null) {
         try {
-          parameters = toJSONSchema(tool.inputSchema);
+          parameters = toJSONSchema(tool.inputSchema as unknown as Parameters<typeof toJSONSchema>[0]);
         } catch {
           parameters = { type: "object", properties: {} };
         }
@@ -600,7 +601,7 @@ export async function runTurn(
     let streamError: string | undefined;
     let streamRawError: string | undefined;
     let streamErrorIsCustom: boolean | undefined;
-    let debugInfo: import("../../../_shared/types").TurnDebugInfo | undefined;
+    let debugInfo: import("../../../../../_shared/types").TurnDebugInfo | undefined;
     let rawRequest: Record<string, unknown> | undefined;
     let rawResponse: Record<string, unknown> | undefined;
     let _streamResult: Awaited<ReturnType<typeof streamChat>> | undefined;
@@ -770,10 +771,10 @@ onStepFinish: async (info) => {
               performanceJson: info.performanceJson,
               providerMetadataJson: info.providerMetadataJson,
               warningsJson: info.warningsJson,
-              responseId: info.responseId,
-              responseModelId: info.responseModelId,
-              pricingJson: pricingSnapshot ? JSON.stringify(pricingSnapshot) : null,
-              costUsd: stepCostUsd,
+              responseId: info.responseId ?? undefined,
+              responseModelId: info.responseModelId ?? undefined,
+              pricingJson: pricingSnapshot ? JSON.stringify(pricingSnapshot) : undefined,
+              costUsd: stepCostUsd ?? undefined,
             }, dataDir);
             // Emit after the step is persisted so live stats (usage tree) can refresh per step.
             await events.onStepEnd?.({ stepIndex: info.stepIndex });

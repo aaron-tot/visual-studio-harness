@@ -1,4 +1,4 @@
-import type { SystemPromptJoiners } from "../../../_shared/types";
+import type { SystemPromptJoiners } from "../../../../_shared/types";
 import { DEFAULT_SYSTEM_PROMPT_SECTIONS } from "../../../../_shared/types/config";
 import { ensureGlobalSystemPromptFile } from "../mds";
 import {

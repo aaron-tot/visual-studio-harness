@@ -7,7 +7,7 @@
  * grouping consecutive context tools into a single collapsible group.
  */
 
-import type { MessagePartType, ToolCallStatus } from "../../../../_shared/types";
+import type { MessagePartType, ToolCallStatus } from "../../../../../_shared/types";
 import { ToolStatusBorder } from "../tools/ToolStatusBorder";
 import { ContextToolGroup, groupContextParts } from "../tools/ContextToolGroup";
 import { ToolCallCard } from "../../tools/ToolCallCard";

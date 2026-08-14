@@ -81,7 +81,7 @@ export function PromptInput({
 
   const handleSubmit = useCallback(() => {
     if (!stagedChatInput.trim()) return;
-    sendMessage(stagedChatInput);
+    sendMessage(stagedChatInput, { agentName: null, providerName: "", modelName: "", thinkingEffort: "off" });
     inputRef.current?.focus();
   }, [stagedChatInput, sendMessage]);
 

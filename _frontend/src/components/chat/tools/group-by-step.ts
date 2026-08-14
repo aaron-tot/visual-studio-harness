@@ -1,4 +1,4 @@
-import type { MessagePartType } from "../../../../_shared/types";
+import type { MessagePartType } from "../../../../../_shared/types";
 import { isAdditionalSystemInfoPart } from "../system-info";
 
 export type GroupedParts = MessagePartType[] | MessagePartType;

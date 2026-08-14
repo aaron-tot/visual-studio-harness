@@ -1,4 +1,4 @@
-import type { SearchProviderConfig, SearchProviderType } from "../../../../_shared/types/config";
+import type { SearchProviderConfig, SearchProviderType } from "../../../../../_shared/types/config";
 
 /**
  * In-memory token bucket for rate limiting per provider.

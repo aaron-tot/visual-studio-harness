@@ -40,7 +40,6 @@ export function runMigrations(dbPath: string): MigrationResult {
 
 export function getCurrentGraphVersion(db: WorkspaceGraphDb): number {
   const raw = db.get<{ graph_version: number }>(
-    // @ts-expect-error raw SQL
     "SELECT graph_version FROM workspaces ORDER BY rowid DESC LIMIT 1"
   );
   return raw?.graph_version ?? 0;

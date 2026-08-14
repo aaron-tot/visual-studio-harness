@@ -136,7 +136,7 @@ export const TreeItem = forwardRef<HTMLLIElement, Props>(
 
 TreeItem.displayName = 'TreeItem';
 
-function Handle(props: React.HTMLAttributes<HTMLDivElement>) {
+function Handle(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       className="cursor-grab touch-none inline-block flex-shrink-0 w-3 h-5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"

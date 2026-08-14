@@ -75,7 +75,7 @@ function WorkspaceSelect() {
   const [pathInput, setPathInput] = useState("");
   const [suggestions, setSuggestions] = useState<{ name: string; path: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   useClickOutside(ref, close, open);
   const displayPath = workspaceRoot || "~/Desktop";
@@ -192,7 +192,7 @@ function WorkspaceSelect() {
               <div className="border-t border-zinc-800 mt-1 pt-1 px-2 pb-1">
                 <button
                   type="button"
-                  onClick={() => apply(fs.path)}
+                  onClick={() => apply(fs.path ?? "")}
                   className="w-full text-center px-2 py-1 text-xs font-medium rounded bg-zinc-800 text-emerald-400 hover:bg-emerald-800/50 hover:text-emerald-300 transition-colors"
                 >
                   Use this folder
@@ -213,7 +213,7 @@ function ActiveTodo({ sessionId }: { sessionId: string | null }) {
   const setActiveSession = useTodoStore((s) => s.setActiveSession);
   const [expanded, setExpanded] = useState(false);
   const pendingTodoCalls = useRef(new Set<string>());
-  const closeTimer = useRef<ReturnType<typeof setTimeout>>();
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (sessionId) setActiveSession(sessionId); }, [sessionId, setActiveSession]);
@@ -362,7 +362,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   const [modelError, setModelError] = useState(false);
 
   // Single source of truth for agent/model/thinking config
-  const initialAgent = config.defaultAgent && config.agents?.[config.defaultAgent];
+  const initialAgent = (config.defaultAgent && config.agents?.[config.defaultAgent]) || undefined;
   const [currentConfig, setCurrentConfig] = useState<SessionConfig>({
     agentName: initialAgent ? config.defaultAgent! : null,
     providerName: initialAgent?.providerName || config.defaultProvider || "",
@@ -420,15 +420,11 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
     }
   }, [selectedAgent?.id, config.defaultProvider, config.defaultModel, config.agents]);
 
-  // New Chat / leaving a session: reset agent/model/thinking to the configured
-  // "Defaults for new chats". Gated on the epoch bump so config reloads never
-  // clobber an in-progress new-chat selection.
-  // null so the reset runs on mount (first render) and on every epoch bump,
-  // but NOT on unrelated re-renders triggered by dep changes (epoch unchanged).
-  const prevResetEpoch = useRef<number | null>(null);
+  // Leaving a session or mounting on the new-chat page: reset agent/model/
+  // thinking to the configured "Defaults for new chats". Guarded by sessionId
+  // so config reloads and New Chat both apply, but in-session dep changes are
+  // harmless (the guard fires but returns early).
   useEffect(() => {
-    if (composerResetEpoch === prevResetEpoch.current) return;
-    prevResetEpoch.current = composerResetEpoch;
     if (sessionId) return;
     const agent = config.defaultAgent && config.agents?.[config.defaultAgent];
     setCurrentConfig({
@@ -437,7 +433,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
       modelName: agent?.modelName || config.defaultModel || "",
       thinkingEffort: agent?.thinking?.effort || "off",
     });
-  }, [composerResetEpoch, sessionId, config.defaultAgent, config.agents, config.defaultProvider, config.defaultModel]);
+  }, [sessionId, config.defaultAgent, config.agents, config.defaultProvider, config.defaultModel]);
 
   useEffect(() => {
     const handler = (e: CustomEvent<{ content: string; position: "start" | "end" }>) => {

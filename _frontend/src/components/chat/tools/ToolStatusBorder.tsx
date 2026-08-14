@@ -7,7 +7,7 @@
  */
 
 import { type ReactNode } from "react";
-import { type ToolCallStatus } from "../../../../_shared/types";
+import { type ToolCallStatus } from "../../../../../_shared/types";
 import { getToolStatusColor } from "./tool-status-colors";
 import { cn } from "../../../lib/utils";
 

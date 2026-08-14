@@ -270,7 +270,7 @@ export const skillTool: ToolDef = {
         filtered = filtered.filter(s => s.name.toLowerCase().includes(f));
       }
       if (args.tags && args.tags.length > 0) {
-        filtered = filtered.filter(s => args.tags!.some(t => s.tags.includes(t)));
+        filtered = filtered.filter(s => args.tags!.some((t: string) => s.tags.includes(t)));
       }
       if (allowed) {
         filtered = filtered.filter(s => allowed!.has(s.name));

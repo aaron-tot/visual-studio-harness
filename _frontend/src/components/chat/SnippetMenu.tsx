@@ -1,4 +1,4 @@
-import type { SnippetConfig } from "../../../_shared/types";
+import type { SnippetConfig } from "../../../../_shared/types";
 
 interface SnippetMenuProps {
   open: boolean;

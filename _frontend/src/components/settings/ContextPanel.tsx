@@ -115,9 +115,9 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
           firstTurnNumber: current.firstTurnNumber ?? null,
           manualMode,
           manualTurnsBack,
-          summarizationModel: partial.summarizationModel !== undefined ? partial.summarizationModel : current.summarizationModel,
-          summarizationFallbackModel: partial.summarizationFallbackModel !== undefined ? partial.summarizationFallbackModel : current.summarizationFallbackModel,
-          summarizationPromptMd: partial.summarizationPromptMd !== undefined ? partial.summarizationPromptMd : current.summarizationPromptMd,
+          summarizationModel: partial.summarizationModel ?? current.summarizationModel ?? undefined,
+          summarizationFallbackModel: partial.summarizationFallbackModel ?? current.summarizationFallbackModel ?? undefined,
+          summarizationPromptMd: partial.summarizationPromptMd ?? current.summarizationPromptMd ?? undefined,
         });
       } else {
         await putScopedContextConfig(scope, body, { workspaceRoot });

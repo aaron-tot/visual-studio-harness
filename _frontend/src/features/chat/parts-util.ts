@@ -2,7 +2,7 @@
  * Pure helpers for ordered message parts (stream apply + session hydrate).
  * Backend owns durable _seq; these only sort/consolidate for render.
  */
-import type { MessagePartType } from "../../../_shared/types";
+import type { MessagePartType } from "../../../../_shared/types";
 
 export function sortParts(parts: MessagePartType[]): MessagePartType[] {
   return [...parts].sort((a, b) => {
@@ -44,7 +44,7 @@ export function consolidateTextParts(parts: MessagePartType[]): MessagePartType[
     ) {
       result[result.length - 1] = {
         ...prev,
-        content: (prev.content || "") + ((part as { content?: string }).content || ""),
+        content: ((prev as { content?: string }).content || "") + ((part as { content?: string }).content || ""),
       } as MessagePartType;
     } else {
       result.push(part);

@@ -206,7 +206,7 @@ export function AuditGroupList({
             {groupOpen &&
               (group.audits.length === 0 ? (
                 <div className="pl-8 pr-3 py-1 text-[10px] text-zinc-600">
-                  No audits yet for this {scope}
+                  No audits yet for this {group.label}
                 </div>
               ) : (
                 <AuditRows

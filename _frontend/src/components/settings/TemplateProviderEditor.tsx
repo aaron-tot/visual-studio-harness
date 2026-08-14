@@ -147,10 +147,10 @@ export function TemplateProviderEditor({ providerIndex }: TemplateProviderEditor
         <Sparkles size={18} className="text-amber-400" />
         <h3 className="text-base font-medium">{provider.displayName}</h3>
         {serverReachable === true && (
-          <Circle size={10} className="fill-green-400 text-green-400 shrink-0" title="Server running" />
+          <span title="Server running"><Circle size={10} className="fill-green-400 text-green-400 shrink-0" /></span>
         )}
         {serverReachable === false && (
-          <Circle size={10} className="fill-red-500 text-red-500 shrink-0" title="Server unreachable" />
+          <span title="Server unreachable"><Circle size={10} className="fill-red-500 text-red-500 shrink-0" /></span>
         )}
       </div>
 
@@ -232,8 +232,8 @@ export function TemplateProviderEditor({ providerIndex }: TemplateProviderEditor
                 <div key={i}>
                   <div className={`flex items-center justify-between px-3 py-1.5 bg-zinc-800 rounded text-sm text-zinc-300 ${enabled ? "" : "opacity-50"}`}>
                     <span className="flex items-center gap-2 min-w-0">
-                      {m.isLoaded === true && <Circle size={8} className="fill-green-400 text-green-400 shrink-0" title="Loaded" />}
-                      {m.isLoaded === false && <Circle size={8} className="fill-red-500 text-red-500 shrink-0" title="Not loaded" />}
+                      {m.isLoaded === true && <span title="Loaded"><Circle size={8} className="fill-green-400 text-green-400 shrink-0" /></span>}
+                      {m.isLoaded === false && <span title="Not loaded"><Circle size={8} className="fill-red-500 text-red-500 shrink-0" /></span>}
                       <span className="truncate">{m.displayName}</span>
                     </span>
                     <span className="flex items-center gap-1 shrink-0">

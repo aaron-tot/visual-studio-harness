@@ -376,7 +376,7 @@ export function getDb(dbPath?: string): DrizzleDb {
   return db;
 }
 
-/** DB for a given data directory (tests + multi-root). */
-export function getDbForDataDir(dataDir: string): DrizzleDb {
-  return getDb(join(dataDir, "visual-studio-harness.db"));
+/** DB for a given data directory (tests + multi-root). Falls back to the default DB when omitted. */
+export function getDbForDataDir(dataDir?: string): DrizzleDb {
+  return dataDir ? getDb(join(dataDir, "visual-studio-harness.db")) : getDb();
 }

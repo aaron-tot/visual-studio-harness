@@ -1,4 +1,4 @@
-import type { Message, MessagePartType } from "../../_shared/types";
+import type { Message, MessagePartType } from "../../../_shared/types";
 
 function partText(p: MessagePartType): string | null {
   switch (p.type) {

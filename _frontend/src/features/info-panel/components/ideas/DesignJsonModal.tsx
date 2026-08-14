@@ -174,7 +174,6 @@ function OverviewContent({
             <div className="text-sm text-zinc-400">{selectedPlanDoc.endGoal?.slice(0, 200) || "(no end goal)"}</div>
             <div className="text-xs text-zinc-600 mt-1">
               Status: {selectedPlanDoc.meta?.status || "draft"}
-              {selectedPlanDoc.tags?.length ? ` · tags: ${selectedPlanDoc.tags.join(", ")}` : ""}
               {selectedPlanDoc.parts?.length ? ` · ${selectedPlanDoc.parts.length} parts` : ""}
             </div>
           </div>

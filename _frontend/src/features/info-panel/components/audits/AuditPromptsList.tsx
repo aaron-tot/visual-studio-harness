@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Clipboard, Copy, SendHorizontal, Loader2 } from "lucide-react";
 import { listAuditPrompts } from "../../../../lib/api";
-import type { AuditPrompt, AuditPromptCategory } from "../../../../_shared/types/audit";
+import type { AuditPrompt, AuditPromptCategory } from "../../../../../../_shared/types/audit";
 
 export function AuditPromptsList() {
   const [expanded, setExpanded] = useState(false);

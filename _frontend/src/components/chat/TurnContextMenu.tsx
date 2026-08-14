@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { putSessionContextConfig, summarizeRange } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
-import type { Message } from "../../../_shared/types";
+import type { Message } from "../../../../_shared/types";
 
 interface TurnContextMenuProps {
   sessionId: string;

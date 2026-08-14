@@ -6,7 +6,7 @@ import type {
   SessionMeta,
   SubagentToolSettings,
   ThinkingEffort,
-} from "../../../_shared/types";
+} from "../../../../_shared/types";
 import { readAgent } from "./rest";
 
 export interface ResolvedRuntime {

@@ -8,7 +8,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { executeActions, type MockAction } from "./shared";
-import type { AsyncGenerator } from "../../../../_shared/types";
 
 export const actions: MockAction[] = [
   { type: "text", prefix: "a", count: 500 },

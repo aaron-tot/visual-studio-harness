@@ -47,7 +47,7 @@ export const todoWriteTool: ToolDef = {
     // Persist to sessions.todos_json (SQLite) — the same store the
     // /api/sessions/:id/todos endpoints read for the UI todo strip.
     await saveToDisk(ctx.dataDir, ctx.sessionId, args.todos);
-    const open = args.todos.filter((t) => t.status !== "completed" && t.status !== "cancelled").length;
+    const open = args.todos.filter((t: { status: string }) => t.status !== "completed" && t.status !== "cancelled").length;
     return {
       title: "todowrite",
       output: JSON.stringify(args.todos, null, 2) + `\n\n(${open} open of ${args.todos.length})`,

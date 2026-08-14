@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ToolDef } from "../types";
+import type { ExtendedToolContext, ToolDef } from "../types";
 import type { AgentSettings } from "../../../../../_shared/types";
 
 function buildAgentList(agents?: Record<string, AgentSettings>): string {
@@ -40,9 +40,10 @@ ${agentList}`,
     execute: async (args, ctx) => {
       const { runSubagentTurn } = await import("../../subagents");
       const { recordSubagentSpawnEdge } = await import("../../subagents/db");
+      const tctx = ctx as ExtendedToolContext;
 
       const bridgePermission =
-        ctx.bridgePermission ??
+        tctx.bridgePermission ??
         (async (toolName: string, toolArgs: unknown, _callId: string) =>
           ctx.askPermission(toolName, toolArgs));
 
@@ -63,18 +64,18 @@ ${agentList}`,
           dataDir: ctx.dataDir,
           abortSignal: ctx.abortSignal,
           bridgePermission,
-          onToolCall: ctx.bridgeToolCall
-            ? (e) => ctx.bridgeToolCall!({ ...e, parentToolCallId })
+          onToolCall: tctx.bridgeToolCall
+            ? (e) => tctx.bridgeToolCall!({ ...e, parentToolCallId })
             : undefined,
-          onToolResult: ctx.bridgeToolResult
-            ? (e) => ctx.bridgeToolResult!({ ...e, parentToolCallId })
+          onToolResult: tctx.bridgeToolResult
+            ? (e) => tctx.bridgeToolResult!({ ...e, parentToolCallId })
             : undefined,
-          onToolUpdate: ctx.bridgeToolUpdate
-            ? (e) => ctx.bridgeToolUpdate!({ ...e, parentToolCallId })
+          onToolUpdate: tctx.bridgeToolUpdate
+            ? (e) => tctx.bridgeToolUpdate!({ ...e, parentToolCallId })
             : undefined,
-          onSessionReady: ctx.bridgeToolUpdate
+          onSessionReady: tctx.bridgeToolUpdate
             ? (info) =>
-                ctx.bridgeToolUpdate!({
+                tctx.bridgeToolUpdate!({
                   toolCallId: ctx.callId,
                   status: "running",
                   taskId: info.sessionId,

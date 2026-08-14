@@ -827,11 +827,11 @@ export function AgentRuntimeEditor({
           <div className="flex flex-wrap gap-1">
             <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${fileErrors.has(value.agentMd.path ?? "") ? "bg-red-900/50 text-red-300 ring-1 ring-red-500/50" : "bg-zinc-800 text-zinc-300"}`} title={fileErrors.has(value.agentMd.path ?? "") ? `File not found at: ${value.agentMd.path}` : undefined}>
               {fileErrors.has(value.agentMd.path ?? "") && <AlertTriangle className="h-3 w-3 shrink-0 text-red-400" />}
-              {value.agentMd.path ?? "Inline"}
-              {value.agentMd.path && scopeIndex[value.agentMd.path] && (
+              {value.agentMd?.path ?? "Inline"}
+              {value.agentMd?.path && scopeIndex[value.agentMd.path] && (
                 <button
                   onClick={() => {
-                    const hit = scopeIndex[value.agentMd.path!];
+                    const hit = scopeIndex[value.agentMd!.path!];
                     setEditTarget({ scope: hit.scope, relPath: hit.relPath, ext: "md" });
                   }}
                   className="text-zinc-500 hover:text-zinc-200"

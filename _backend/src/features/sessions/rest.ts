@@ -29,7 +29,7 @@ import { buildUsageTree } from "../chat/usage-tree";
 import { sessionHasTurns, getTurnByNumber, getNextTurnNumber, listContextTurnIds } from "../chat/db-trace";
 import { cancelSession } from "../chat/session-abort";
 import { buildModelMessages } from "../chat/message-builder";
-import type { CoreMessage } from "ai";
+import type { ModelMessage as CoreMessage } from "ai";
 import { promptSnapshots, turns, toolsSnapshots, summaryRanges, steps, stepParts } from "../../db/schema";
 import { getDbForDataDir } from "../../db/client";
 import { eq, and, desc, lt } from "drizzle-orm";
@@ -45,6 +45,7 @@ import {
   getLatestSummaryRangeBefore,
   getSummaryRangeByEndTurn,
   getSummaryRangeByRange,
+  getSummaryRangesForSession,
 } from "./db";
 import { runSummarizer, readSummarizationPrompt, splitModelRef, buildSummarizationMessages, type SummarizerResult } from "./summarizer";
 import { getWorkspaceGraphManager } from "../../core/workspaceGraph/service-singleton";
@@ -425,6 +426,7 @@ const sessionEnabled = session["enabled"] === true ||
       promptMd?: string;            // optional: inline prompt or path
       model?: string;               // optional: "Provider/Model"
       fallbackModel?: string;       // optional: "Provider/Model"
+      includePriorSummary?: boolean; // chain prior summaries into this one
     };
 
     const { sessionId, endTurnNum, startTurnNum, promptMd, model, fallbackModel, includePriorSummary } = body;
@@ -630,7 +632,7 @@ for (const m of chatMessages) {
         inputTokens: usage?.inputTokens ?? 0,
         outputTokens: usage?.outputTokens ?? 0,
         totalTokens: usage?.totalTokens ?? 0,
-        reasoningTokens: usage?.reasoningTokens ?? 0,
+        reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
         stepCount: 1,
@@ -1063,7 +1065,7 @@ for (const m of chatMessages) {
     if (!body.tree.every(validateNode)) {
       return reply.code(400).send({ error: "invalid tree node" });
     }
-    await setSessionLayout(dataDir, body.workspace, body.tree);
+    await setSessionLayout(dataDir, body.workspace, body.tree as import("../../../../_shared/types").LayoutNode[]);
     return { ok: true };
   });
 }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { groupByStep } from "./group-by-step";
 import { toolBatchLabel } from "./tool-batch-label";
-import type { MessagePartType } from "../../../../_shared/types";
+import type { MessagePartType } from "../../../../../_shared/types";
 
 function tool(toolCallId: string, toolName: string, stepIndex?: number): MessagePartType {
   return { type: "tool", toolCallId, toolName, status: "completed", args: {}, stepIndex } as MessagePartType;

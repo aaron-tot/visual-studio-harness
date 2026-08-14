@@ -48,7 +48,7 @@ export function ChatInput({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!stagedChatInput.trim()) return;
-    sendMessage(stagedChatInput);
+    sendMessage(stagedChatInput, { agentName: null, providerName: "", modelName: "", thinkingEffort: "off" });
     setInput("");
     inputRef.current?.focus();
   };

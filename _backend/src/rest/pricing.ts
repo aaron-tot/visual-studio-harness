@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { ConfigFile, ProviderConfig } from "../../_shared/types";
+import type { ConfigFile, ProviderConfig } from "../../../_shared/types";
 import { getModelPricing, getCachedPricing, getCatalogUpdatedAt, refreshPricingCatalog } from "../features/pricing/models-dev";
 
 const DEFAULT_SOURCE_URL = "https://models.dev/api.json";

@@ -13,6 +13,7 @@
  */
 
 import { readdir, readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import { join, relative, extname, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { VERSION } from "../_shared/version";
@@ -41,6 +42,16 @@ const BUILTIN_TOOLS_SEEDS_OUT = join(
 );
 const BINARY_NAME = process.platform === "win32" ? "visual-studio-harness.exe" : "visual-studio-harness";
 const BINARY_OUT = join(process.env.PACKAGE_DIR || PACKAGE_DIR, BINARY_NAME);
+
+/** Resolve the exact Git commit this build is produced from (for the update indicator). */
+function getBuildCommit(): string {
+  try {
+    return execSync("git rev-parse HEAD", { cwd: ROOT, encoding: "utf-8" }).trim();
+  } catch {
+    console.warn("WARNING: could not resolve git HEAD; BUILD_COMMIT will be empty.");
+    return "";
+  }
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -337,6 +348,8 @@ export const VEC0_SO_FILENAME = ${JSON.stringify(vec0Lib.filename)};
       `process.env.BUILD_TIMESTAMP="${new Date().toISOString()}"`,
       "--define",
       `process.env.APP_VERSION="${VERSION}"`,
+      "--define",
+      `process.env.VSH_BUILD_COMMIT="${getBuildCommit()}"`,
     ],
     ROOT
   );

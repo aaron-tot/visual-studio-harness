@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { StepSummary, StepPart, TurnDetail } from "../../../_shared/types/trace";
+import type { StepSummary, StepPart, TurnDetail } from "../../../../_shared/types/trace";
 import { computeToolGroups } from "./cache-hit";
 
 function step(

@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useChatStore } from "../stores/chat";
-import { listWorkspaces, listFs } from "../lib/api";
+import { listWorkspaces, listFs, type FsListResult } from "../lib/api";
 
 export function useWorkspacePicker() {
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
@@ -8,7 +8,7 @@ export function useWorkspacePicker() {
   const [open, setOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
   const [browsing, setBrowsing] = useState(false);
-  const [fs, setFs] = useState<{ path?: string; parent?: string; entries?: { name: string; path: string; isDir: boolean }[] } | null>(null);
+  const [fs, setFs] = useState<FsListResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [fsPath, setFsPath] = useState("");
 

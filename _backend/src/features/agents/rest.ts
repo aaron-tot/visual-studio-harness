@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { join } from "node:path";
 import { mkdir, readFile, readdir, writeFile, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import type { AgentSettings } from "../../../_shared/types";
+import type { AgentSettings } from "../../../../_shared/types";
 
 function agentsDir(dataDir: string): string {
   return join(dataDir, "agents");

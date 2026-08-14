@@ -1,4 +1,4 @@
-import type { GroupColor, SessionMeta } from "../../../_shared/types";
+import type { GroupColor, SessionMeta } from "../../../../_shared/types";
 import type { SessionGroupLayout } from "../../features/sessions/layout";
 import { GroupItem } from "./GroupItem";
 import { SessionItem } from "./SessionItem";

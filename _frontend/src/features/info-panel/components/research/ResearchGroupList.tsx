@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import type { ResearchEntry } from "../../../../lib/api";
-import type { ResearchGroup } from "../../hooks/useResearchDocs";
+import type { ResearchGroup } from "../../types";
 import { EmptyState } from "../ui";
 import { ResearchCard } from "./ResearchCard";
 

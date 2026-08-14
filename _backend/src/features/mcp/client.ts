@@ -6,8 +6,8 @@ import type {
   McpListToolsResult,
   McpToolCallResult,
   McpToolCallContent,
-  McpServerConfig,
 } from "./types";
+import type { McpServerConfig } from "../../../../_shared/types";
 import { VERSION } from "../../../../_shared/version";
 
 const MCP_PROTOCOL_VERSION = "2024-11-05";
@@ -47,7 +47,7 @@ export class McpClient {
     if (response.error) {
       throw new Error(response.error.message);
     }
-    this.transport.notify({ method: "notifications/initialized", params: {} });
+    this.transport.notify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
   }
 
   async disconnect(): Promise<void> {

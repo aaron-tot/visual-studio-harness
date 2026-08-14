@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listResearchViaApi, listSessions, listWorkspaces } from "../../../lib/api";
+import { listResearch, listSessions, listWorkspaces } from "../../../lib/api";
 import type { PlanScope, ResearchEntry } from "../types";
 import { workspaceLabel } from "../types";
 
@@ -35,7 +35,7 @@ export function useResearch({
     setGroups([]);
     try {
       if (scope === "global") {
-        const entries = await listResearchViaApi({ scope: "global" });
+        const entries = await listResearch({ scope: "global" });
         setGroups([
           {
             key: "global",
@@ -59,7 +59,7 @@ export function useResearch({
 
         const loaded = await Promise.all(
           [...roots].map(async (root) => {
-            const entries = await listResearchViaApi({ scope: "project", workspaceRoot: root });
+            const entries = await listResearch({ scope: "project", workspaceRoot: root });
             return {
               key: `project:${root}`,
               label: workspaceLabel(root),
@@ -91,7 +91,7 @@ export function useResearch({
 
       const loaded = await Promise.all(
         [...ids].map(async (sid) => {
-          const entries = await listResearchViaApi({ scope: "session", sessionId: sid });
+          const entries = await listResearch({ scope: "session", sessionId: sid });
           const meta = byId.get(sid);
           const title = meta?.title?.trim() || sid;
           return {

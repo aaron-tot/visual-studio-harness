@@ -9,7 +9,6 @@
 //     real body text, breaking the "nothing in front, nothing inside" check.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import type { AsyncGenerator } from "../../../../_shared/types";
 import { execSync } from "child_process";
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "fs";
 import { resolve, join, dirname, extname } from "path";
@@ -185,7 +184,7 @@ function sourceDirTree(workspaceRoot?: string): string {
   if (!workspaceRoot) return "";
   const dirs = new Set<string>();
   const walk = (dir: string): void => {
-    let entries: ReturnType<typeof readdirSync>;
+    let entries: import("node:fs").Dirent[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {
@@ -376,7 +375,7 @@ export function executeTool(toolName: string, args: Record<string, unknown>, wor
       if (action === "write") {
         const todoDir = resolvePath(".opencode", workspaceRoot);
         const todoPath = resolvePath(".opencode/tasks.json", workspaceRoot);
-        const todos = args.todos;
+        const todos = args.todos as unknown[];
         try {
           mkdirSync(todoDir, { recursive: true });
           writeFileSync(todoPath, JSON.stringify({ tasks: todos }, null, 2), "utf-8");
@@ -467,7 +466,7 @@ export function generateExpectedText(actions: MockAction[], workspaceRoot?: stri
 
   for (const entry of grouped) {
     if (Array.isArray(entry)) {
-      const cat = toolCategory((entry[0] as MockAction).toolName);
+      const cat = toolCategory((entry[0] as ToolAction).toolName);
       const label = cat === "context" ? "Gathered context" : "Applied changes";
       const summary = groupSummary(entry);
       const toolsContent = entry.map((a) => toolBlock(a, workspaceRoot)).join("\n");

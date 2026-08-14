@@ -7,7 +7,7 @@
  */
 
 import { useState, useMemo } from "react";
-import type { MessagePartType } from "../../../../_shared/types";
+import type { MessagePartType } from "../../../../../_shared/types";
 import { cn } from "../../../lib/utils";
 import { useChatStore } from "../../../stores/chat";
 import { ToolCallCard } from "../../tools/ToolCallCard";

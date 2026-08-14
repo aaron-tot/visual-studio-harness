@@ -1,4 +1,5 @@
-import type { JsonRpcRequest, JsonRpcResponse, JsonRpcNotification, McpServerConfig } from "./types";
+import type { JsonRpcRequest, JsonRpcResponse, JsonRpcNotification } from "./types";
+import type { McpServerConfig } from "../../../../_shared/types";
 
 export interface McpTransport {
   connect(): Promise<void>;
@@ -33,7 +34,7 @@ class StdioTransport implements McpTransport {
     if (!cmd) throw new Error("stdio transport requires a command");
 
     this.proc = Bun.spawn({
-      cmd: [cmd, ...(this.config.args ?? [])],
+      cmd: [cmd, ...(Array.isArray(this.config.args) ? this.config.args : [])],
       env: { ...process.env, ...(this.config.env ?? {}) },
       stdin: "pipe",
       stdout: "pipe",
@@ -42,20 +43,26 @@ class StdioTransport implements McpTransport {
 
     this.closed = false;
 
-    this.proc.stdout?.pipeTo(
-      new WritableStream({
-        write: (chunk) => this.onData(chunk),
-      })
-    );
+    const stdout = this.proc.stdout;
+    if (stdout != null && typeof stdout !== "number") {
+      stdout.pipeTo(
+        new WritableStream({
+          write: (chunk) => this.onData(chunk),
+        })
+      );
+    }
 
-    this.proc.stderr?.pipeTo(
-      new WritableStream({
-        write: (chunk) => {
-          const text = new TextDecoder().decode(chunk).trim();
-          if (text) console.debug(`[mcp:${this.config.name} stderr]`, text);
-        },
-      })
-    );
+    const stderr = this.proc.stderr;
+    if (stderr != null && typeof stderr !== "number") {
+      stderr.pipeTo(
+        new WritableStream({
+          write: (chunk) => {
+            const text = new TextDecoder().decode(chunk).trim();
+            if (text) console.debug(`[mcp:${this.config.name} stderr]`, text);
+          },
+        })
+      );
+    }
 
     const exited = this.proc.exited;
     exited.then((code) => {
@@ -97,7 +104,8 @@ class StdioTransport implements McpTransport {
       });
 
       const line = JSON.stringify(request) + "\n";
-      const written = this.proc!.stdin!.write(line);
+      const stdin = this.proc?.stdin;
+      const written = stdin != null && typeof stdin !== "number" ? stdin.write(line) : 0;
       if (!written) {
         clearTimeout(timer);
         this.pending.delete(request.id);
@@ -123,7 +131,8 @@ class StdioTransport implements McpTransport {
   notify(message: JsonRpcNotification): void {
     if (!this.proc || this.closed) return;
     const line = JSON.stringify(message) + "\n";
-    this.proc.stdin?.write(line);
+    const stdin = this.proc.stdin;
+    if (stdin != null && typeof stdin !== "number") stdin.write(line);
   }
 
   private onData(chunk: Uint8Array): void {
@@ -293,7 +302,7 @@ class TcpTransport implements McpTransport {
       });
 
       const line = JSON.stringify(request) + "\n";
-      const written = this.socket.write(line);
+      const written = this.socket?.write(line) ?? 0;
       if (!written) {
         clearTimeout(timer);
         this.pending.delete(request.id);

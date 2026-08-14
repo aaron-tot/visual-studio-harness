@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { SearchProviderConfig, SearchProviderType } from "../../../../_shared/types/config";
+import type { ConfigFile, ProviderConfig, SearchProviderConfig, SearchProviderType } from "../../../_shared/types/config";
 import { ConfigFileSchema } from "../config/schema";
 
 /** Known-good OpenAI-compatible base for OpenCode Zen template. */
@@ -31,7 +31,7 @@ export async function loadConfig(dataDir: string): Promise<ConfigFile> {
   try {
     const raw = await readFile(filePath, "utf-8");
     const parsed = JSON.parse(raw);
-    const config = ConfigFileSchema.parse(parsed);
+    const config = ConfigFileSchema.parse(parsed) as ConfigFile;
     // Fail loudly when zod strips unknown keys — a key missing from the schema
     // is dead config (silently has no effect). Keeps strip semantics (loading
     // never bricks), but surfaces drift in logs.

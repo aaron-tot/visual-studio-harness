@@ -3,7 +3,7 @@ import { z } from "zod";
 export const McpServerConfigSchema = z.object({
   name: z.string().min(1, "Server name is required"),
   enabled: z.boolean().default(true),
-  transport: z.enum(["stdio", "http"]),
+  transport: z.enum(["stdio", "http", "tcp"]),
   command: z.string().optional(),
   args: z.array(z.string()).default([]),
   env: z.record(z.string()).optional(),

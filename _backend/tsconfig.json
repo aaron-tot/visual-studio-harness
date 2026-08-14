@@ -1,11 +1,13 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
+    "composite": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "types": ["bun-types"]
+    "types": ["bun"]
   },
   "include": ["src/**/*"],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx"],
   "references": [
     { "path": "../_shared" }
   ]

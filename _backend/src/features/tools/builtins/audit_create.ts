@@ -75,7 +75,7 @@ export const auditCreateTool: ToolDef = {
 
     const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
     for (const f of args.findings) {
-      severityCounts[f.severity]++;
+      severityCounts[f.severity as keyof typeof severityCounts]++;
     }
 
     const document = {

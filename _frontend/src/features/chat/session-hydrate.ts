@@ -1,5 +1,6 @@
-import type { ToolCallStatus } from "../../../_shared/types";
+import type { ToolCallStatus } from "../../../../_shared/types";
 import type { BufferedDelta } from "./types";
+import { useChatStore } from "./store";
 
 /** toolCallId -> permission tool name from last permission_request */
 export const pendingPermToolNames = new Map<string, string>();
@@ -46,7 +47,6 @@ export function bufferDelta(delta: BufferedDelta) {
 }
 
 export function replayPendingDeltas(sessionId: string, afterSeq: number) {
-  const { useChatStore } = require("./store");
   const buf = pendingDeltas.filter((e) => e.sessionId === sessionId);
   pendingDeltas = [];
   const s = useChatStore.getState();

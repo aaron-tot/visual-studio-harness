@@ -1,12 +1,17 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
+    "composite": true,
     "jsx": "react-jsx",
     "outDir": "./dist",
     "rootDir": "./src",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "paths": {
+      "@shared/*": ["../_shared/*"]
+    }
   },
   "include": ["src/**/*"],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx"],
   "references": [
     { "path": "./tsconfig.node.json" },
     { "path": "../_shared" }

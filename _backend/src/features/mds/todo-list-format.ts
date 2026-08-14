@@ -18,8 +18,9 @@ export async function formatTodoList(
     if (!raw) return null;
 
     const todos: Array<{
-      id: string;
-      content: string;
+      id?: string;
+      content?: string;
+      title?: string;
       status: string;
       priority?: string;
     }> = JSON.parse(raw);
@@ -28,9 +29,13 @@ export async function formatTodoList(
 
     const lines: string[] = ["## TODO List","## Work on your TODO list, if it needs updating then update it. Never leave it incomplete. ##"];
     for (const t of todos) {
+      // Accept both the {title, description, status} todo-tool schema and the
+      // legacy {id, content, status} schema; never render "undefined".
+      const label = t.title ?? t.content;
+      if (!label) continue;
       const icon = STATUS_ICON[t.status] ?? "·";
       const prio = t.priority ? ` [${t.priority}]` : "";
-      lines.push(`- ${icon} **${t.content}**${prio} — ${t.status}`);
+      lines.push(`- ${icon} **${label}**${prio} — ${t.status}`);
     }
     return lines.join("\n");
   } catch {

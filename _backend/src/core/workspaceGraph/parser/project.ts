@@ -1,4 +1,4 @@
-import { Project, ModuleKind, ModuleResolutionKind, ScriptTarget, type ProjectOptions } from "ts-morph";
+import { Project, ModuleKind, ModuleResolutionKind, ScriptTarget, IndentationText, type ProjectOptions } from "ts-morph";
 
 let _project: Project | null = null;
 let parserProjectConstructionCount = 0;
@@ -6,7 +6,7 @@ let parserProjectConstructionCount = 0;
 const DEFAULT_OPTIONS: ProjectOptions = {
   skipAddingFilesFromTsConfig: true,
   manipulationSettings: {
-    indentationText: " ",
+    indentationText: IndentationText.TwoSpaces,
   },
   compilerOptions: {
     allowJs: true,

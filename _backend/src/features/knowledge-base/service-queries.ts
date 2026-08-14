@@ -332,11 +332,11 @@ export async function getDocumentEmbeddings(kb: { db: any; sqlite: Database }, d
   // Get embedding metadata (by chunk_hash)
   const metaRows = kb.sqlite
     .prepare("SELECT chunk_hash, model, dimensions FROM knowledge_embedding_meta WHERE chunk_hash IN (" + chunks.map(() => "?").join(",") + ")")
-    .all(...chunks.map(c => c.hash)) as { chunk_hash: string; model: string; dimensions: number }[];
+    .all(...chunks.map((c: { hash: string }) => c.hash)) as { chunk_hash: string; model: string; dimensions: number }[];
 
   const metaMap = new Map(metaRows.map(m => [m.chunk_hash, m]));
 
-  return chunks.map(c => {
+  return chunks.map((c: { id: string; chunkIndex: number; content: string; section: string; hash: string; tokenCount: number }) => {
     const meta = metaMap.get(c.hash);
     return {
       id: c.id,

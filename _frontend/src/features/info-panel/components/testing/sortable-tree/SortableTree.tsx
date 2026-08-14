@@ -324,8 +324,8 @@ export function SortableTree({
               key={id}
               id={id}
               itemId={id as string}
-              value={childrenLabels.get(id) ?? (id as string)}
-              variant={childrenVariants.get(id)}
+              value={childrenLabels.get(id as string) ?? (id as string)}
+              variant={childrenVariants.get(id as string)}
               renderActions={renderActions}
               childSessionIds={childrenSessionIds.get(String(id))}
               requestRemove={() => handleRemove(id)}
@@ -354,8 +354,8 @@ export function SortableTree({
                 depth={activeItem.depth}
                 clone
                 childCount={getChildCount(items, activeId) + 1}
-                value={childrenLabels.get(activeId) ?? activeId.toString()}
-                variant={childrenVariants.get(activeId)}
+                value={childrenLabels.get(activeId as string) ?? activeId.toString()}
+                variant={childrenVariants.get(activeId as string)}
                 renderActions={renderActions}
                 childSessionIds={childrenSessionIds.get(String(activeId))}
                 requestRemove={() => handleRemove(activeId)}

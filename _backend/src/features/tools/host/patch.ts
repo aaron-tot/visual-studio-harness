@@ -4,7 +4,6 @@ import { mkdir } from "node:fs/promises";
 import { atomicWriteFile } from "./atomic-write";
 import { SandboxError } from "../sandbox";
 import { countOccurrences } from "../format";
-import { findClosestMatch, formatSuggestion } from "../host/fuzzy-match";
 import { findClosestMatch, formatSuggestion } from "./fuzzy-match";
 
 /**

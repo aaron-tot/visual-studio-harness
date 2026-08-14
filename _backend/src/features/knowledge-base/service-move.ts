@@ -74,7 +74,7 @@ export async function moveDocumentAcrossScopes(
   // failure rolls back every target insert. Unqualified table names refer to
   // the source (main) DB; `tgt.` rows go to the target DB. The target FTS
   // trigger fires on chunk insert, so knowledge_fts stays in sync automatically.
-  src.sqlite.run(`ATTACH DATABASE ? AS tgt`, dst.path);
+  src.sqlite.run(`ATTACH DATABASE ? AS tgt`, [dst.path]);
   try {
     src.sqlite.run(`BEGIN IMMEDIATE`);
     try {
@@ -83,39 +83,37 @@ export async function moveDocumentAcrossScopes(
            (id, filename, filepath, title, topics, summary, content_type, file_hash, file_size, status, created_by, scope, tags, chunk_count, created_at, updated_at)
          SELECT id, filename, ?, title, topics, summary, content_type, file_hash, file_size, status, created_by, ?, tags, chunk_count, created_at, updated_at
          FROM knowledge_documents WHERE id = ?`,
-        toFile,
-        params.toScope,
-        params.documentId,
+        [toFile, params.toScope, params.documentId],
       );
       src.sqlite.run(
         `INSERT INTO tgt.knowledge_chunks
            (id, document_id, content, section, chunk_index, token_count, hash, embedding_model, created_at)
          SELECT id, document_id, content, section, chunk_index, token_count, hash, embedding_model, created_at
          FROM knowledge_chunks WHERE document_id = ?`,
-        params.documentId,
+        [params.documentId],
       );
       src.sqlite.run(
         `INSERT INTO tgt.knowledge_embeddings (chunk_id, embedding)
          SELECT chunk_id, embedding FROM knowledge_embeddings
          WHERE chunk_id IN (SELECT id FROM knowledge_chunks WHERE document_id = ?)`,
-        params.documentId,
+        [params.documentId],
       );
       src.sqlite.run(
         `INSERT INTO tgt.knowledge_embedding_cache (id, chunk_hash, model, dimensions, created_at)
          SELECT id, chunk_hash, model, dimensions, created_at FROM knowledge_embedding_cache
          WHERE chunk_hash IN (SELECT hash FROM knowledge_chunks WHERE document_id = ?)`,
-        params.documentId,
+        [params.documentId],
       );
       src.sqlite.run(
         `INSERT INTO tgt.knowledge_embedding_meta (id, chunk_hash, model, dimensions, token_count, created_at)
          SELECT id, chunk_hash, model, dimensions, token_count, created_at FROM knowledge_embedding_meta
          WHERE chunk_hash IN (SELECT hash FROM knowledge_chunks WHERE document_id = ?)`,
-        params.documentId,
+        [params.documentId],
       );
       src.sqlite.run(
         `INSERT INTO tgt.knowledge_document_versions (id, document_id, version_number, content, file_hash, file_size, created_at)
          SELECT id, document_id, version_number, content, file_hash, file_size, created_at FROM knowledge_document_versions WHERE document_id = ?`,
-        params.documentId,
+        [params.documentId],
       );
       // Copy only relationship rows whose BOTH endpoints exist in the target
       // (knowledge_relationships has NOT NULL FKs to knowledge_documents and
@@ -127,8 +125,7 @@ export async function moveDocumentAcrossScopes(
          SELECT id, source_document_id, target_document_id, relation_type, weight, created_at FROM knowledge_relationships
          WHERE (source_document_id = ? AND target_document_id IN (SELECT id FROM tgt.knowledge_documents))
             OR (target_document_id = ? AND source_document_id IN (SELECT id FROM tgt.knowledge_documents))`,
-        params.documentId,
-        params.documentId,
+        [params.documentId, params.documentId],
       );
       src.sqlite.run(`COMMIT`);
     } catch (err) {

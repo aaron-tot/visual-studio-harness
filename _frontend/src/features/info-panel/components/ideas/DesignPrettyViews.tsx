@@ -176,7 +176,6 @@ export function SpecPrettyView({ spec, vNum }: { spec: SpecDocument; vNum: numbe
       <div className="flex items-center gap-3 text-sm">
         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
           spec.meta?.status === "completed" ? "bg-emerald-900/50 text-emerald-300" :
-          spec.meta?.status === "in_progress" ? "bg-blue-900/50 text-blue-300" :
           "bg-zinc-800 text-zinc-400"
         }`}>{spec.meta?.status || "draft"}</span>
         <span className="text-zinc-500">by <span className="text-zinc-300">{spec.meta?.createdBy || "?"}</span></span>
@@ -252,7 +251,6 @@ export function PlanPrettyView({ plan, vNum }: { plan: PlanDocument; vNum: numbe
       <div className="flex items-center gap-3 text-sm">
         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
           plan.meta?.status === "completed" ? "bg-emerald-900/50 text-emerald-300" :
-          plan.meta?.status === "in_progress" ? "bg-blue-900/50 text-blue-300" :
           "bg-zinc-800 text-zinc-400"
         }`}>{plan.meta?.status || "draft"}</span>
         <span className="text-zinc-500">by <span className="text-zinc-300">{plan.meta?.createdBy || "?"}</span></span>

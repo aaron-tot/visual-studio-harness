@@ -1,10 +1,19 @@
-import { tool, type ModelMessage, type PrepareStepFunction, type ToolSet } from "ai";
-import { z } from "zod";
+import { type ModelMessage, type PrepareStepFunction, type ToolSet } from "ai";
 import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
 import { buildAdditionalSystemInfoBlock } from "../system-prompt/builder";
 
 /** Fabricated tool name for the trailing `additional_system_info` injection. */
 export const ADDITIONAL_SYSTEM_INFO_TOOL = "additional_system_info";
+
+/**
+ * SYSTEM-ONLY marker. `additional_system_info` is never registered in the AI SDK
+ * `tools` map: it is not callable by the agent, and it never appears in the
+ * model's tool definitions. It exists only as the fabricated assistant
+ * tool-call + tool-result pair emitted by `prepareStep` (a system-side,
+ * prompt-cache tail). The SDK accepts an unregistered tool-result natively
+ * (passthrough); if a model ever emits such a tool-call anyway, the SDK fails
+ * loudly with NoSuchToolError instead of silently executing a no-op.
+ */
 
 /** True when a model message is a `tool` result for the `additional_system_info` injection. */
 export function isAdditionalSystemInfoResult(m: ModelMessage): boolean {
@@ -12,37 +21,6 @@ export function isAdditionalSystemInfoResult(m: ModelMessage): boolean {
   const c = m.content;
   if (!Array.isArray(c)) return false;
   return c.some((p) => (p as any)?.type === "tool-result" && (p as any)?.toolName === ADDITIONAL_SYSTEM_INFO_TOOL);
-}
-
-/**
- * Build the no-op `additional_system_info` tool. It is registered in the AI SDK
- * `tools` map so the SDK accepts the fabricated tool-call emitted by `prepareStep`
- * instead of throwing `NoSuchToolError`. It performs no work (it is never meant to
- * be run for real value); it exists purely so the SDK can resolve parse the call.
- */
-export function buildAdditionalSystemInfoTool() {
-  return tool({
-    description: "Internal context marker; not a real tool. Ignore and never invoke.",
-    parameters: z.object({}),
-    execute: async () => ({}),
-  });
-}
-
-/**
- * Returns a tools map that always includes the registered no-op
- * `additional_system_info` tool alongside the real tools.
- */
-export function withAdditionalSystemInfoTool<TOOLS extends ToolSet>(tools: TOOLS): ToolSet {
-  return { ...tools, [ADDITIONAL_SYSTEM_INFO_TOOL]: buildAdditionalSystemInfoTool() };
-}
-
-/**
- * The real tool names (everything except the fabricated `additional_system_info`).
- * Used as `activeTools` so the no-op stays out of the model's request while still
- * being registered for SDK tool-call parsing.
- */
-export function realToolNames(tools: ToolSet): string[] {
-  return Object.keys(tools).filter((n) => n !== ADDITIONAL_SYSTEM_INFO_TOOL);
 }
 
 export interface PerStepRebuildContext {
@@ -100,12 +78,18 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
       if (ctx.pendingInjection) {
         const { callId, content } = ctx.pendingInjection;
         ctx.pendingInjection = null;
+        // Include an empty reasoning part so thinking-mode gateways (Console Go)
+        // see reasoning_content on this fabricated assistant tool-call. The wire
+        // shim in thinking-wire.ts also forces the key if the SDK omits empty text.
         return {
           messages: [
             ...messages,
             {
               role: "assistant",
-              content: [{ type: "tool-call", toolCallId: callId, toolName: ADDITIONAL_SYSTEM_INFO_TOOL, input: {} }],
+              content: [
+                { type: "reasoning", text: "" },
+                { type: "tool-call", toolCallId: callId, toolName: ADDITIONAL_SYSTEM_INFO_TOOL, input: {} },
+              ],
             },
             {
               role: "tool",
@@ -132,9 +116,9 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
         mode: ctx.mode,
         sessionId: ctx.sessionId,
         noSystemPrompt: ctx.noSystemPrompt,
-        agentSettings: ctx.agentSettings,
-        systemPromptJoiners: ctx.systemPromptJoiners,
-        workspaceManifest: ctx.workspaceManifest,
+        agentSettings: ctx.agentSettings as import("../../../../_shared/types").AgentSettings | undefined,
+        systemPromptJoiners: ctx.systemPromptJoiners as import("../../../../_shared/types").SystemPromptJoiners | undefined,
+        workspaceManifest: ctx.workspaceManifest as import("../../../../_shared/types").WorkspaceManifestSettings | undefined,
         graphService: ctx.graphService,
         now: stepNumber === 0 ? ctx.turnStartNow : new Date(),
         turnStart: ctx.turnStartNow,

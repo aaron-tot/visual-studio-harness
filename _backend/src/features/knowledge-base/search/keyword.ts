@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
 import type { SearchResult, SearchFilters } from "./types";
 
 /**
@@ -19,7 +19,7 @@ export async function keywordSearch(
     // params order: [ftsQuery, ...filterParams, topK]
     // Filters are embedded BEFORE LIMIT ?, so push them between ftsQuery and topK
     const whereClauses: string[] = [];
-    const params: unknown[] = [ftsQuery];
+    const params: SQLQueryBindings[] = [ftsQuery];
 
     if (filters?.extension) {
       // Use LIKE on filename since there's no extension column

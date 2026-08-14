@@ -16,8 +16,8 @@ function isPart(p: unknown): p is SpecPlanPart {
   return !!p && typeof p === "object" && typeof (p as { status?: unknown }).status === "string";
 }
 
-function safeParts(parts: SpecPlanPart[] | undefined): SpecPlanPart[] {
-  return Array.isArray(parts) ? parts.filter(isPart) : [];
+function safeParts(parts: (SpecPlanPart | undefined)[] | undefined): SpecPlanPart[] {
+  return Array.isArray(parts) ? parts.filter((p): p is SpecPlanPart => p !== undefined) : [];
 }
 
 export function countCompleted(parts: SpecPlanPart[] | undefined): string {

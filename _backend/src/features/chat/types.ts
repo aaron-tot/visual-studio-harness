@@ -1,7 +1,5 @@
 import type {
   ConfigFile,
-  HookSource,
-  HookContext,
   Message,
   MessagePartType,
   RetryEntry,
@@ -9,6 +7,7 @@ import type {
   SessionMeta,
   ThinkingEffort,
 } from "../../../../_shared/types";
+import type { HookSource, HookContext } from "../hooks/types";
 import type { LlmErrorInfo } from "../../llm/errors";
 import type {
   ExtendedToolContext,

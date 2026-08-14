@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import { readFile } from "node:fs/promises";
-import type { SystemPromptJoiners } from "../../../_shared/types";
+import type { SystemPromptJoiners } from "../../../../_shared/types";
 import { AGENTS_MD_NAMES } from "./constants";
 
 /** Path to the global system prompt base file inside the _SystemBase container (V2 layout). */

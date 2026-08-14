@@ -3,4 +3,4 @@ export type {
   StepToolBatchResult,
   StepToolBatchBeforePayload,
   StepToolBatchAfterPayload,
-} from "../../../../_shared/types/step-batch";
+} from "../../../../../_shared/types/step-batch";

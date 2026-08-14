@@ -52,7 +52,7 @@ export function createVerboseFetch(): {
   let captureOversized = false;
   const captureDone = new Promise<void>((r) => { resolveCapture = () => { if (!settled) { settled = true; r(); } }; });
 
-  const verboseFetch: typeof fetch = async (input, init) => {
+  const verboseFetch: typeof fetch = Object.assign(async (input: URL | RequestInfo, init?: RequestInit | BunFetchRequestInit): Promise<Response> => {
     // Capture the exact HTTP request body the SDK sends
     const exchange: CapturedExchange = {};
     if (init) {
@@ -99,13 +99,12 @@ export function createVerboseFetch(): {
         controller.enqueue(chunk);
       },
       flush() { finishCapture(); },
-      cancel() { finishCapture(); },
     });
 
     return new Response(res.body.pipeThrough(capture), {
       status: res.status, statusText: res.statusText, headers: res.headers,
     });
-  };
+  }, { preconnect: async () => {} });
 
   return { fetch: verboseFetch, captureDone, getResponse: () => rawResponse, getRequest: () => rawRequest, getExchanges: () => exchanges };
 }

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import type { MessagePartType } from "../../../../_shared/types";
+import type { MessagePartType } from "../../../../../_shared/types";
 import { cn } from "../../../lib/utils";
 import { useChatStore } from "../../../stores/chat";
 import { useConfigStore } from "../../../stores/config";
@@ -54,7 +54,7 @@ export function StepToolGroup({ parts, toolCacheByCallId }: { parts: MessagePart
   // Injections are context, not tool calls — kept aside and rendered as the
   // last grey item(s) in the group.
   const asiParts = parts.filter((p) => isAdditionalSystemInfoPart(p));
-  const toolParts = parts.filter((p) => p.type === "tool" && !isAdditionalSystemInfoPart(p));
+  const toolParts = parts.filter((p): p is Extract<MessagePartType, { type: "tool" }> => p.type === "tool" && !isAdditionalSystemInfoPart(p));
   const summary = useMemo(() => summarize(toolParts), [toolParts]);
   const buckets = useMemo(() => groupParallelByCategory(toolParts), [toolParts]);
   const toolCount = toolParts.length;

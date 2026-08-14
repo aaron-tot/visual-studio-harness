@@ -1,4 +1,4 @@
-import type { Message } from "../../../_shared/types";
+import type { Message } from "../../../../_shared/types";
 
 interface MessageBubbleProps {
   message: Message;

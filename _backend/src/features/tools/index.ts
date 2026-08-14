@@ -24,7 +24,7 @@ import { setDefaultTools } from "./perms/defaults";
 import type { ToolDef } from "./types";
 import type { AgentSettings } from "../../../../_shared/types";
 
-const ALL_TOOLS: ToolDef[] = [
+const ALL_TOOLS: (ToolDef | ((agents?: Record<string, AgentSettings>) => ToolDef))[] = [
   readTool,
   writeTool,
   editTool,
@@ -56,13 +56,10 @@ const ALL_TOOLS: ToolDef[] = [
  * online tool. Their `seeds/{mode}/builtin-tools/` folders remain in the repo
  * as content-only reference for that logic.
  */
-export const BUILTIN_TOOL_NAMES: readonly string[] = [
-  ...new Set(
-    ALL_TOOLS.filter((t): t is ToolDef => typeof t === "object" && t !== null).map(
-      (t) => t.name
-    )
-  ),
-];
+/** ToolDefs only (makeTaskTool is a factory, not a tool). */
+export const BUILTIN_TOOL_DEFS = ALL_TOOLS.filter((t): t is ToolDef => typeof t === "object" && t !== null);
+
+export const BUILTIN_TOOL_NAMES: readonly string[] = [...new Set(BUILTIN_TOOL_DEFS.map((t) => t.name))];
 
 export interface CreateRegistryOptions {
   /** Tool names to omit (e.g. ["task"] for subagent sessions). */
@@ -76,10 +73,10 @@ export function createDefaultRegistry(
   opts?: CreateRegistryOptions,
   agents?: Record<string, AgentSettings>
 ): ToolRegistry {
-  setDefaultTools(ALL_TOOLS);
+  setDefaultTools(BUILTIN_TOOL_DEFS);
   const registry = createRegistry();
   const exclude = new Set(opts?.exclude ?? []);
-  for (const t of ALL_TOOLS) {
+  for (const t of BUILTIN_TOOL_DEFS) {
     if (!exclude.has(t.name)) {
       if (t.name === "task") {
         registry.register(makeTaskTool(agents));
@@ -118,7 +115,7 @@ export async function createFolderRegistry(
   // native tool set even when folder seeding can't run.
   const tools = folders.some((f) => f.kind === "builtin")
     ? folderTools
-    : [...ALL_TOOLS, ...folderTools];
+    : [...BUILTIN_TOOL_DEFS, ...folderTools];
 
   setDefaultTools(tools);
   const registry = createRegistry();
@@ -156,7 +153,7 @@ export async function loadLiveToolDefs(dataDir: string): Promise<ToolDef[]> {
     const folderTools = await loadToolsFromFolders(dataDir);
     if (folderTools.length > 0) return folderTools;
   }
-  return ALL_TOOLS;
+  return BUILTIN_TOOL_DEFS;
 }
 
 export { createRegistry } from "./registry";

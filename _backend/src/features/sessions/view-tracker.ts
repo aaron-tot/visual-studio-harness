@@ -5,7 +5,7 @@ import { getSession } from "./db";
 import { projectSessionChat, projectStreamingContent } from "../chat/project-chat";
 import { sessionHasTurns, getActiveTraceTurn } from "../chat/db-trace";
 import { maxStepPartSeq } from "../chat/project-chat";
-import type { Message, MessagePartType } from "../../../_shared/types";
+import type { Message, MessagePartType } from "../../../../_shared/types";
 
 const socketToSession = new Map<WebSocket, string>();
 const sessionToSockets = new Map<string, Set<WebSocket>>();

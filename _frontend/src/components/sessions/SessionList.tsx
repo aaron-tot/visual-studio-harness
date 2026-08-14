@@ -3,7 +3,7 @@ import { Archive, Info, CheckCircle2, Star, Trash2 } from "lucide-react";
 import { SortableTree } from "../../features/info-panel/components/testing/sortable-tree";
 import { useSessionStore } from "../../features/sessions/store";
 import type { TreeItems } from "../../features/info-panel/components/testing/sortable-tree/types";
-import type { SessionMeta } from "../../../_shared/types";
+import type { SessionMeta } from "../../../../_shared/types";
 
 interface SessionListProps {
   search: string;

@@ -13,7 +13,7 @@ class SequentialMutex {
 
   async run<T>(fn: () => Promise<T>): Promise<T> {
     const next = this.lastPromise.then(async () => fn(), async () => fn());
-    this.lastPromise = next.catch(() => { /* swallow errors — next tool runs regardless */ });
+    this.lastPromise = next.then(() => {}, () => { /* swallow errors — next tool runs regardless */ });
     return next;
   }
 }
@@ -54,7 +54,7 @@ export class ToolRegistry {
     const out: ToolSet = {};
     for (const def of this.tools.values()) {
       const resolved = await resolveToolPermissionDetailed(def.name, resolveCtx);
-      const mode = resolved.mode === "deny" && resolved.layer === "none" ? def.permissionDefault : resolved.mode;
+      const mode = resolved.mode === "deny" && resolved.source === "unknown" ? def.permissionDefault : resolved.mode;
       if (mode === "deny") continue;
 
       const preResolved = resolved.mode === "ask" ? undefined : resolved.mode;

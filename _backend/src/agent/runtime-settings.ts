@@ -6,4 +6,4 @@ export {
   getSubagentSettings,
 } from "../features/agents/runtime-settings";
 export type { ResolvedRuntime } from "../features/agents/runtime-settings";
-export type { SubagentToolSettings } from "../features/agents/runtime-settings";
+export type { SubagentToolSettings } from "../../../_shared/types";

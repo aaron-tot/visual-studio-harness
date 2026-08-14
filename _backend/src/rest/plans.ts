@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { join, resolve } from "node:path";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import type { SpecDocument, PlanDocument, SpecPlanPart, CreatedBy } from "../../../../_shared/types";
+import type { SpecDocument, PlanDocument, SpecPlanPart, CreatedBy } from "../../../_shared/types";
 import { moveScopedDir, MoveError } from "./scope-move";
 
 /** Recursively ensure every SpecPlanPart has a `parts` array. */
@@ -241,7 +241,7 @@ async function readDesignMeta(dir: string): Promise<DesignMeta> {
 
 export async function listDesigns(dataDir: string, scope: DesignsScope = "global", workspaceRoot?: string, sessionId?: string): Promise<DesignEntry[]> {
   const dir = resolveDesignsDir(dataDir, scope, workspaceRoot, sessionId);
-  if (!existsSync(dir)) return [];
+  if (!dir || !existsSync(dir)) return [];
 
   const entries = await readdir(dir, { withFileTypes: true });
   const results: DesignEntry[] = [];

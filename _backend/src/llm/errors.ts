@@ -49,6 +49,44 @@ export class LlmError extends Error {
   }
 }
 
+export interface ProviderErrorShape {
+  message?: string;
+  raw?: string;
+  code?: number;
+}
+
+interface ProviderErrorLike {
+  message?: string;
+  lastError?: unknown;
+  cause?: unknown;
+  response?: { body?: { error?: ProviderErrorShape }; error?: ProviderErrorShape };
+  error?: { response?: { body?: { error?: ProviderErrorShape }; error?: ProviderErrorShape } };
+  body?: { error?: ProviderErrorShape };
+}
+
+/**
+ * Pull the provider error JSON out of an SDK/fetch error, walking the nested
+ * `lastError`/`cause` chain. Returns null when the error has no provider shape.
+ */
+export function extractProviderError(err: unknown): ProviderErrorShape | null {
+  if (err == null) return null;
+  const e = err as ProviderErrorLike;
+  const last = (e.lastError as ProviderErrorLike | undefined) ?? (e.cause as ProviderErrorLike | undefined) ?? null;
+  return (
+    e.response?.body?.error ??
+    e.response?.error ??
+    last?.response?.body?.error ??
+    last?.response?.error ??
+    e.error?.response?.body?.error ??
+    e.error?.response?.error ??
+    e.body?.error ??
+    last?.body?.error ??
+    (typeof e.message === "string" && e.message.includes("Upstream error from") ? { message: e.message, raw: e.message } : null) ??
+    (typeof last?.message === "string" && last.message.includes("Upstream error from") ? { message: last.message, raw: last.message } : null) ??
+    null
+  );
+}
+
 /** Pull the most useful raw string out of an SDK / fetch / HTTP error object. */
 export function extractRawError(err: unknown): string {
   if (err == null) return "unknown failure";

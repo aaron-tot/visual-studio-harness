@@ -61,6 +61,8 @@ export interface AuditMeta {
   endGoal?: string;
   createdAt: string;
   createdBy: "agent";
+  /** Provider displayName that produced the audit (editable in the JSON modal). */
+  providerName?: string;
   agentModel?: string;
   scope: "global" | "project" | "session";
   workspaceRoot?: string;

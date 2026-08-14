@@ -348,6 +348,30 @@ test("multi-session flick", async ({ page, settings, chat }) => {
   await page.getByText("Use this folder").first().click();
   await page.waitForTimeout(500);
 
+  // New Chat resets the composer to the settings defaults — re-select the
+  // agent/model/thinking for session 2 (same UI flow as setupSession).
+  const agentPill2 = page.locator("[data-testid='agent-pill']").first();
+  await agentPill2.click();
+  await page.waitForTimeout(300);
+  await page.locator("[role='option']").filter({ hasText: TEST_CONFIG.agent }).first().click();
+  await page.waitForTimeout(300);
+  await expect(agentPill2).toContainText(TEST_CONFIG.agent);
+
+  const thinkingPill2 = page.locator("[data-testid='temp-pill']").first();
+  await thinkingPill2.click();
+  await page.waitForTimeout(300);
+  await page.locator("[role='option'], button").filter({ hasText: "medium" }).first().click();
+  await page.waitForTimeout(300);
+  await expect(thinkingPill2).toContainText("medium");
+
+  await page.locator("[data-testid='model-pill']").click();
+  await page.waitForTimeout(500);
+  await page.locator("[data-testid='model-search']").fill(TEST_CONFIG.model);
+  await page.waitForTimeout(300);
+  await page.getByText(TEST_CONFIG.model, { exact: true }).first().click({ force: true });
+  await page.waitForTimeout(500);
+  await expect(page.locator("[data-testid='model-pill']").first()).toContainText(TEST_CONFIG.model);
+
   currentExpectedWorkspace = workspaceRootB;
   await sendInitialMessage(page, chat, "2");
   await page.waitForTimeout(3000);

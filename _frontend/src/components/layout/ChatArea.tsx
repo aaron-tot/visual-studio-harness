@@ -49,9 +49,10 @@ export function ChatArea({ onOpenSettings }: ChatAreaProps) {
     const metaAgent = sessionMeta?.agentName ?? null;
     if (metaAgent === lastSyncedAgent.current) return;
     lastSyncedAgent.current = metaAgent;
-    if (metaAgent) {
-      setSelectedAgent({ id: metaAgent, name: metaAgent });
-    }
+    // Sync the pill both ways: a session's saved agent applies, and an
+    // agent-less session (or leaving a session) clears the pill instead of
+    // leaving the previous session's agent shown.
+    setSelectedAgent(metaAgent ? { id: metaAgent, name: metaAgent } : null);
   }, [sessionMeta?.agentName, setSelectedAgent]);
 
   return (

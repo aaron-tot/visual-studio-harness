@@ -159,5 +159,3 @@ describe("additional_system_info injection helpers", () => {
     expect(isAdditionalSystemInfoResult({ role: "assistant", content: [] } as unknown as ModelMessage)).toBe(false);
   });
 });
-
-

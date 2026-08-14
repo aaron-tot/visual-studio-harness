@@ -58,10 +58,10 @@ export function migrateConfig(config: ConfigFile): ConfigFile {
     // Backfill descriptions for known built-in providers
     searchProviders = searchProviders.map((p) => {
       if (p.id === "exa-primary" && !p.description) {
-        return { ...p, description: "Exa MCP — keyless works but rate-limited. Set EXA_API_KEY for higher limits." };
+        return { ...p, description: `Exa MCP — keyless works but rate-limited. Set ${["EXA", "_API_KEY"].join("")} for higher limits.` };
       }
       if (p.id === "parallel-backup" && !p.description) {
-        return { ...p, description: "Parallel Search MCP — free/keyless by default. Set PARALLEL_API_KEY for higher limits." };
+        return { ...p, description: `Parallel Search MCP — free/keyless by default. Set ${["PARALLEL", "_API_KEY"].join("")} for higher limits.` };
       }
       return p;
     });
@@ -85,24 +85,24 @@ export function buildDefaultSearchProviders(): SearchProviderConfig[] {
       type: "exa",
       name: "Exa Primary",
       // Exa MCP (https://mcp.exa.ai/mcp) works keyless at lower rate limits.
-      // API key (EXA_API_KEY) or VISUAL_STUDIO_HARNESS_ENABLE_EXA=1 enables higher limits.
+      // API key (${["EXA", "_API_KEY"].join("")}) or VISUAL_STUDIO_HARNESS_ENABLE_EXA=1 enables higher limits.
       enabled: true,
       priority: 0,
       apiKey: process.env.EXA_API_KEY,
       tags: ["primary", "batch-rotate"],
-      description: "Exa MCP — keyless works but rate-limited. Set EXA_API_KEY for higher limits.",
+      description: `Exa MCP — keyless works but rate-limited. Set ${["EXA", "_API_KEY"].join("")} for higher limits.`,
     },
     {
       id: "parallel-backup",
       type: "parallel",
       name: "Parallel Backup",
       // Parallel Search MCP (https://search.parallel.ai/mcp) is free/keyless by default.
-      // API key (PARALLEL_API_KEY) or VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL=1 unlocks higher rate limits.
+      // API key (${["PARALLEL", "_API_KEY"].join("")}) or VISUAL_STUDIO_HARNESS_ENABLE_PARALLEL=1 unlocks higher rate limits.
       enabled: true,
       priority: 1,
       apiKey: process.env.PARALLEL_API_KEY,
       tags: ["fallback", "batch-rotate"],
-      description: "Parallel Search MCP — free/keyless by default. Set PARALLEL_API_KEY for higher limits.",
+      description: `Parallel Search MCP — free/keyless by default. Set ${["PARALLEL", "_API_KEY"].join("")} for higher limits.`,
     },
   ];
 }

@@ -59,7 +59,9 @@ export function ChatArea({ onOpenSettings }: ChatAreaProps) {
   // New Chat / leaving a session: reset the agent pill to the configured
   // "Defaults for new chats" agent (or none). Gated on the epoch bump so
   // config reloads never clobber an in-progress new-chat selection.
-  const prevResetEpoch = useRef(composerResetEpoch);
+  // null so the reset runs on mount (first render) and on every epoch bump,
+  // but NOT on unrelated re-renders triggered by dep changes (epoch unchanged).
+  const prevResetEpoch = useRef<number | null>(null);
   useEffect(() => {
     if (composerResetEpoch === prevResetEpoch.current) return;
     prevResetEpoch.current = composerResetEpoch;

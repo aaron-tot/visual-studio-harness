@@ -423,7 +423,9 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   // New Chat / leaving a session: reset agent/model/thinking to the configured
   // "Defaults for new chats". Gated on the epoch bump so config reloads never
   // clobber an in-progress new-chat selection.
-  const prevResetEpoch = useRef(composerResetEpoch);
+  // null so the reset runs on mount (first render) and on every epoch bump,
+  // but NOT on unrelated re-renders triggered by dep changes (epoch unchanged).
+  const prevResetEpoch = useRef<number | null>(null);
   useEffect(() => {
     if (composerResetEpoch === prevResetEpoch.current) return;
     prevResetEpoch.current = composerResetEpoch;

@@ -326,6 +326,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   const turnActive = streaming || stopping;
   const sessionId = useChatStore((s) => s.sessionId);
   const sessionMeta = useChatStore((s) => s.sessionMeta);
+  const composerResetEpoch = useChatStore((s) => s.composerResetEpoch);
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
   const stagedChatInput = useChatStore((s) => s.stagedChatInput);
   const { sendMessage, stopStreaming, stageChatInput, clearNewChatDraft } = useChatStore();
@@ -418,6 +419,23 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
       });
     }
   }, [selectedAgent?.id, config.defaultProvider, config.defaultModel, config.agents]);
+
+  // New Chat / leaving a session: reset agent/model/thinking to the configured
+  // "Defaults for new chats". Gated on the epoch bump so config reloads never
+  // clobber an in-progress new-chat selection.
+  const prevResetEpoch = useRef(composerResetEpoch);
+  useEffect(() => {
+    if (composerResetEpoch === prevResetEpoch.current) return;
+    prevResetEpoch.current = composerResetEpoch;
+    if (sessionId) return;
+    const agent = config.defaultAgent && config.agents?.[config.defaultAgent];
+    setCurrentConfig({
+      agentName: config.defaultAgent ?? null,
+      providerName: agent?.providerName || config.defaultProvider || "",
+      modelName: agent?.modelName || config.defaultModel || "",
+      thinkingEffort: agent?.thinking?.effort || "off",
+    });
+  }, [composerResetEpoch, sessionId, config.defaultAgent, config.agents, config.defaultProvider, config.defaultModel]);
 
   useEffect(() => {
     const handler = (e: CustomEvent<{ content: string; position: "start" | "end" }>) => {

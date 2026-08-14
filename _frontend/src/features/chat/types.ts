@@ -24,6 +24,8 @@ export interface ChatState {
   _pendingModelName?: string;
   _pendingProviderName?: string;
   _pendingDropdownAgent?: string;
+  /** Bumped on New Chat / clear so the composer resets to settings defaults. */
+  composerResetEpoch: number;
   _pendingContinueMessage?: { content: string; agentName: string } | null;
   sessionId: string | null;
   streamingTurnId: number | null;

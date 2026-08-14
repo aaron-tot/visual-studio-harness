@@ -99,6 +99,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _textSeq: 0,
   _reasonIdx: 0,
   _pendingDropdownAgent: undefined,
+  /** Bumped on New Chat / clear so the composer resets to settings defaults. */
+  composerResetEpoch: 0,
   _pendingContinueMessage: null,
   sessionId: null,
   streamingTurnId: null,
@@ -288,6 +290,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         retryCountdown: null,
       });
     }
+    // New Chat always resets the composer to the settings defaults.
+    set((s) => ({ composerResetEpoch: s.composerResetEpoch + 1 }));
     // Clear session store activeId so sidebar green indicator clears
     useSessionStore.getState().setActive(null);
     // Load new chat draft from localStorage
@@ -377,6 +381,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingStartTime: null,
       retryCountdown: null,
     });
+    // Leaving to the new-chat composer resets the composer to defaults too.
+    set((s) => ({ composerResetEpoch: s.composerResetEpoch + 1 }));
   },
 
   stopStreaming: () => {

@@ -36,6 +36,7 @@ export function ChatArea({ onOpenSettings }: ChatAreaProps) {
 
   const pendingDropdownAgent = useChatStore((s) => s._pendingDropdownAgent);
   const sessionMeta = useChatStore((s) => s.sessionMeta);
+  const composerResetEpoch = useChatStore((s) => s.composerResetEpoch);
 
   useEffect(() => {
     if (pendingDropdownAgent) {
@@ -54,6 +55,18 @@ export function ChatArea({ onOpenSettings }: ChatAreaProps) {
     // leaving the previous session's agent shown.
     setSelectedAgent(metaAgent ? { id: metaAgent, name: metaAgent } : null);
   }, [sessionMeta?.agentName, setSelectedAgent]);
+
+  // New Chat / leaving a session: reset the agent pill to the configured
+  // "Defaults for new chats" agent (or none). Gated on the epoch bump so
+  // config reloads never clobber an in-progress new-chat selection.
+  const prevResetEpoch = useRef(composerResetEpoch);
+  useEffect(() => {
+    if (composerResetEpoch === prevResetEpoch.current) return;
+    prevResetEpoch.current = composerResetEpoch;
+    if (sessionId) return;
+    const def = config.defaultAgent && config.agents?.[config.defaultAgent];
+    setSelectedAgent(def ? { id: config.defaultAgent!, name: config.defaultAgent! } : null);
+  }, [composerResetEpoch, sessionId, config.defaultAgent, config.agents, setSelectedAgent]);
 
   return (
     <main className="flex-1 flex flex-col h-full relative min-w-0">

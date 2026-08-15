@@ -248,6 +248,12 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           ? streamText({
               model: sdkProvider!(model),
               ...(instructions ? { instructions } : {}),
+              // The additional_system_info tail is a system-role message appended
+              // by prepareStep inside `messages`; the SDK rejects system messages
+              // in messages by default, so opt in. The harness's own
+              // assertExactlyOneSystemMessage (ASI-aware) still guards the base
+              // system message invariant.
+              allowSystemInMessages: true,
               ...(prepareStep ? { prepareStep } : {}),
               messages: chatMessages,
               abortSignal: signal,

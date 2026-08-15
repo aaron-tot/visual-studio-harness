@@ -80,3 +80,64 @@ describe("prepareStep wire shape (ASI as system tail, never a tool call)", () =>
     expect(res).toEqual({});
   });
 });
+
+describe("ASI wire shape through the real SDK (allowSystemInMessages)", () => {
+  test("appends the ASI as a system tail; no ASI tool defs or assistant calls", async () => {
+    const { streamText } = await import("ai");
+    const { createOpenAICompatible } = await import("@ai-sdk/openai-compatible");
+    let capturedBody: Record<string, unknown> | null = null;
+    const chunk = (id: string, delta: Record<string, unknown>, finish: string | null) =>
+      `data: ${JSON.stringify({
+        id, object: "chat.completion.chunk", created: 0, model: "toolsV2",
+        choices: [{ index: 0, delta, finish_reason: finish }],
+      })}\n\n`;
+    const captureFetch = async (_input: unknown, init?: { body?: string }) => {
+      if (init?.body) capturedBody = JSON.parse(init.body);
+      return new Response(
+        chunk("1", { role: "assistant", content: "ok" }, null) +
+          chunk("2", {}, "stop") + "data: [DONE]\n\n",
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      );
+    };
+
+    const persisted: unknown[] = [];
+    const ctx = makeCtx(persisted);
+    const perStep = createPerStepSystemInfo(ctx);
+    const ASI = "<additional_system_info>\n<todoList>x</todoList>\n</additional_system_info>";
+    ctx.pendingInjection = { callId: "asi-0", content: ASI };
+    ctx.lastEmitted = ASI;
+
+    const provider = createOpenAICompatible({
+      baseURL: "http://capture.local/v1",
+      apiKey: "no-key", // pragma: allowlist secret
+      name: "wire-verify",
+      fetch: captureFetch as never,
+    });
+    const messages = [
+      { role: "user", content: [{ type: "text", text: "run" }] },
+      { role: "assistant", content: [{ type: "tool-call", toolCallId: "c0", toolName: "bash", args: { command: "ls" } }] },
+      { role: "tool", content: [{ type: "tool-result", toolCallId: "c0", toolName: "bash", output: { type: "text", value: "out" } }] },
+    ] as never;
+
+    const result = await streamText({
+      model: provider("m"),
+      instructions: "<global>base</global>",
+      allowSystemInMessages: true,
+      prepareStep: perStep.prepareStep,
+      messages,
+      tools: { bash: { description: "x", inputSchema: undefined as never, execute: async () => "ok" } },
+      maxRetries: 0,
+    });
+    for await (const _ev of result.fullStream) { /* drain */ }
+
+    const body = capturedBody!;
+    const wire = (body.messages as Array<{ role: string; content?: unknown; tool_calls?: unknown }>) ?? [];
+    const toolNames = ((body.tools as Array<{ function?: { name?: string } }>) ?? []).map((t) => t.function?.name ?? "");
+    // Exact spot: system tail AFTER the previous step's tool result.
+    expect(wire.map((m) => m.role)).toEqual(["system", "user", "assistant", "tool", "system"]);
+    expect(wire.at(-1)?.content).toBe(ASI);
+    expect(toolNames).toContain("bash");
+    expect(toolNames).not.toContain("additional_system_info");
+    expect(wire.some((m) => m.role === "assistant" && JSON.stringify(m.tool_calls ?? []).includes("additional_system_info"))).toBe(false);
+  });
+});

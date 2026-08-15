@@ -1,6 +1,7 @@
 import { type ModelMessage, type PrepareStepFunction, type ToolSet } from "ai";
 import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
 import { buildAdditionalSystemInfoBlock } from "../system-prompt/builder";
+import { ADDITIONAL_SYSTEM_INFO_TAG } from "../system-prompt/constants";
 
 /**
  * Persisted tool-name marker for the trailing `additional_system_info`
@@ -84,7 +85,7 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
 
     emitAtStepEnd: async (stepNumber) => {
       if (ctx.noSystemPrompt) return;
-      const content = await buildAdditionalSystemInfoBlock({
+      let content = await buildAdditionalSystemInfoBlock({
         dataDir: ctx.dataDir,
         workspaceRoot: ctx.workspaceRoot,
         mode: ctx.mode,
@@ -97,10 +98,15 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
         now: stepNumber === 0 ? ctx.turnStartNow : new Date(),
         turnStart: ctx.turnStartNow,
       }, ctx.additionalSystemInfoSections, ctx.additionalSystemInfoIncludeTime);
-      if (!content) return; // empty resolved block ⇒ skip
+      // `always`: re-inject every step regardless of change (e.g. constant todo
+      // reminder) AND even when every enabled section resolves empty — spec:
+      // "If changed OR alwaysInject=true → Emit" (no empty-content exception).
+      if (!content && ctx.additionalSystemInfoAlways) {
+        content = `<${ADDITIONAL_SYSTEM_INFO_TAG}>\n</${ADDITIONAL_SYSTEM_INFO_TAG}>`;
+      }
+      if (!content) return; // empty resolved block ⇒ skip (emit-on-change mode)
 
       const baseline = ctx.lastEmitted ?? ctx.systemAsiBaseline ?? null;
-      // `always`: re-inject every step regardless of change (e.g. constant todo reminder).
       if (!ctx.additionalSystemInfoAlways && baseline != null && baseline === content) return; // unchanged ⇒ do nothing
 
       const callId = `asi-${ctx.turnStartNow.getTime()}-${stepNumber}`;

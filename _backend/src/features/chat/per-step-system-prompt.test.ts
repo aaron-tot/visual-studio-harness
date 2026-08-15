@@ -79,6 +79,20 @@ describe("prepareStep wire shape (ASI as system tail, never a tool call)", () =>
     const res = await perStep.prepareStep({ messages: [{ role: "user", content: "hi" }] } as never);
     expect(res).toEqual({});
   });
+
+  test("always=true emits even when every enabled section resolves empty", async () => {
+    // todoList section for a session with no todos resolves to null → block empty.
+    // always:true must still emit (spec: alwaysInject → emit; no empty exception).
+    const persisted: unknown[] = [];
+    const ctx = { ...makeCtx(persisted), additionalSystemInfoSections: ["todoList"] };
+    const perStep = createPerStepSystemInfo(ctx);
+    await perStep.emitAtStepEnd(0);
+    await perStep.emitAtStepEnd(1);
+    expect(persisted).toHaveLength(2);
+    const first = persisted[0] as { content: string; stepIndex: number };
+    expect(first.content).toBe("<additional_system_info>\n</additional_system_info>");
+    expect((persisted[1] as { stepIndex: number }).stepIndex).toBe(1);
+  });
 });
 
 describe("ASI wire shape through the real SDK (allowSystemInMessages)", () => {

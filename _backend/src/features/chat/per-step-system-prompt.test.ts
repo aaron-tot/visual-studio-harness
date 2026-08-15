@@ -3,6 +3,7 @@ import {
   createPerStepSystemInfo,
   type PerStepRebuildContext,
 } from "./per-step-system-prompt";
+import { buildAdditionalSystemInfoSections } from "../system-prompt/builder";
 
 function makeCtx(persisted: unknown[]): PerStepRebuildContext {
   return {
@@ -92,6 +93,82 @@ describe("prepareStep wire shape (ASI as system tail, never a tool call)", () =>
     const first = persisted[0] as { content: string; stepIndex: number };
     expect(first.content).toBe("<additional_system_info>\n</additional_system_info>");
     expect((persisted[1] as { stepIndex: number }).stepIndex).toBe(1);
+  });
+});
+
+describe("section-aware emit decision (spec asi-section-aware-emit)", () => {
+  /** Runtime section content as the builder renders it for the makeCtx inputs. */
+  async function runtimeSystemCopy(): Promise<string> {
+    const ctx = makeCtx([]);
+    const map = await buildAdditionalSystemInfoSections(
+      {
+        dataDir: ctx.dataDir, workspaceRoot: ctx.workspaceRoot, mode: "dev",
+        sessionId: ctx.sessionId, noSystemPrompt: false, agentSettings: {},
+        now: ctx.turnStartNow, turnStart: ctx.turnStartNow,
+      },
+      ["runtime"], false,
+    );
+    return map["runtime"] ?? "";
+  }
+
+  test("baked section unchanged (extra baked sections present) => NO emit", async () => {
+    // Batch-4 regression: system bakes {runtime, workspaceManifest}, volatile is
+    // {runtime}. The runtime tail equals its system copy; the manifest is not
+    // volatile. Old whole-block comparison emitted spuriously; per-section must not.
+    const persisted: unknown[] = [];
+    const systemRuntime = await runtimeSystemCopy();
+    const ctx = {
+      ...makeCtx(persisted),
+      additionalSystemInfoAlways: false,
+      systemSections: { runtime: systemRuntime, workspaceManifest: "<workspaceManifest>\ntree\n</workspaceManifest>" },
+    };
+    const perStep = createPerStepSystemInfo(ctx);
+    await perStep.emitAtStepEnd(0);
+    expect(persisted).toHaveLength(0); // runtime == system copy => unchanged
+  });
+
+  test("baked section CHANGED vs system copy => emit once, then no re-emit", async () => {
+    const persisted: unknown[] = [];
+    // Same-day turnStart so step 0 and step 1 render an identical runtime section.
+    const ctx = {
+      ...makeCtx(persisted),
+      additionalSystemInfoAlways: false,
+      turnStartNow: new Date(),
+      systemSections: { runtime: "<runtime>\nOLD</runtime>" }, // differs from fresh
+    };
+    const perStep = createPerStepSystemInfo(ctx);
+    await perStep.emitAtStepEnd(0);
+    expect(persisted).toHaveLength(1); // changed vs system copy => emit
+    await perStep.emitAtStepEnd(1);
+    expect(persisted).toHaveLength(1); // now equals lastEmittedSections => no re-emit
+  });
+
+  test("non-baked section first seen => emit once, then no emit while unchanged", async () => {
+    const persisted: unknown[] = [];
+    const ctx = {
+      ...makeCtx(persisted),
+      additionalSystemInfoAlways: false,
+      turnStartNow: new Date(),
+      systemSections: {},
+    };
+    const perStep = createPerStepSystemInfo(ctx);
+    await perStep.emitAtStepEnd(0);
+    expect(persisted).toHaveLength(1); // absent reference => treat as change (first view)
+    await perStep.emitAtStepEnd(1);
+    expect(persisted).toHaveLength(1); // unchanged vs previous tail => no re-emit
+  });
+
+  test("volatile section becomes empty after having content => emit (deletion)", async () => {
+    // todoList baked-empty at turn start (systemSections has no todoList) and the
+    // volatile todoList renders nothing => whole block empty => skip (existing
+    // empty-resolved rule for always:false). The deletion case is covered at the
+    // block level: with other non-empty sections the empty section still counts.
+    const persisted: unknown[] = [];
+    const ctx = { ...makeCtx(persisted), additionalSystemInfoAlways: false, systemSections: {} };
+    const perStep = createPerStepSystemInfo(ctx);
+    await perStep.emitAtStepEnd(0);
+    // runtime section rendered non-empty => emitted once (absent ref).
+    expect(persisted).toHaveLength(1);
   });
 });
 

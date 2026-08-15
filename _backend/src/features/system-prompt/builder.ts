@@ -141,16 +141,41 @@ export async function buildAdditionalSystemInfoBlock(
   sections: readonly string[] = VOLATILE_SECTION_TAGS,
   includeTime = false,
 ): Promise<string | null> {
-  const volInput: BuildSystemBlockInput = includeTime
-    ? input
-    : {
-        ...input,
-        now: truncateToDay(input.now ?? new Date()),
-        turnStart: undefined,
-      };
+  const volInput = includeTime ? input : dayGranularInput(input);
   // The volatile runtime section renders the same canonical format as the base.
   const partial = await buildSystemBlockSections(volInput, sections);
   if (!partial) return null;
   const ts = includeTime ? `\n<timestamp>${new Date().toISOString()}</timestamp>` : "";
   return `<${ADDITIONAL_SYSTEM_INFO_TAG}>\n${partial}${ts}\n</${ADDITIONAL_SYSTEM_INFO_TAG}>`;
+}
+
+/** Input with the runtime clock normalized for emit-on-change comparisons. */
+function dayGranularInput(input: BuildSystemBlockInput): BuildSystemBlockInput {
+  return {
+    ...input,
+    now: truncateToDay(input.now ?? new Date()),
+    turnStart: undefined,
+  };
+}
+
+/**
+ * Per-section volatile render for the emit-on-change DECISION (spec
+ * asi-section-aware-emit): renders each enabled section individually with the
+ * same day-granular/turnStart normalization as `buildAdditionalSystemInfoBlock`
+ * so section content can be compared against the system-baked copy of the same
+ * section (identical data ⇒ identical text). Empty renders are omitted from the
+ * map.
+ */
+export async function buildAdditionalSystemInfoSections(
+  input: BuildSystemBlockInput,
+  sections: readonly string[] = VOLATILE_SECTION_TAGS,
+  includeTime = false,
+): Promise<Record<string, string>> {
+  const volInput = includeTime ? input : dayGranularInput(input);
+  const out: Record<string, string> = {};
+  for (const s of sections) {
+    const partial = await buildSystemBlockSections(volInput, [s]);
+    if (partial) out[s] = partial;
+  }
+  return out;
 }

@@ -61,7 +61,7 @@ import { getModelPricing } from "../../pricing/models-dev";
 import { computeCostUsd } from "../../../../../_shared/types/config";
 import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
-import { buildSystemBlockBase, buildAdditionalSystemInfoBlock } from "../../system-prompt/builder";
+import { buildSystemBlockBase, buildAdditionalSystemInfoBlock, buildAdditionalSystemInfoSections } from "../../system-prompt/builder";
 import { DEFAULT_ADDITIONAL_SYSTEM_INFO, DEFAULT_SYSTEM_PROMPT_SECTIONS } from "../../../../../_shared/types/config";
 import { getSessionModelConfigJson } from "../../sessions/db";
 import {
@@ -429,6 +429,20 @@ export async function runTurn(
       now: turnStartNow,
       turnStart: turnStartNow,
     }, sysSections, false);
+    // Per-section content of the system-baked sections: the section-aware
+    // emit-on-change reference for baked volatile sections (spec
+    // asi-section-aware-emit). A volatile section equal to its system copy is
+    // unchanged; a section absent here is treated as non-baked.
+    const systemSections = await buildAdditionalSystemInfoSections({
+      dataDir, workspaceRoot, mode: getMode(), sessionId,
+      noSystemPrompt,
+      agentSettings: runtime.settings,
+      systemPromptJoiners: config.systemPromptJoiners,
+      workspaceManifest: config.workspaceGraph !== false ? runtime.settings.workspaceManifest : undefined,
+      graphService,
+      now: turnStartNow,
+      turnStart: turnStartNow,
+    }, sysSections, false);
 
     // Build model messages (UNIFIED - includes system, history, current user)
     const { messages, contextTurnIds: usedTurnIds } = await buildModelMessages(
@@ -572,6 +586,7 @@ export async function runTurn(
       additionalSystemInfoIncludeTime,
       additionalSystemInfoAlways,
       systemAsiBaseline,
+      systemSections,
       turnStartNow,
       onBlockBuilt: (_stepNumber, block) => {
         // Per-step snapshot = base (+ injection) as a display proxy for the Inspector.
@@ -624,7 +639,7 @@ export async function runTurn(
             stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
             stepIdByIndex = {};
             perStepCtx.pendingInjection = null;
-            perStepCtx.lastEmitted = systemAsiBaseline;
+            perStepCtx.lastEmittedSections = systemSections;
             lastPreparedBlock = systemBlock;
           }
         },

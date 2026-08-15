@@ -1,6 +1,6 @@
 import { type ModelMessage, type PrepareStepFunction, type ToolSet } from "ai";
 import type { WorkspaceGraphService } from "../../core/workspaceGraph/api/types";
-import { buildAdditionalSystemInfoBlock } from "../system-prompt/builder";
+import { buildAdditionalSystemInfoBlock, buildAdditionalSystemInfoSections } from "../system-prompt/builder";
 import { ADDITIONAL_SYSTEM_INFO_TAG } from "../system-prompt/constants";
 
 /**
@@ -36,11 +36,17 @@ export interface PerStepRebuildContext {
   turnStartNow: Date;
   /**
    * Canonical wrapped additional_system_info block for the sections baked into
-   * the base system prompt (systemPromptSections). The emit-on-change baseline
-   * at the start of the turn: if the fresh content equals what the system already
-   * carries, no injection is emitted.
+   * the base system prompt (systemPromptSections). Retained for display/snapshot
+   * compatibility; the emit-on-change decision uses `systemSections` per-section.
    */
   systemAsiBaseline?: string | null;
+  /**
+   * Per-section content of the sections baked into the base system prompt
+   * (systemPromptSections), keyed by section tag. The initial reference for a
+   * baked volatile section: fresh tail content equal to the system copy means
+   * no change (the model already sees it). Absent key = section not baked.
+   */
+  systemSections?: Record<string, string> | null;
   /** Called after each emission so callers can snapshot base(+injection) per step. */
   onBlockBuilt?: (stepNumber: number, block: string) => void;
   /** Persist an emitted injection against the step that JUST ended. */
@@ -48,7 +54,8 @@ export interface PerStepRebuildContext {
 
   // internal state shared between prepareStep and emitAtStepEnd
   pendingInjection?: { callId: string; content: string } | null;
-  lastEmitted?: string | null;
+  /** Last emitted tail content per section (the most recent thing the model saw). */
+  lastEmittedSections?: Record<string, string> | null;
 }
 
 /**
@@ -85,7 +92,8 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
 
     emitAtStepEnd: async (stepNumber) => {
       if (ctx.noSystemPrompt) return;
-      let content = await buildAdditionalSystemInfoBlock({
+      const sections = ctx.additionalSystemInfoSections ?? ["runtime", "todoList", "workspaceManifest"];
+      const input = {
         dataDir: ctx.dataDir,
         workspaceRoot: ctx.workspaceRoot,
         mode: ctx.mode,
@@ -97,7 +105,10 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
         graphService: ctx.graphService,
         now: stepNumber === 0 ? ctx.turnStartNow : new Date(),
         turnStart: ctx.turnStartNow,
-      }, ctx.additionalSystemInfoSections, ctx.additionalSystemInfoIncludeTime);
+      };
+      // Per-section fresh content for the section-aware decision.
+      const fresh = await buildAdditionalSystemInfoSections(input, sections, ctx.additionalSystemInfoIncludeTime);
+      let content = await buildAdditionalSystemInfoBlock(input, sections, ctx.additionalSystemInfoIncludeTime);
       // `always`: re-inject every step regardless of change (e.g. constant todo
       // reminder) AND even when every enabled section resolves empty — spec:
       // "If changed OR alwaysInject=true → Emit" (no empty-content exception).
@@ -106,12 +117,25 @@ export function createPerStepSystemInfo(ctx: PerStepRebuildContext): {
       }
       if (!content) return; // empty resolved block ⇒ skip (emit-on-change mode)
 
-      const baseline = ctx.lastEmitted ?? ctx.systemAsiBaseline ?? null;
-      if (!ctx.additionalSystemInfoAlways && baseline != null && baseline === content) return; // unchanged ⇒ do nothing
+      // Section-aware emit decision (spec asi-section-aware-emit): a section is
+      // changed when its fresh content differs from what the model last saw for
+      // THAT section — the previous tail (once emitted), else the system-baked
+      // copy (if baked), else ABSENT (non-baked, never emitted ⇒ changed). This
+      // avoids whole-block section-set mismatches (e.g. baked {todoList,
+      // workspaceManifest} vs volatile {todoList}) spuriously injecting.
+      let changed = ctx.additionalSystemInfoAlways === true;
+      if (!changed) {
+        for (const s of sections) {
+          const freshS = fresh[s] ?? "";
+          const ref = ctx.lastEmittedSections?.[s] ?? ctx.systemSections?.[s] ?? "";
+          if (freshS !== ref) { changed = true; break; }
+        }
+      }
+      if (!changed) return;
 
       const callId = `asi-${ctx.turnStartNow.getTime()}-${stepNumber}`;
       ctx.pendingInjection = { callId, content };
-      ctx.lastEmitted = content;
+      ctx.lastEmittedSections = fresh;
       ctx.onBlockBuilt?.(stepNumber, content);
       ctx.persist?.({ toolCallId: callId, toolName: ADDITIONAL_SYSTEM_INFO_TOOL, content, stepIndex: stepNumber });
     },

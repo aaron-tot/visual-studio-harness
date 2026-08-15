@@ -64,11 +64,10 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   const useMockEndpoint = isTest && hasMockActions(model);
   const sdkTools = useMockEndpoint ? buildMockTools(model, options.workspaceRoot) : tools;
   // The `additional_system_info` injection is SYSTEM-ONLY: it is never registered
-  // as a callable tool, so the agent cannot invoke it and it never appears in the
-  // model's tool definitions. The fabricated assistant tool-call + tool-result
-  // pair emitted by `prepareStep` is accepted by the SDK natively (unregistered
-  // tool-results pass through); if a model ever emits such a call anyway, the SDK
-  // fails loudly with NoSuchToolError.
+  // as a callable tool and never appears in the model's tool definitions.
+  // `prepareStep` appends it as a single `system`-role tail message (after the
+  // previous step's tool results) — a system message cannot be emitted as a tool
+  // call, so the model cannot invoke it and no NoSuchToolError can occur.
 
   const makeSdkProvider = (fetchImpl: typeof fetch) =>
     isTest && !useMockEndpoint

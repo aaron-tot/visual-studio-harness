@@ -3,14 +3,14 @@
  * tool-call messages that omit `reasoning_content` once thinking is active:
  *   "The `reasoning_content` in the thinking mode must be passed back to the API."
  *
- * Real model turns usually carry reasoning. Fabricated turns (e.g. the
- * additional_system_info pair from prepareStep / message-builder replay) and
- * rare tool-only steps do not. AI SDK only emits the key when a reasoning part
- * has non-empty text, so empty-string must be forced on the wire.
+ * Real model turns usually carry reasoning; rare tool-only steps do not. AI SDK
+ * only emits the key when a reasoning part has non-empty text, so empty-string
+ * must be forced on the wire.
  *
- * Spec: ASI stays a fabricated tail injection for prompt-cache (see
- * additional-system-info-cache-spec §4/§6). This only adds the missing field
- * required by thinking gateways; it does not change ASI placement or content.
+ * The additional_system_info injection is NOT affected: since it is delivered
+ * as a `system`-role tail message (see per-step-system-prompt.ts), it is never
+ * an assistant tool-call and needs no reasoning_content. This shim only patches
+ * real assistant tool_calls.
  */
 
 export function isThinkingEffortOn(effort: string | undefined | null): boolean {

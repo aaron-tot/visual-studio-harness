@@ -54,3 +54,29 @@ describe("additional_system_info per-step emission (spec §6.1)", () => {
     expect(persisted).toHaveLength(1);
   });
 });
+
+describe("prepareStep wire shape (ASI as system tail, never a tool call)", () => {
+  test("carries the pending injection as a single system message, no tool-call/result", async () => {
+    const persisted: unknown[] = [];
+    const ctx = makeCtx(persisted);
+    const perStep = createPerStepSystemInfo(ctx);
+    const asi = "<additional_system_info>\n<todoList>x</todoList>\n</additional_system_info>";
+    // Inject a pending injection the same way emitAtStepEnd would.
+    ctx.pendingInjection = { callId: "asi-0", content: asi };
+    const res = await perStep.prepareStep({ messages: [{ role: "user", content: "hi" }] } as never);
+    const messages = res?.messages as { role: string; content: unknown }[];
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toMatchObject({ role: "user" });
+    expect(messages[1]).toMatchObject({ role: "system", content: asi });
+    const serialized = JSON.stringify(messages);
+    expect(serialized).not.toContain("tool-call");
+    expect(serialized).not.toContain("toolName");
+    expect(serialized).not.toContain('"tool"');
+  });
+
+  test("returns no-op when no injection is pending", async () => {
+    const perStep = createPerStepSystemInfo(makeCtx([]));
+    const res = await perStep.prepareStep({ messages: [{ role: "user", content: "hi" }] } as never);
+    expect(res).toEqual({});
+  });
+});

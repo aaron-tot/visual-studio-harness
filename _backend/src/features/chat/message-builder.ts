@@ -135,28 +135,11 @@ export function replayPartsToMessages(
         const asi = readAdditionalSystemInfoData(data, part.toolCallId);
         if (asi) {
           if (!opts.includeTools) break;
-          // Spec: ASI is a separate fabricated pair after the step's real tools.
+          // Spec: ASI is a `system`-role tail after the step's real tools — same
+          // position as the old fabricated pair, but not callable by the model
+          // (a system message cannot be emitted as a tool call).
           flushModel();
-          pushAssistant(out, [
-            { type: "reasoning", text: "" },
-            {
-              type: "tool-call",
-              toolCallId: asi.toolCallId,
-              toolName: "additional_system_info",
-              input: {},
-            },
-          ]);
-          out.push({
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolCallId: asi.toolCallId,
-                toolName: "additional_system_info",
-                output: { type: "text", value: asi.content },
-              },
-            ],
-          });
+          out.push({ role: "system", content: asi.content });
           break;
         }
         if (opts.includeTools && part.toolCallId) {

@@ -283,6 +283,37 @@ describe("system-prompt assembly", () => {
     ).toThrow(/first message/);
   });
 
+  test("assertExactlyOneSystemMessage exempts additional_system_info tails (any count, any position)", () => {
+    const asi = (n: number) =>
+      msg("system", `<additional_system_info>\n<todoList>n${n}</todoList>\n</additional_system_info>`);
+    // One base system + many ASI tails appended after user/tool history.
+    expect(() =>
+      assertExactlyOneSystemMessage([
+        msg("system", "rules"),
+        msg("user", "hi"),
+        asi(0),
+        asi(1),
+        asi(2),
+      ])
+    ).not.toThrow();
+    // ASI tails WITHOUT any base system are allowed too (no-prompt mode + tails).
+    expect(() =>
+      assertExactlyOneSystemMessage([
+        msg("user", "hi"),
+        asi(0),
+        asi(1),
+      ])
+    ).not.toThrow();
+    // Two NON-ASI base systems still throw, even with ASI tails around them.
+    expect(() =>
+      assertExactlyOneSystemMessage([
+        msg("system", "a"),
+        asi(0),
+        msg("system", "b"),
+      ])
+    ).toThrow(/exactly once/);
+  });
+
   describe("resolveAgentMd", () => {
   test("returns null when agentMd is undefined", async () => {
     expect(await resolveAgentMd(undefined)).toBeNull();

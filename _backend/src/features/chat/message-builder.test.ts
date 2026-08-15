@@ -260,7 +260,7 @@ describe("buildModelMessages custom part stripping", () => {
 describe("buildModelMessages additional_system_info replay", () => {
   const stored = "<additional_system_info>\n<runtime>1.2.3</runtime>\n</additional_system_info>";
 
-  test("replays a stored injection verbatim as assistant tool_call + tool result", async () => {
+  test("replays a stored injection verbatim as a system-role tail message", async () => {
     const tId = await makeTurn(
       20,
       [
@@ -280,18 +280,14 @@ describe("buildModelMessages additional_system_info replay", () => {
       options({ contextTurnIds: [tId], currentTurnNumber: 21, currentUserMessage: "current" }),
       dataDir,
     );
+    // No fabricated assistant tool-call and no tool-result for the injection.
+    const asis = messages.filter((m) => m.role === "system" && typeof m.content === "string" && m.content.includes("additional_system_info"));
+    expect(asis).toHaveLength(1);
+    expect(asis[0]!.content).toBe(stored);
     const assistant = messages.find((m) => m.role === "assistant");
-    expect(assistant?.content).toContainEqual(
-      expect.objectContaining({ type: "tool-call", toolName: "additional_system_info", toolCallId: "asi-1" }),
-    );
+    expect(JSON.stringify(assistant?.content ?? [])).not.toContain("additional_system_info");
     const tool = messages.find((m) => m.role === "tool");
-    expect(tool?.content).toContainEqual(
-      expect.objectContaining({
-        type: "tool-result",
-        toolCallId: "asi-1",
-        output: { type: "text", value: stored },
-      }),
-    );
+    expect(JSON.stringify(tool?.content ?? [])).not.toContain("additional_system_info");
   });
 
   test("replays verbatim and never re-renders (byte-stable across calls)", async () => {
@@ -330,9 +326,8 @@ describe("additionalSystemInfo replay byte-stability (R3 acceptance)", () => {
     const first = await buildModelMessages(SESSION_ID, "sys", base, dataDir);
     const second = await buildModelMessages(SESSION_ID, "sys", base, dataDir);
     expect(second.messages).toEqual(first.messages); // whole array byte-identical
-    const tool = first.messages.find((m) => m.role === "tool");
-    const output = (tool?.content as any[])?.[0]?.output;
-    expect(output?.value).toBe(stored); // verbatim string replayed, never re-rendered
+    const sys = first.messages.find((m) => m.role === "system" && m.content === stored);
+    expect(sys).toBeDefined(); // verbatim string replayed as a system tail, never re-rendered
   });
 });
 
@@ -341,8 +336,10 @@ describe("buildModelMessages step-faithful multi-step history (thinking mode)", 
   const asi1 = "<additional_system_info>\n<runtime>s1</runtime>\n</additional_system_info>";
 
   test("does not collapse multi-step tools into one assistant message", async () => {
-    // Live shape that Console Go requires on replay:
-    //   assistant(R0 + bash0) → tool → assistant(ASI) → tool → assistant(R1 + bash1) → tool → assistant(text)
+    // Live shape on replay:
+    //   user → assistant(R0 + bash0) → tool → system(ASI0)
+    //        → assistant(R1 + read1) → tool → system(ASI1)
+    //        → assistant(text)
     const tId = await makeMultiStepTurn(
       40,
       [
@@ -383,44 +380,36 @@ describe("buildModelMessages step-faithful multi-step history (thinking mode)", 
       dataDir,
     );
 
-    // Drop system + trailing current user for the turn body.
+    // Drop base system + trailing current user for the turn body.
     const body = messages.filter((m, i) => !(i === 0 && m.role === "system") && !(m.role === "user" && m.content === "next"));
-    // user + 2*(asst real, tool, asst asi, tool) + asst text
+    // user + (asst real, tool, system ASI) * 2 + asst text
     expect(roleSequence(body)).toEqual([
       "user",
       "assistant", // step0 real
       "tool",
-      "assistant", // step0 ASI
-      "tool",
+      "system", // step0 ASI tail
       "assistant", // step1 real
       "tool",
-      "assistant", // step1 ASI
-      "tool",
+      "system", // step1 ASI tail
       "assistant", // final text
     ]);
 
     const assistants = body.filter((m) => m.role === "assistant");
     expect(assistantToolNames(assistants[0]!)).toEqual(["bash"]);
-    expect(assistantToolNames(assistants[1]!)).toEqual(["additional_system_info"]);
-    expect(assistantToolNames(assistants[2]!)).toEqual(["read"]);
-    expect(assistantToolNames(assistants[3]!)).toEqual(["additional_system_info"]);
-    expect(assistantToolNames(assistants[4]!)).toEqual([]);
+    expect(assistantToolNames(assistants[1]!)).toEqual(["read"]);
+    expect(assistantToolNames(assistants[2]!)).toEqual([]);
 
     // Per-step reasoning stays on the matching real-tool assistant (not one mega blob).
     const r0 = (assistants[0]!.content as { type: string; text?: string }[]).find((p) => p.type === "reasoning");
-    const r1 = (assistants[2]!.content as { type: string; text?: string }[]).find((p) => p.type === "reasoning");
+    const r1 = (assistants[1]!.content as { type: string; text?: string }[]).find((p) => p.type === "reasoning");
     expect(r0?.text).toBe("think-step-0");
     expect(r1?.text).toBe("think-step-1");
 
-    // ASI assistants carry a reasoning part (empty) so thinking gateways see the key.
-    expect(assistantHasReasoning(assistants[1]!)).toBe(true);
-    expect(assistantHasReasoning(assistants[3]!)).toBe(true);
-
-    // ASI content still verbatim.
-    const asiTools = body.filter((m) => m.role === "tool");
-    const asiValues = asiTools
-      .map((m) => (m.content as { output?: { value?: string } }[])?.[0]?.output?.value)
-      .filter((v): v is string => typeof v === "string" && v.includes("additional_system_info"));
+    // ASI content stays verbatim, as system-role tails (no tool-call/result pair).
+    const asiSystems = body.filter((m) => m.role === "system");
+    const asiValues = asiSystems
+      .map((m) => (typeof m.content === "string" ? m.content : ""))
+      .filter((v) => v.includes("additional_system_info"));
     expect(asiValues).toContain(asi0);
     expect(asiValues).toContain(asi1);
 
@@ -429,7 +418,7 @@ describe("buildModelMessages step-faithful multi-step history (thinking mode)", 
     expect(mega).toBeUndefined();
   });
 
-  test("ASI after real tools on same step is its own assistant/tool pair", async () => {
+  test("ASI after real tools on same step is a system tail, not an assistant pair", async () => {
     const stored = "<additional_system_info>\n<x>1</x>\n</additional_system_info>";
     const tId = await makeTurn(
       41,
@@ -451,11 +440,12 @@ describe("buildModelMessages step-faithful multi-step history (thinking mode)", 
       options({ contextTurnIds: [tId], includeReasoningParts: true, currentTurnNumber: 42 }),
       dataDir,
     );
-    const body = messages.filter((m) => m.role !== "system" && !(m.role === "user" && m.content === "current"));
-    expect(roleSequence(body)).toEqual(["user", "assistant", "tool", "assistant", "tool"]);
+    const body = messages.filter((m, i) => !(i === 0 && m.role === "system") && !(m.role === "user" && m.content === "current"));
+    expect(roleSequence(body)).toEqual(["user", "assistant", "tool", "system"]);
     const assts = body.filter((m) => m.role === "assistant");
     expect(assistantToolNames(assts[0]!)).toEqual(["bash"]);
-    expect(assistantToolNames(assts[1]!)).toEqual(["additional_system_info"]);
+    const asiSys = body.find((m) => m.role === "system");
+    expect(asiSys?.content).toBe(stored);
   });
 
   test("tool-call assistant without stored reasoning still gets a reasoning part", async () => {

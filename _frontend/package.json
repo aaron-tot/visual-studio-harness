@@ -3,7 +3,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --force",
     "build": "vite build --outDir ../../data/prod/.build/frontend",
     "preview": "vite preview"
   },

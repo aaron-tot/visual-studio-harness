@@ -401,21 +401,23 @@ export function getSummaryRangesForSession(
 }
 
 /**
- * Summary turns currently being generated (kind='summary', status='streaming').
+ * Summary turns currently being generated (kind='summary', status='pending').
+ * The placeholder is deliberately NOT 'streaming' — it is a display marker,
+ * not a live turn, so session_state streaming detection ignores it.
  * Used to guard against concurrent generation for the same range and to
- * recover from crashes that left a stale streaming row behind.
+ * recover from crashes that left a stale pending row behind.
  */
-export interface StreamingSummaryTurn {
+export interface PendingSummaryTurn {
   id: number;
   turnNumber: number;
   configSnapshotJson: string | null;
   startedAt: string | null;
 }
 
-export function getStreamingSummaryTurns(
+export function getPendingSummaryTurns(
   dataDir: string,
   sessionId: string
-): StreamingSummaryTurn[] {
+): PendingSummaryTurn[] {
   const db = dbFor(dataDir);
   return db
     .select({
@@ -425,7 +427,7 @@ export function getStreamingSummaryTurns(
       startedAt: turns.startedAt,
     })
     .from(turns)
-    .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "summary"), eq(turns.status, "streaming")))
+    .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "summary"), eq(turns.status, "pending")))
     .all();
 }
 
@@ -443,14 +445,14 @@ export function markSummaryTurnError(dataDir: string, turnId: number): void {
  * into errors so a fresh generation is not blocked forever by a crashed run.
  * Returns the ids that were marked.
  */
-export function expireStaleStreamingSummaries(
+export function expireStaleSummaryPlaceholders(
   dataDir: string,
   sessionId: string,
   olderThanMs: number
 ): number[] {
   const now = Date.now();
   const expired: number[] = [];
-  for (const row of getStreamingSummaryTurns(dataDir, sessionId)) {
+  for (const row of getPendingSummaryTurns(dataDir, sessionId)) {
     if (!row.startedAt) {
       expired.push(row.id);
       continue;

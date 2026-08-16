@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { eq } from "drizzle-orm";
 import { getDbForDataDir } from "../../db/client";
-import { sessions, turns, summaryRanges } from "../../db/schema";
+import { sessions, turns, summaryRanges, subagentSpawns, steps, stepParts } from "../../db/schema";
 import {
   createSession,
   getSession,
@@ -10,7 +10,11 @@ import {
   getEarliestLiveSummaryRange,
   getSummaryRangeByRange,
   getSummaryRangesForSession,
+  getPendingSummaryTurns,
+  markSummaryTurnError,
+  expireStaleSummaryPlaceholders,
 } from "./db";
+import { insertSubagentSpawn, getSpawnByToolCallId } from "../subagents/db";
 
 const TEST_DATA_DIR = "/tmp/vsh-test-summarize-block";
 
@@ -244,5 +248,137 @@ describe("Turn kind column", () => {
       .get();
 
     expect(result?.kind).toBe("summary");
+  });
+});
+
+describe("Pending summary guards", () => {
+  const GUARD_DATA_DIR = "/tmp/vsh-test-summary-guards";
+  const SID = "test-session-guards";
+
+  function insertSummary(
+    turnNumber: number,
+    status: string,
+    startedAtIso: string,
+    meta: Record<string, unknown> | null = null,
+  ): number {
+    const db = getDbForDataDir(GUARD_DATA_DIR);
+    const row = db
+      .insert(turns)
+      .values({
+        sessionId: SID,
+        turnNumber,
+        userContent: "placeholder",
+        userTimestamp: startedAtIso,
+        status,
+        success: status === "success" ? 1 : 0,
+        startedAt: startedAtIso,
+        completedAt: status === "success" ? startedAtIso : null,
+        kind: "summary",
+        configSnapshotJson: meta ? JSON.stringify(meta) : null,
+      })
+      .returning({ id: turns.id })
+      .get();
+    return row!.id;
+  }
+
+  beforeEach(() => {
+    const db = getDbForDataDir(GUARD_DATA_DIR);
+    db.delete(stepParts).run();
+    db.delete(steps).run();
+    db.delete(subagentSpawns).run();
+    db.delete(summaryRanges).run();
+    db.delete(turns).run();
+    db.delete(sessions).run();
+    createSession(
+      { id: SID, title: "Guards", created: new Date().toISOString(), updated: new Date().toISOString() },
+      GUARD_DATA_DIR,
+    );
+  });
+
+  it("getPendingSummaryTurns returns only pending summary turns", () => {
+    insertSummary(1, "pending", new Date().toISOString());
+    insertSummary(2, "success", new Date().toISOString());
+    insertSummary(3, "pending", new Date().toISOString());
+    const pending = getPendingSummaryTurns(GUARD_DATA_DIR, SID);
+    expect(pending.map((s) => s.turnNumber).sort()).toEqual([1, 3]);
+  });
+
+  it("markSummaryTurnError flips a pending turn to error", () => {
+    const id = insertSummary(1, "pending", new Date().toISOString());
+    markSummaryTurnError(GUARD_DATA_DIR, id);
+    const row = getDbForDataDir(GUARD_DATA_DIR)
+      .select({ status: turns.status, success: turns.success })
+      .from(turns)
+      .where(eq(turns.id, id))
+      .get();
+    expect(row?.status).toBe("error");
+    expect(row?.success).toBe(false);
+  });
+
+  it("expireStaleSummaryPlaceholders marks only rows older than the threshold", () => {
+    insertSummary(1, "pending", new Date(Date.now() - 10 * 60_000).toISOString()); // stale
+    insertSummary(2, "pending", new Date().toISOString()); // fresh
+    const expired = expireStaleSummaryPlaceholders(GUARD_DATA_DIR, SID, 5 * 60_000);
+    expect(expired).toHaveLength(1);
+    const remaining = getPendingSummaryTurns(GUARD_DATA_DIR, SID);
+    expect(remaining.map((s) => s.turnNumber)).toEqual([2]);
+  });
+
+  it("insertSubagentSpawn records a summary spawn edge (idempotent by toolCallId)", () => {
+    // A summary turn + its display step exist in the parent session.
+    const summaryTurnId = insertSummary(1, "success", new Date().toISOString());
+    const db = getDbForDataDir(GUARD_DATA_DIR);
+    const step = db
+      .insert(steps)
+      .values({
+        sessionId: SID,
+        turnId: summaryTurnId,
+        stepIndex: 0,
+        status: "completed",
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      })
+      .returning({ id: steps.id })
+      .get();
+    const childSessionId = "child-summary-1";
+    createSession(
+      { id: childSessionId, title: "Summary", kind: "subagent", parentId: SID, created: new Date().toISOString(), updated: new Date().toISOString() },
+      GUARD_DATA_DIR,
+    );
+    const childTurn = db
+      .insert(turns)
+      .values({
+        sessionId: childSessionId,
+        turnNumber: 1,
+        userContent: "transcript",
+        userTimestamp: new Date().toISOString(),
+        status: "success",
+        success: 1,
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        totalTokens: 500,
+      })
+      .returning({ id: turns.id })
+      .get();
+
+    insertSubagentSpawn({
+      parentSessionId: SID,
+      parentTurnId: summaryTurnId,
+      parentTurnNumber: 1,
+      parentStepId: step!.id,
+      parentStepIndex: 0,
+      toolCallId: "summary-42",
+      childSessionId,
+      childTurnId: childTurn!.id,
+      childTurnNumber: 1,
+      kind: "spawn",
+      taskLabel: "Summary: turns 1-2",
+    }, GUARD_DATA_DIR);
+
+    const edge = getSpawnByToolCallId("summary-42", GUARD_DATA_DIR);
+    expect(edge?.childSessionId).toBe(childSessionId);
+    expect(edge?.childTurnNumber).toBe(1);
+    expect(edge?.parentTurnId).toBe(summaryTurnId);
+    expect(edge?.taskLabel).toBe("Summary: turns 1-2");
   });
 });

@@ -12,9 +12,11 @@ interface SummarizationCardProps {
   model?: string;
   fallbackModel?: string;
   promptMd?: string;
+  includePriorSummary?: boolean;
   onModel: (model: string | null) => void;
   onFallbackModel: (model: string | null) => void;
   onPromptMd: (path: string | null) => void;
+  onIncludePriorSummary: (value: boolean) => void;
 }
 
 export function SummarizationCard({
@@ -23,9 +25,11 @@ export function SummarizationCard({
   model,
   fallbackModel,
   promptMd,
+  includePriorSummary,
   onModel,
   onFallbackModel,
   onPromptMd,
+  onIncludePriorSummary,
 }: SummarizationCardProps) {
   const [showPromptPicker, setShowPromptPicker] = useState(false);
   const [promptSearch, setPromptSearch] = useState("");
@@ -331,6 +335,25 @@ export function SummarizationCard({
             </div>
           )}
         </div>
+
+        {/* Include previous summary turn */}
+        <label className="flex items-start gap-3 cursor-pointer group">
+          <input
+            type="checkbox"
+            checked={includePriorSummary ?? true}
+            onChange={(e) => onIncludePriorSummary(e.target.checked)}
+            className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+          />
+          <div>
+            <div className="text-sm text-zinc-200 group-hover:text-zinc-100">
+              Include previous summary turn
+            </div>
+            <div className="text-xs text-zinc-500 mt-0.5">
+              When generating a new summary, feed in the most recent earlier summary
+              so the new summary is written in context of what came before.
+            </div>
+          </div>
+        </label>
       </div>
 
       {showTest && (

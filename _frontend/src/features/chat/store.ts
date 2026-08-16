@@ -152,6 +152,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         category: entry.category,
         timestamp: entry.errorTime,
         retries,
+        providerName: state._pendingProviderName,
         _seq: seq,
       };
       if (idx >= 0) parts[idx] = errPart as any;
@@ -522,7 +523,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       );
       const errIdx = parts.findIndex((p) => p.type === "error");
       if (errIdx >= 0) {
-        const existing = parts[errIdx] as { type: "error"; message: string; raw?: string; isCustom?: boolean; category?: string; timestamp?: string; retries?: RetryEntry[] };
+        const existing = parts[errIdx] as { type: "error"; message: string; raw?: string; isCustom?: boolean; category?: string; timestamp?: string; retries?: RetryEntry[]; providerName?: string };
         const mergedRetries = backendRetries.length > 0
           ? backendRetries
           : (existing.retries ?? []).map((r) => (r.status === "pending" ? { ...r, status: "failed" as const } : r));
@@ -533,6 +534,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           isCustom,
           category,
           timestamp: meta?.errorTime ?? existing.timestamp ?? new Date().toISOString(),
+          providerName: existing.providerName ?? meta?.providerName ?? state._pendingProviderName,
           ...(mergedRetries.length > 0 ? { retries: mergedRetries } : {}),
         } as any;
       } else {
@@ -543,6 +545,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           isCustom,
           category,
           timestamp: meta?.errorTime ?? new Date().toISOString(),
+          providerName: meta?.providerName || state._pendingProviderName,
           ...(backendRetries.length > 0 ? { retries: backendRetries } : {}),
         };
         parts = [...parts, errorPart as any];

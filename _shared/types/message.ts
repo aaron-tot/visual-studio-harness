@@ -62,6 +62,8 @@ export type MessagePartType =
       timestamp?: string;
       /** Ordered retry log for this turn's failures (persisted with the part). */
       retries?: RetryEntry[];
+      /** Provider name for display (e.g., "Nvidia", "OpenAI", "Anthropic"). */
+      providerName?: string;
       _seq?: number;
     };
 
@@ -99,6 +101,8 @@ export interface Message {
   success?: boolean;
   status?: string;
   errorDetail?: { message: string; raw?: string; isCustom?: boolean };
+  /** For summary markers: the child sub-session that ran the generation (openable). */
+  childSessionId?: string;
 }
 
 export interface TurnDebugInfo {

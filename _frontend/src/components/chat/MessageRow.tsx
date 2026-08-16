@@ -12,7 +12,7 @@
  */
 
 import { memo, useEffect, useState } from "react";
-import { Brain } from "lucide-react";
+import { Brain, ExternalLink } from "lucide-react";
 import type { Message } from "../../../../_shared/types";
 import type { MessagePartType } from "../../../../_shared/types";
 import { AgentMessageCard } from "./agents/AgentMessageCard";
@@ -136,6 +136,7 @@ function renderPart(
         category={part.category}
         timestamp={part.timestamp}
         retries={part.retries}
+        providerName={part.providerName}
       />
     );
   }
@@ -267,6 +268,41 @@ function MessageRowInner({ message, isStreaming }: MessageRowProps) {
 
   // User messages: simple right-aligned bubble
   const [ctxMenuPos, setCtxMenuPos] = useState<{ x: number; y: number } | null>(null);
+
+  // System messages: only summary-generation markers reach this branch (all
+  // other system messages are filtered out in MessageList). Rendered as a
+  // centered muted bubble at the summary position — pulses while streaming,
+  // red-tinted when the generation failed.
+  if (message.role === "system") {
+    const isStreamingMarker = message.status === "streaming" || message.status === "pending";
+    const isErrorMarker = message.status === "error";
+    return (
+      <div className="flex justify-center w-full" data-system-msg>
+        <div
+          className={`max-w-[85%] rounded-md px-3 py-1.5 text-xs font-mono border flex items-center gap-2 ${
+            isErrorMarker
+              ? "bg-red-950/30 border-red-700/50 text-red-300"
+              : "bg-zinc-800/50 border-zinc-700/60 text-zinc-400"
+          }`}
+          title={message.timestamp ? `Started ${new Date(message.timestamp).toLocaleString()}` : undefined}
+        >
+          {isStreamingMarker && <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />}
+          {isErrorMarker && <span className="text-red-400 shrink-0">⚠</span>}
+          <span className="whitespace-pre-wrap">{message.content}</span>
+          {message.childSessionId && (
+            <button
+              type="button"
+              onClick={() => useChatStore.getState().loadSession(message.childSessionId!)}
+              className="ml-1 shrink-0 p-0.5 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-700/60 transition-colors"
+              title="Open summary sub-session (costs, reasoning, result)"
+            >
+              <ExternalLink size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (isUser) {
     return (

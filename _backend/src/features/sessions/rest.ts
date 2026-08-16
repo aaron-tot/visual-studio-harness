@@ -26,8 +26,10 @@ import {
   getTurnStepRawCapture,
 } from "../chat/project-chat";
 import { buildUsageTree } from "../chat/usage-tree";
-import { sessionHasTurns, getTurnByNumber, getNextTurnNumber, listContextTurnIds } from "../chat/db-trace";
+import { sessionHasTurns, getTurnByNumber, getNextTurnNumber, listContextTurnIds, createTurn, createStep, finalizeStep } from "../chat/db-trace";
+import { createStepStreamWriter } from "../chat/persist-stream";
 import { cancelSession } from "../chat/session-abort";
+import { sendSessionStateToSession } from "./view-tracker";
 import { buildModelMessages } from "../chat/message-builder";
 import type { ModelMessage as CoreMessage } from "ai";
 import { promptSnapshots, turns, toolsSnapshots, summaryRanges, steps, stepParts } from "../../db/schema";
@@ -46,8 +48,100 @@ import {
   getSummaryRangeByEndTurn,
   getSummaryRangeByRange,
   getSummaryRangesForSession,
+  getPendingSummaryTurns,
+  expireStaleSummaryPlaceholders,
+  markSummaryTurnError,
+  createSession,
 } from "./db";
 import { runSummarizer, readSummarizationPrompt, splitModelRef, buildSummarizationMessages, type SummarizerResult } from "./summarizer";
+import { insertSubagentSpawn } from "../subagents/db";
+import { generateId } from "../chat/run-turn/util";
+
+/**
+ * Marker provider/model for cloned context turns — they are NOT real LLM
+ * calls (0 tokens, no usage), and the chat/usage UI should show that clearly
+ * instead of attributing them to the summarizer's provider.
+ */
+const CLONE_PROVIDER = "clone";
+const CLONE_MODEL = "cloned-context";
+
+/**
+ * Seed a child (subagent) session with the REAL summarizer input so opening the
+ * child shows the actual context the summarizer saw:
+ *   - the previous chain summary (if included) as a synthetic first turn
+ *   - the covered conversation turns (user prompt + assistant text each)
+ * ...not a flat transcript blob. Each group becomes one turn row with its
+ * assistant content as a text part. No usage is attributed to these rows (they
+ * are context clones, not LLM calls) and their provider is marked "clone" so
+ * the history is never mistaken for real calls.
+ */
+function cloneRangeTurnsToChild(
+  dataDir: string,
+  childSessionId: string,
+  groups: { userContent: string; assistantContents: string[] }[],
+  now: string,
+  priorSummaryGroup?: { userContent: string; assistantContents: string[] } | null,
+): void {
+  const db = getDbForDataDir(dataDir);
+  let turnNumber = 1;
+  // The previous chain summary (if included) is cloned as a NORMAL turn — its
+  // real user message (the prior summarization prompt) + its agent message (the
+  // summary text) — exactly like any other turn in the child, not a label.
+  const seedGroups = priorSummaryGroup
+    ? [priorSummaryGroup, ...groups]
+    : groups;
+  for (const g of seedGroups) {
+    const turn = db
+      .insert(turns)
+      .values({
+        sessionId: childSessionId,
+        turnNumber: turnNumber++,
+        userContent: g.userContent,
+        userTimestamp: now,
+        status: "success",
+        success: true,
+        providerName: CLONE_PROVIDER,
+        modelName: CLONE_MODEL,
+        startedAt: now,
+        completedAt: now,
+        stepCount: g.assistantContents.length > 0 ? 1 : 0,
+        kind: "turn",
+      })
+      .returning({ id: turns.id })
+      .get();
+    if (!turn || g.assistantContents.length === 0) continue;
+    const step = db
+      .insert(steps)
+      .values({
+        sessionId: childSessionId,
+        turnId: turn.id,
+        stepIndex: 0,
+        status: "completed",
+        providerName: CLONE_PROVIDER,
+        modelId: CLONE_MODEL,
+        startedAt: now,
+        completedAt: now,
+      })
+      .returning({ id: steps.id })
+      .get();
+    if (!step) continue;
+    let seq = 0;
+    for (const content of g.assistantContents) {
+      db.insert(stepParts)
+        .values({
+          sessionId: childSessionId,
+          turnId: turn.id,
+          stepId: step.id,
+          type: "text",
+          seq: seq++,
+          status: "completed",
+          data: JSON.stringify({ content }),
+          createdAt: now,
+        })
+        .run();
+    }
+  }
+}
 import { getWorkspaceGraphManager } from "../../core/workspaceGraph/service-singleton";
 import { loadConfig } from "../../storage/config";
 
@@ -208,6 +302,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       summarizationModel?: string | null;
       summarizationFallbackModel?: string | null;
       summarizationPromptMd?: string | null;
+      summarizeIncludePriorSummary?: boolean | null;
     };
 
     // Merge with existing config
@@ -230,6 +325,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       summarizationModel: body.summarizationModel !== undefined ? body.summarizationModel : existingCtx.summarizationModel ?? undefined,
       summarizationFallbackModel: body.summarizationFallbackModel !== undefined ? body.summarizationFallbackModel : existingCtx.summarizationFallbackModel ?? undefined,
       summarizationPromptMd: body.summarizationPromptMd !== undefined ? body.summarizationPromptMd : existingCtx.summarizationPromptMd ?? undefined,
+      summarizeIncludePriorSummary: body.summarizeIncludePriorSummary !== undefined ? body.summarizeIncludePriorSummary : existingCtx.summarizeIncludePriorSummary ?? true,
     };
     setSessionModelConfigJson(id, JSON.stringify(existing), dataDir);
     return { ok: true };
@@ -326,7 +422,8 @@ const sessionEnabled = session["enabled"] === true ||
       (o: Record<string, unknown>) =>
         o["mode"] !== undefined || o["maxTurns"] !== undefined || o["firstTurnNumber"] !== undefined ||
         o["manualMode"] !== undefined || o["manualTurnsBack"] !== undefined ||
-        o["summarizationModel"] !== undefined || o["summarizationFallbackModel"] !== undefined || o["summarizationPromptMd"] !== undefined;
+        o["summarizationModel"] !== undefined || o["summarizationFallbackModel"] !== undefined || o["summarizationPromptMd"] !== undefined ||
+        o["summarizeIncludePriorSummary"] !== undefined;
     const owner =
       (sessionEnabled && hasOwn(session)) ? "session"
       : (projectEnabled && hasOwn(project)) ? "project"
@@ -342,6 +439,7 @@ const sessionEnabled = session["enabled"] === true ||
       summarizationModel: pick("summarizationModel") as string | undefined,
       summarizationFallbackModel: pick("summarizationFallbackModel") as string | undefined,
       summarizationPromptMd: pick("summarizationPromptMd") as string | undefined,
+      summarizeIncludePriorSummary: (pick("summarizeIncludePriorSummary") as boolean | undefined) ?? true,
       enabled: sessionEnabled ? true : projectEnabled ? true : false,
       owner,
     };
@@ -427,9 +525,10 @@ const sessionEnabled = session["enabled"] === true ||
       model?: string;               // optional: "Provider/Model"
       fallbackModel?: string;       // optional: "Provider/Model"
       includePriorSummary?: boolean; // chain prior summaries into this one
+      initiator?: string;           // optional: who started it (slider/keyboard/context-menu/...)
     };
 
-    const { sessionId, endTurnNum, startTurnNum, promptMd, model, fallbackModel, includePriorSummary } = body;
+    const { sessionId, endTurnNum, startTurnNum, promptMd, model, fallbackModel, includePriorSummary, initiator } = body;
     if (!sessionId || endTurnNum == null) {
       return reply.code(400).send({ error: "sessionId and endTurnNum are required" });
     }
@@ -451,6 +550,12 @@ const sessionEnabled = session["enabled"] === true ||
     const modelRefParts = modelRef.split("/");
     if (modelRefParts.length !== 2 || !modelRefParts[0] || !modelRefParts[1]) {
       return reply.code(400).send({ error: "Invalid summarization model format. Expected 'Provider/Model'" });
+    }
+
+    // The slider position is a live-turn boundary — fractional (summary-anchor)
+    // positions are rejected; the frontend disables summarizing on those.
+    if (!Number.isInteger(endTurnNum)) {
+      return reply.code(400).send({ error: "endTurnNum must be an integer turn number" });
     }
 
     // Chain start = after the latest range that ends *before* the slider end.
@@ -556,36 +661,73 @@ for (const m of chatMessages) {
       }
     }
 
-    // Get prior summary text if chain non-empty (summary text lives in step_parts)
-    const includePrior = includePriorSummary ?? true;
+    // Group the covered messages into real turns (user + assistant text) so the
+    // child sub-session can be seeded with the ACTUAL conversation context.
+    // If the projection grouped nothing (fallback path), derive groups from the
+    // flat rangeTurns (alternating user/assistant).
+    const rangeGroups: { userContent: string; assistantContents: string[] }[] = [];
+    {
+      let cur: { userContent: string; assistantContents: string[] } | null = null;
+      for (const m of chatMessages) {
+        if (m.isSummary) continue;
+        const tn = m.turnId;
+        if (tn == null || tn < computedStartTurnNum || tn > summarizedEndTurn) continue;
+        const content = m.content ?? "";
+        if (!content) continue;
+        if (m.role === "user") {
+          if (cur) rangeGroups.push(cur);
+          cur = { userContent: content, assistantContents: [] };
+        } else if (m.role === "assistant") {
+          if (!cur) cur = { userContent: "", assistantContents: [] };
+          cur.assistantContents.push(content);
+        }
+      }
+      if (cur) rangeGroups.push(cur);
+    }
+    if (rangeGroups.length === 0 && rangeTurns.length > 0) {
+      let cur: { userContent: string; assistantContents: string[] } | null = null;
+      for (const m of rangeTurns) {
+        if (m.role === "user") {
+          if (cur) rangeGroups.push(cur);
+          cur = { userContent: m.content, assistantContents: [] };
+        } else {
+          if (!cur) cur = { userContent: "", assistantContents: [] };
+          cur.assistantContents.push(m.content);
+        }
+      }
+      if (cur) rangeGroups.push(cur);
+    }
+
+    // Get prior summary text if chain has a previous range. The summary text
+    // lives as a `text` step_part whose `data` is `JSON.stringify({ content })`;
+    // parse out `.content` (never send/show the raw JSON wrapper). Request flag
+    // wins; otherwise honor the effective context config setting.
+    const includePrior = includePriorSummary ?? eff.summarizeIncludePriorSummary ?? true;
     const priorSummary = includePrior && latestRange
-      ? (getDbForDataDir(dataDir).select({ data: stepParts.data }).from(stepParts).where(and(eq(stepParts.turnId, latestRange.summaryTurnId), eq(stepParts.type, "text"))).orderBy(stepParts.seq).limit(1).get()?.data ?? null)
+      ? (() => {
+          const raw = getDbForDataDir(dataDir)
+            .select({ data: stepParts.data })
+            .from(stepParts)
+            .where(and(eq(stepParts.turnId, latestRange.summaryTurnId), eq(stepParts.type, "text")))
+            .orderBy(stepParts.seq)
+            .limit(1)
+            .get()?.data ?? null;
+          if (!raw) return null;
+          try {
+            const parsed = JSON.parse(raw);
+            return typeof parsed.content === "string" && parsed.content ? parsed.content : raw;
+          } catch {
+            return raw;
+          }
+        })()
       : null;
 
     // Build messages for summarizer: prior summary + turns in range
     const messages = buildSummarizationMessages(priorSummary, rangeTurns);
 
-    // Run summarizer
-    let result: { text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } | null };
-    try {
-      const { runSummarizer } = await import("./summarizer");
-      result = await runSummarizer(dataDir, {
-        promptMd: promptRef,
-        modelRef,
-        fallbackModelRef,
-        messages,
-        sessionId,
-        workspaceRoot: body.workspaceRoot,
-      });
-    } catch (err) {
-      return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
-    }
-
-    const summaryText = result.text.trim();
-    const usage = result.usage;
-
     // Read the actual summarization prompt content (used as the user-side
-    // message of the summary turn, so a human can see what instructed it).
+    // message of the completed summary turn, so a human can see what
+    // instructed it).
     let promptContent = promptRef ? await readSummarizationPrompt(promptRef) : null;
     if (!promptContent) {
       promptContent = `Summarize conversation turns ${computedStartTurnNum}–${summarizedEndTurn}`;
@@ -601,9 +743,80 @@ for (const m of chatMessages) {
       .filter((t) => t.turnNumber >= computedStartTurnNum && t.turnNumber <= summarizedEndTurn)
       .reduce((sum, t) => sum + (t.totalTokens ?? 0), 0);
 
-    // Create summary turn row (kind='summary'). Use a distinct turnNumber that
-    // won't collide with real turns (getNextTurnNumber returns max+1).
+    // Recover stale in-progress summaries (crashed runs), then reject
+    // concurrent generation for the same range so only one placeholder and
+    // one summary row can exist per range.
+    expireStaleSummaryPlaceholders(dataDir, sessionId, 5 * 60_000);
+    for (const st of getPendingSummaryTurns(dataDir, sessionId)) {
+      try {
+        const meta = JSON.parse(st.configSnapshotJson ?? "{}") as { range?: { startTurn?: number; endTurn?: number } };
+        if (meta?.range?.startTurn === computedStartTurnNum && meta?.range?.endTurn === summarizedEndTurn) {
+          return reply.code(409).send({
+            error: `A summary for turns ${computedStartTurnNum}–${summarizedEndTurn} is already being generated`,
+          });
+        }
+      } catch { /* unparseable snapshot — not a match */ }
+    }
+
+    // ── Child session (created UPFRONT so the user can open it and watch the
+    // summary stream live). It holds the cloned context turns + a real
+    // streaming turn whose parts are written as deltas arrive. ──────────────
     const now = new Date().toISOString();
+    const initiatorLabel = typeof initiator === "string" && initiator.trim() ? initiator.trim() : "manual";
+    const childSessionId = generateId();
+    const childLabel = `Summary: turns ${computedStartTurnNum}–${summarizedEndTurn}`;
+    createSession({
+      id: childSessionId,
+      title: childLabel,
+      kind: "subagent",
+      parentId: sessionId,
+      taskLabel: childLabel,
+      providerName: modelRef?.split("/")[0] ?? "",
+      modelName: modelRef?.split("/")[1] ?? "",
+      workspaceRoot: body.workspaceRoot,
+      created: now,
+      updated: now,
+    }, dataDir);
+    // Clone the actual covered turns so opening the child shows the real
+    // context the summarizer consumed (marked provider "clone" = not real).
+    // When the prior summary is included, clone it as a NORMAL turn using its
+    // real user message (the prior summarization prompt) + agent message (the
+    // summary text), exactly like the covered turns.
+    let priorSummaryGroup: { userContent: string; assistantContents: string[] } | null = null;
+    if (includePrior && latestRange && priorSummary) {
+      const priorTurn = getDbForDataDir(dataDir)
+        .select({ userContent: turns.userContent })
+        .from(turns)
+        .where(eq(turns.id, latestRange.summaryTurnId))
+        .get();
+      priorSummaryGroup = {
+        userContent: priorTurn?.userContent || "Previous summary:",
+        assistantContents: [priorSummary],
+      };
+    }
+    cloneRangeTurnsToChild(dataDir, childSessionId, rangeGroups, now, priorSummaryGroup);
+    // Real streaming turn in the child (status "streaming" — a live turn).
+    const childTurnNumber = getNextTurnNumber(childSessionId, dataDir);
+    const childTurnId = createTurn(childSessionId, childTurnNumber, promptContent, now, {
+      providerName: modelRef?.split("/")[0] ?? "unknown",
+      modelName: modelRef?.split("/")[1] ?? "summarizer",
+    }, dataDir);
+    const childStepId = createStep(childTurnId, childSessionId, 0, {
+      providerName: modelRef?.split("/")[0] ?? "unknown",
+      modelId: modelRef?.split("/")[1] ?? "summarizer",
+    }, dataDir);
+    const childWriter = createStepStreamWriter(childSessionId, childTurnId, childStepId, dataDir);
+    let childPartSeq = 0;
+
+    // Create the main-session summary row in a PENDING state, so every client
+    // sees the system placeholder at the summary position immediately (via the
+    // session_state push below) while the LLM runs. The status is deliberately
+    // NOT 'streaming' — the placeholder is a display marker, not a live turn,
+    // so session_state streaming detection (getActiveTraceTurn) ignores it.
+    // userContent is the placeholder while pending; it is replaced by the
+    // prompt content on completion. The snapshot carries the child refs so the
+    // open-sub-session icon appears immediately.
+    const placeholderContent = `SUMMARY BEING GENERATED AT ${now}: initiated by [${initiatorLabel}]`;
     const summaryMeta = {
       kind: "summary",
       promptMd: promptRef ?? null,
@@ -612,30 +825,35 @@ for (const m of chatMessages) {
       range: { startTurn: computedStartTurnNum, endTurn: summarizedEndTurn },
       prevRangeId: latestRange?.id ?? null,
       originalTokens,
-      summaryTokens: usage?.totalTokens ?? 0,
+      summaryTokens: 0,
+      initiatedAt: now,
+      initiator: initiatorLabel,
+      childSessionId,
+      childTurnNumber,
     };
+    const summaryTurnNumber = getNextTurnNumber(sessionId, dataDir);
     const summaryTurnResult = getDbForDataDir(dataDir)
       .insert(turns)
       .values({
         sessionId,
-        turnNumber: getNextTurnNumber(sessionId, dataDir),
-        userContent: promptContent ?? `Summarize conversation turns ${computedStartTurnNum}–${summarizedEndTurn}`,
+        turnNumber: summaryTurnNumber,
+        userContent: placeholderContent,
         userTimestamp: now,
-        status: "success",
-        success: true,
+        status: "pending",
+        success: false,
         modelName: modelRef?.split("/")[1] ?? "summarizer",
         providerName: modelRef?.split("/")[0] ?? "unknown",
-        finishReason: "stop",
+        finishReason: null,
         durationMs: 0,
         startedAt: now,
-        completedAt: now,
-        inputTokens: usage?.inputTokens ?? 0,
-        outputTokens: usage?.outputTokens ?? 0,
-        totalTokens: usage?.totalTokens ?? 0,
-        reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
+        completedAt: null,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        reasoningTokens: 0,
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
-        stepCount: 1,
+        stepCount: 0,
         kind: "summary",
         configSnapshotJson: JSON.stringify(summaryMeta),
       })
@@ -646,6 +864,128 @@ for (const m of chatMessages) {
     if (!summaryTurnId) {
       return reply.code(500).send({ error: "Failed to create summary turn" });
     }
+
+    // Push immediately so the placeholder (with the open icon) renders in every
+    // connected client at the summary position while generation is in flight.
+    try {
+      sendSessionStateToSession(sessionId);
+    } catch (err) {
+      console.warn("[summarize-range] could not push placeholder state:", err);
+    }
+
+    // Run the summarizer. Deltas stream LIVE into the child session's turn
+    // (stepParts via the writer) and are pushed (throttled) to any client
+    // viewing the child session, so the user can watch the summary being
+    // generated. The child session (kind 'subagent', parent = this session)
+    // is where the real usage lands; the subagentSpawns edge below links the
+    // main summary turn to it for the usage tree.
+    const startedMs = Date.now();
+    let lastChildPush = 0;
+    const pushChildThrottled = () => {
+      const t = Date.now();
+      if (t - lastChildPush < 250) return;
+      lastChildPush = t;
+      try { sendSessionStateToSession(childSessionId); } catch { /* ignore */ }
+    };
+    let result: { text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number; reasoningTokens?: number } | null; reasoning: string[] };
+    try {
+      const { runSummarizer } = await import("./summarizer");
+      result = await runSummarizer(dataDir, {
+        promptMd: promptRef,
+        modelRef,
+        fallbackModelRef,
+        messages,
+        sessionId,
+        workspaceRoot: body.workspaceRoot,
+        onStream: ({ type, text }) => {
+          childWriter.writeDelta(type, text, childPartSeq++);
+          pushChildThrottled();
+        },
+      });
+    } catch (err) {
+      // Never leave a permanent "streaming"/"pending" turn behind: mark the
+      // child turn + step and the main placeholder as errors.
+      childWriter.closeOpen();
+      getDbForDataDir(dataDir)
+        .update(turns)
+        .set({
+          status: "error",
+          success: false,
+          finishReason: "error",
+          durationMs: Math.max(0, Date.now() - startedMs),
+          completedAt: new Date().toISOString(),
+          errorMessage: err instanceof Error ? err.message : String(err),
+        })
+        .where(eq(turns.id, childTurnId))
+        .run();
+      getDbForDataDir(dataDir)
+        .update(steps)
+        .set({ status: "error", finishReason: "error", completedAt: new Date().toISOString() })
+        .where(eq(steps.id, childStepId))
+        .run();
+      markSummaryTurnError(dataDir, summaryTurnId);
+      try { sendSessionStateToSession(childSessionId); } catch { /* ignore */ }
+      try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
+      return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+
+    const summaryText = result.text.trim();
+    const usage = result.usage;
+
+    // Finalize the child turn + step (real usage) and mark its parts complete.
+    childWriter.closeOpen();
+    getDbForDataDir(dataDir)
+      .update(stepParts)
+      .set({ status: "completed" })
+      .where(eq(stepParts.turnId, childTurnId))
+      .run();
+    getDbForDataDir(dataDir)
+      .update(turns)
+      .set({
+        status: "success",
+        success: true,
+        finishReason: "stop",
+        durationMs: Math.max(0, Date.now() - startedMs),
+        completedAt: new Date().toISOString(),
+        inputTokens: usage?.inputTokens ?? 0,
+        outputTokens: usage?.outputTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        stepCount: 1,
+      })
+      .where(eq(turns.id, childTurnId))
+      .run();
+    finalizeStep(childStepId, {
+      finishReason: "stop",
+      inputTokens: usage?.inputTokens ?? 0,
+      outputTokens: usage?.outputTokens ?? 0,
+      totalTokens: usage?.totalTokens ?? 0,
+      reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
+      stepTimeMs: Math.max(0, Date.now() - startedMs),
+    }, dataDir);
+
+    // Finalize the main summary turn (display row): success + prompt content +
+    // usage + snapshot. Child-session refs are appended after the child exists.
+    getDbForDataDir(dataDir)
+      .update(turns)
+      .set({
+        userContent: promptContent,
+        status: "success",
+        success: true,
+        finishReason: "stop",
+        durationMs: Math.max(0, Date.now() - startedMs),
+        completedAt: new Date().toISOString(),
+        inputTokens: usage?.inputTokens ?? 0,
+        outputTokens: usage?.outputTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
+        stepCount: 1,
+        configSnapshotJson: JSON.stringify({ ...summaryMeta, summaryTokens: usage?.totalTokens ?? 0 }),
+      })
+      .where(eq(turns.id, summaryTurnId))
+      .run();
 
     // Create a step with the summary as assistant text part
     const stepResult = getDbForDataDir(dataDir)
@@ -682,6 +1022,21 @@ for (const m of chatMessages) {
         .run();
     }
 
+    // Spawn edge: main summary turn/step → child session+turn (usage tree).
+    insertSubagentSpawn({
+      parentSessionId: sessionId,
+      parentTurnId: summaryTurnId,
+      parentTurnNumber: summaryTurnNumber,
+      parentStepId: stepId,
+      parentStepIndex: 0,
+      toolCallId: `summary-${summaryTurnId}`,
+      childSessionId,
+      childTurnId,
+      childTurnNumber,
+      kind: "spawn",
+      taskLabel: childLabel,
+    }, dataDir);
+
     // Create summary range
     const rangeId = insertSummaryRange(dataDir, {
       sessionId,
@@ -695,9 +1050,14 @@ for (const m of chatMessages) {
     });
 
     // Push the updated session state to connected clients so the new summary
-    // appears immediately in the UI without a manual refresh.
+    // appears immediately in the UI without a manual refresh (both the child
+    // sub-session and the main session).
     try {
-      const { sendSessionStateToSession } = await import("../sessions/view-tracker");
+      sendSessionStateToSession(childSessionId);
+    } catch (err) {
+      console.warn("[summarize-range] could not push child session state:", err);
+    }
+    try {
       sendSessionStateToSession(sessionId);
     } catch (err) {
       console.warn("[summarize-range] could not push session state:", err);

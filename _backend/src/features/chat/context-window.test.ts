@@ -5,6 +5,11 @@ import {
   resolveRuntimeHistoryInclusion,
   type ContextScopeConfig,
 } from "./context-window";
+import {
+  effectiveFirstTurnFromAnchor,
+  snapBoundaryToRanges,
+  isSummaryAnchor,
+} from "../../../../_shared/types/context";
 
 describe("computeFirstTurnFromMaxTurns", () => {
   // Mirrors ContextHistoryLine auto-mode formula on completed turn numbers.
@@ -117,6 +122,43 @@ describe("resolveRuntimeFirstTurnNumber", () => {
       completedTurnNumbers: turns,
     });
     expect(r).toEqual({ firstTurnNumber: null, source: "none" });
+  });
+});
+
+describe("summary anchors (shared helpers)", () => {
+  const ranges = [
+    { startTurn: 1, endTurn: 7 },
+    { startTurn: 9, endTurn: 12 },
+  ];
+
+  test("isSummaryAnchor distinguishes live vs summary anchors", () => {
+    expect(isSummaryAnchor(7)).toBe(false);
+    expect(isSummaryAnchor(7.5)).toBe(true);
+    expect(isSummaryAnchor(null)).toBe(false);
+  });
+
+  test("effectiveFirstTurnFromAnchor: integer passes through, X.5 -> X+1", () => {
+    expect(effectiveFirstTurnFromAnchor(null)).toBeNull();
+    expect(effectiveFirstTurnFromAnchor(7)).toBe(7);
+    expect(effectiveFirstTurnFromAnchor(7.5)).toBe(8);
+    expect(effectiveFirstTurnFromAnchor(12.5)).toBe(13);
+  });
+
+  test("snapBoundaryToRanges: integer inside a range snaps to the summary block", () => {
+    expect(snapBoundaryToRanges(6, ranges)).toBe(7.5); // inside [1..7]
+    expect(snapBoundaryToRanges(1, ranges)).toBe(7.5); // range start
+    expect(snapBoundaryToRanges(7, ranges)).toBe(7.5); // range end
+  });
+
+  test("snapBoundaryToRanges: outside ranges, summary anchors, and null unchanged", () => {
+    expect(snapBoundaryToRanges(8, ranges)).toBe(8); // gap between ranges
+    expect(snapBoundaryToRanges(13, ranges)).toBe(13);
+    expect(snapBoundaryToRanges(7.5, ranges)).toBe(7.5); // already a summary anchor
+    expect(snapBoundaryToRanges(null, ranges)).toBeNull();
+  });
+
+  test("snapBoundaryToRanges with empty ranges is identity", () => {
+    expect(snapBoundaryToRanges(5, [])).toBe(5);
   });
 });
 

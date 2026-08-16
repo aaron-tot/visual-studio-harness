@@ -4,6 +4,7 @@ import { useChatStore } from "./store";
 import { useSessionViewStore } from "../../stores/sessionView";
 import { useSessionStore } from "../../stores/sessions";
 import { chatDebug } from "./debug";
+import { playFinishSound } from "./sounds";
 import {
   pendingPermToolNames,
   awaitingSessionState,
@@ -338,7 +339,9 @@ wsClient.on("session_state", (data: any) => {
   }
   try {
     if (data.history) {
-      let msgs = data.history.filter((m: any) => m.role !== "system");
+      // System messages are normally hidden, but summary-generation markers
+      // (role system + isSummary) are part of the timeline.
+      let msgs = data.history.filter((m: any) => m.role !== "system" || m.isSummary === true);
       const lastAssistant = [...msgs].reverse().find((m: any) => m.role === "assistant");
       const hasIncomplete = lastAssistant && lastAssistant.success !== true && lastAssistant.success !== false;
       if (hasIncomplete && lastAssistant) msgs = msgs.filter((m: any) => m !== lastAssistant);
@@ -419,6 +422,12 @@ wsClient.on("session_stream_end", (data: any) => {
   store.setStreaming(data.sessionId, false);
   if (viewed) {
     store.clearDoneNotification(data.sessionId);
+    // Play finish sound for the viewed session (skip subagents)
+    const sessionMeta = useChatStore.getState().sessionMeta;
+    const isSubagent = sessionMeta?.kind === "subagent";
+    if (!isSubagent) {
+      playFinishSound(data.success !== false);
+    }
   } else if (data.success !== false) {
     store.setDoneNotification(data.sessionId, true);
   }

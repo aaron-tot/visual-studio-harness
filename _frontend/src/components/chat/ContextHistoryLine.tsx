@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { putSessionContextConfig, getEffectiveContextConfig, summarizeRange, type SessionContextConfig } from "../../lib/api";
+import { putSessionContextConfig, getEffectiveContextConfig, summarizeRange, listSummaryRanges, type SessionContextConfig } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
-import type { ConfigFile } from "../../../../_shared/types";
+import { snapBoundaryToRanges } from "../../../../_shared/types/context";
 
 /**
  * Vertical history line rendered alongside chat messages.
@@ -32,6 +32,8 @@ export function ContextHistoryLine({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [summarizeError, setSummarizeError] = useState<string | null>(null);
   const [config, setConfig] = useState<SessionContextConfig | null>(null);
+  /** Covered summary ranges — for snapping boundaries to summary blocks. */
+  const [summaryRanges, setSummaryRanges] = useState<{ startTurn: number; endTurn: number }[]>([]);
 
   // Turn Y positions (scroll-dependent — recalculated on every scroll)
   const [turnPositions, setTurnPositions] = useState<{ number: number; y: number }[]>([]);
@@ -46,11 +48,13 @@ export function ContextHistoryLine({
 
     // Turn positions — one per turn (dedupe: both user & assistant of the
     // same turn carry data-turn-number, so keep the topmost = turn start)
+    // Summary blocks carry fractional data-turn-number (endTurn + 0.5) so they
+    // are distinct snap positions from the live turn with the same number.
     const turnEls = sc.querySelectorAll<HTMLElement>("[data-turn-number]");
     const turnMap = new Map<number, number>();
     turnEls.forEach((msgEl) => {
-      const tn = parseInt(msgEl.dataset.turnNumber || "0", 10);
-      if (!tn) return;
+      const tn = parseFloat(msgEl.dataset.turnNumber || "0");
+      if (!tn || Number.isNaN(tn)) return;
       const rect = msgEl.getBoundingClientRect();
       const y = rect.top - containerRect.top + scrollTop;
       const existing = turnMap.get(tn);
@@ -71,11 +75,13 @@ export function ContextHistoryLine({
 
     // Turn positions — one per turn (dedupe: both user & assistant of the
     // same turn carry data-turn-number, so keep the topmost = turn start)
+    // Summary blocks carry fractional data-turn-number (endTurn + 0.5) so they
+    // are distinct snap positions from the live turn with the same number.
     const turnEls = sc.querySelectorAll<HTMLElement>("[data-turn-number]");
     const turnMap = new Map<number, number>();
     turnEls.forEach((msgEl) => {
-      const tn = parseInt(msgEl.dataset.turnNumber || "0", 10);
-      if (!tn) return;
+      const tn = parseFloat(msgEl.dataset.turnNumber || "0");
+      if (!tn || Number.isNaN(tn)) return;
       const rect = msgEl.getBoundingClientRect();
       const y = rect.top - containerRect.top + scrollTop;
       const existing = turnMap.get(tn);
@@ -143,7 +149,8 @@ setStoreCtxTn(firstTurnNumber);
     // handle. Only a change in manualTurnsBack or turnPositions recomputes.
     if (contextMode !== "manual" || turnPositions.length === 0) return;
     if (pinned) return; // pinned: keep handle where it is
-    const numbers = turnPositions.map((t) => t.number).sort((a, b) => a - b);
+    // "N turns back" counts LIVE turns only; summary blocks are not turns.
+    const numbers = turnPositions.map((t) => t.number).filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
     const lastTurn = numbers[numbers.length - 1];
     let firstTn: number | null;
     if (manualTurnsBack === -1) {
@@ -155,14 +162,18 @@ setStoreCtxTn(firstTurnNumber);
       const tn = idx >= 0 ? numbers[Math.min(idx, numbers.length - 1)] : numbers[0];
       firstTn = tn > numbers[0] ? tn : null;
     }
-    setFirstTurnNumber(firstTn);
-    setStoreCtxTn(firstTn);
-  }, [manualTurnsBack, turnPositions]);
+    // Snap so the boundary never lands inside a summarized range — the handle
+    // may rest on a summary block (fractional anchor).
+    const snapped = snapBoundaryToRanges(firstTn, summaryRanges);
+    setFirstTurnNumber(snapped);
+    setStoreCtxTn(snapped);
+  }, [manualTurnsBack, turnPositions, summaryRanges]);
 
   // ── Auto-mode: recompute firstTurnNumber from maxTurns ────────────
   useEffect(() => {
     if (contextMode !== "auto" || turnPositions.length === 0) return;
-    const numbers = turnPositions.map((t) => t.number).sort((a, b) => a - b);
+    // "N turns" counts LIVE turns only; summary blocks are not turns.
+    const numbers = turnPositions.map((t) => t.number).filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
     const lastTurn = numbers[numbers.length - 1];
     let firstTn: number | null;
     if (contextMaxTurns === -1) {
@@ -177,15 +188,33 @@ setStoreCtxTn(firstTurnNumber);
       const tn = idx >= 0 ? numbers[Math.min(idx, numbers.length - 1)] : numbers[0];
       firstTn = tn > numbers[0] ? tn : null;
     }
-    setFirstTurnNumber(firstTn);
+    // Snap so the boundary never lands inside a summarized range — the handle
+    // may rest on a summary block (fractional anchor).
+    const snapped = snapBoundaryToRanges(firstTn, summaryRanges);
+    setFirstTurnNumber(snapped);
     // Immediate sync to store so sendMessage sees the value without extra render cycle
-    setStoreCtxTn(firstTn);
+    setStoreCtxTn(snapped);
     setStoreCtxMode(contextMode);
     setStoreCtxMaxTurns(contextMaxTurns);
-  }, [contextMode, contextMaxTurns, turnPositions]);
+  }, [contextMode, contextMaxTurns, turnPositions, summaryRanges]);
 
   // Re-load when store version bumps (ContextPanel saves)
   const ctxCfgVersion = useChatStore((s) => s.contextConfigVersion);
+
+  // Covered summary ranges — refreshed on config bump AND when the message
+  // count changes (a completed summary adds messages). Used to snap auto and
+  // turns-back boundaries onto summary blocks so the handle can sit on them.
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    listSummaryRanges(sessionId)
+      .then((res) => {
+        if (cancelled) return;
+        setSummaryRanges(res.ranges.map((r) => ({ startTurn: r.startTurn, endTurn: r.endTurn })));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionId, ctxCfgVersion, messageCount]);
 
   // ── Load context config (also reads mode/maxTurns) ────────────────
   useEffect(() => {
@@ -302,9 +331,14 @@ setStoreCtxTn(firstTurnNumber);
     //   idx = numbers.length - manualTurnsBack - 1  =>  manualTurnsBack = length - 1 - idx
     let turnsBack = manualTurnsBack ?? 10;
     if (pinned && firstTurnNumber != null && turnPositions.length > 0) {
-      const numbers = turnPositions.map((t) => t.number).sort((a, b) => a - b);
-      const idx = numbers.indexOf(firstTurnNumber);
-      if (idx >= 0) turnsBack = numbers.length - 1 - idx;
+      const numbers = turnPositions.map((t) => t.number).filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
+      if (Number.isInteger(firstTurnNumber)) {
+        const idx = numbers.indexOf(firstTurnNumber);
+        if (idx >= 0) turnsBack = numbers.length - 1 - idx;
+      } else {
+        // Summary anchor E+0.5 → "N turns back" = live turns after E.
+        turnsBack = numbers.filter((n) => n > Math.floor(firstTurnNumber)).length;
+      }
     }
     setManualTurnsBack(turnsBack);
     setPinned(next);
@@ -321,18 +355,25 @@ setStoreCtxTn(firstTurnNumber);
 
   // endTurnNum = slider position (turn the handle sits on), per design spec.
   // firstTurnNumber set → that turn; null (all turns) → last turn on the line.
-  const summarizeEndTurn = (() => {
+  // A fractional anchor means the handle sits on a summary block — that range
+  // is already summarized, so summarizing is disabled.
+  const summarizeAnchor = (() => {
     if (firstTurnNumber != null && firstTurnNumber >= 1) return firstTurnNumber;
     if (turnPositions.length > 0) return turnPositions[turnPositions.length - 1]!.number;
     return null;
   })();
+  const onSummaryAnchor = summarizeAnchor != null && !Number.isInteger(summarizeAnchor);
+  const summarizeEndTurn = onSummaryAnchor ? null : summarizeAnchor;
+  const summarizeDisabledReason = onSummaryAnchor && summarizeAnchor != null
+    ? `Already summarized up to turn ${Math.floor(summarizeAnchor)}`
+    : null;
   const canSummarize =
     !!sessionId && summarizeEndTurn != null && summarizeEndTurn >= 1 && !summarizing && turnPositions.length > 0;
 
-  const runSummarize = useCallback(async () => {
+  const runSummarize = useCallback(async (initiator: string) => {
     setCtxMenu(null);
     if (!sessionId || summarizeEndTurn == null || summarizeEndTurn < 1) {
-      setSummarizeError(!sessionId ? "No session" : "No turns to summarize");
+      setSummarizeError(!sessionId ? "No session" : summarizeDisabledReason ?? "No turns to summarize");
       return;
     }
     if (summarizing) return;
@@ -343,7 +384,8 @@ setStoreCtxTn(firstTurnNumber);
         sessionId,
         workspaceRoot: workspaceRoot || undefined,
         endTurnNum: summarizeEndTurn,
-        includePriorSummary: (config as { summarizeIncludePriorSummary?: boolean }).summarizeIncludePriorSummary ?? true,
+        includePriorSummary: config?.summarizeIncludePriorSummary ?? true,
+        initiator,
       });
       console.info("[summarize] ok", result);
       if (result.created === false) {
@@ -373,7 +415,7 @@ setStoreCtxTn(firstTurnNumber);
     } finally {
       setSummarizing(false);
     }
-  }, [sessionId, summarizeEndTurn, summarizing, workspaceRoot, config]);
+  }, [sessionId, summarizeEndTurn, summarizing, workspaceRoot, config, summarizeDisabledReason]);
 
   // Cmd/Ctrl+Shift+S → summarize at slider
   useEffect(() => {
@@ -384,7 +426,7 @@ setStoreCtxTn(firstTurnNumber);
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       e.preventDefault();
-      void runSummarize();
+      void runSummarize("keyboard");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -437,7 +479,8 @@ setStoreCtxTn(firstTurnNumber);
     : contextOwner === "project" ? "Project"
     : contextOwner === "global" ? "Global"
     : "Default";
-  const totalTurnsNow = turnPositions.length;
+  // Live turns only — summary blocks are boundaries, not turns.
+  const livePositions = turnPositions.filter((t) => Number.isInteger(t.number));
   let turnsLabel: string;
   if (contextMode === "auto") {
     if (contextMaxTurns === -1) turnsLabel = "All turns";
@@ -446,12 +489,22 @@ setStoreCtxTn(firstTurnNumber);
   } else {
     // Manual: count drives from firstTurnNumber to end (or all if null)
     if (firstTurnNumber == null) turnsLabel = "All turns";
-    else turnsLabel = `${Math.max(0, totalTurnsNow - firstTurnNumber + 1)} turn${totalTurnsNow - firstTurnNumber + 1 === 1 ? "" : "s"}`;
+    else if (!Number.isInteger(firstTurnNumber)) {
+      // Summary anchor E+0.5 → live turns after E.
+      const after = livePositions.filter((p) => p.number > Math.floor(firstTurnNumber)).length;
+      turnsLabel = `${after} turn${after === 1 ? "" : "s"}`;
+    } else {
+      const count = Math.max(0, livePositions.length - firstTurnNumber + 1);
+      turnsLabel = `${count} turn${count === 1 ? "" : "s"}`;
+    }
   }
+  const pinLabel = firstTurnNumber != null && !Number.isInteger(firstTurnNumber)
+    ? `summary through turn ${Math.floor(firstTurnNumber)}`
+    : `turn ${firstTurnNumber}`;
   const tooltipText = contextMode === "auto"
     ? `${ownerLabel} · Auto · ${turnsLabel}`
     : pinned
-      ? `${ownerLabel} · Manual · Pinned to turn ${firstTurnNumber} (${turnsLabel} included)`
+      ? `${ownerLabel} · Manual · Pinned to ${pinLabel} (${turnsLabel} included)`
       : `${ownerLabel} · Manual · ${turnsLabel} back`;
 
   // Line sits in center of the 64px gutter so pin/summarize stay inside the rail
@@ -580,7 +633,7 @@ setStoreCtxTn(firstTurnNumber);
                   ? `Summarize up to turn ${summarizeEndTurn} (Ctrl/⌘+Shift+S)`
                   : summarizing
                     ? "Summarizing…"
-                    : "No turns to summarize"
+                    : summarizeDisabledReason ?? "No turns to summarize"
               }
               className={`w-6 h-6 flex items-center justify-center rounded border transition-colors shrink-0 ${
                 summarizing
@@ -592,7 +645,7 @@ setStoreCtxTn(firstTurnNumber);
               onPointerDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (e.button === 0) void runSummarize();
+                if (e.button === 0) void runSummarize("slider");
               }}
               onClick={(e) => {
                 e.preventDefault();
@@ -630,13 +683,13 @@ setStoreCtxTn(firstTurnNumber);
               type="button"
               className="w-full text-left px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700 disabled:opacity-40"
               disabled={!canSummarize}
-              onClick={() => { void runSummarize(); }}
+              onClick={() => { void runSummarize("context-menu"); }}
             >
               {summarizing
                 ? "Summarizing…"
                 : summarizeEndTurn != null
                   ? `Summarize up to turn ${summarizeEndTurn}`
-                  : "Summarize up to here"}
+                  : summarizeDisabledReason ?? "Summarize up to here"}
             </button>
           </div>
         </>

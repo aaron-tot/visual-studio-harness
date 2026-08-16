@@ -80,10 +80,12 @@ export function TurnContextMenu({ sessionId, turnId, messages, x, y, onClose }: 
     if (isDisabled || summarizing) return;
     setSummarizing(true);
     try {
+      // No includePriorSummary here — the backend falls back to the effective
+      // context config setting ("Include previous summary turn").
       await summarizeRange({
         sessionId,
         endTurnNum: turnId,
-        includePriorSummary: true,
+        initiator: "context-menu",
       });
       // backend pushes session_state; bump version to refresh the line
       bumpContextConfigVersion();

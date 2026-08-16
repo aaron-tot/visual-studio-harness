@@ -369,9 +369,11 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
             model={summarizationModel}
             fallbackModel={summarizationFallbackModel}
             promptMd={summarizationPromptMd}
+            includePriorSummary={summarizeIncludePriorSummary}
             onModel={(m) => save({ summarizationModel: m })}
             onFallbackModel={(m) => save({ summarizationFallbackModel: m })}
             onPromptMd={(p) => save({ summarizationPromptMd: p })}
+            onIncludePriorSummary={(v) => save({ summarizeIncludePriorSummary: v })}
           />
             </>
           )}

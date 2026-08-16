@@ -19,6 +19,8 @@ function sortParts(parts: MessagePartType[]): MessagePartType[] {
 }
 
 interface SummaryTurnGroup {
+  /** System generation marker — lives at the TOP of the expanded card. */
+  marker?: Message;
   userMsg: Message;
   assistantMsg: Message;
   turnId: number;
@@ -31,7 +33,31 @@ function groupSummaryTurns(messages: Message[]): (Message | SummaryTurnGroup)[] 
   let i = 0;
   while (i < messages.length) {
     const msg = messages[i];
-    // Check if this is a summary user message followed by summary assistant message
+    // Completed summary block: [system marker, user, assistant] (same turnId).
+    // The marker is a child of the collapsible card (top of its content).
+    if (
+      msg.isSummary &&
+      msg.role === "system" &&
+      i + 2 < messages.length &&
+      messages[i + 1].isSummary &&
+      messages[i + 1].role === "user" &&
+      messages[i + 2].isSummary &&
+      messages[i + 2].role === "assistant" &&
+      messages[i + 1].turnId === msg.turnId &&
+      messages[i + 2].turnId === msg.turnId
+    ) {
+      result.push({
+        marker: msg,
+        userMsg: messages[i + 1],
+        assistantMsg: messages[i + 2],
+        turnId: msg.turnId!,
+        summaryEndTurn: msg.summaryEndTurn,
+        summaryStartTurn: msg.summaryStartTurn,
+      });
+      i += 3;
+      continue;
+    }
+    // Legacy / pending pair (user + assistant only).
     if (
       msg.isSummary &&
       msg.role === "user" &&
@@ -48,10 +74,10 @@ function groupSummaryTurns(messages: Message[]): (Message | SummaryTurnGroup)[] 
         summaryStartTurn: msg.summaryStartTurn,
       });
       i += 2;
-    } else {
-      result.push(msg);
-      i++;
+      continue;
     }
+    result.push(msg);
+    i++;
   }
   return result;
 }
@@ -181,7 +207,10 @@ export function MessageList() {
 
   const isThinking = streaming && streamingParts.length === 0;
 
-  const visibleMessages = messages.filter((m) => m.role !== "system");
+  // System messages are normally hidden (never part of the chat thread), but
+  // summary-generation markers (role system + isSummary) ARE part of the
+  // timeline — they occupy the summary position while generating.
+  const visibleMessages = messages.filter((m) => m.role !== "system" || m.isSummary === true);
   const groupedMessages = groupSummaryTurns(visibleMessages);
 
   return (
@@ -201,19 +230,22 @@ export function MessageList() {
       {groupedMessages.map((item, i) => {
         if (typeof item === "object" && "userMsg" in item) {
           // Summary turn group
-          const { userMsg, assistantMsg, turnId, summaryEndTurn, summaryStartTurn } = item;
+          const { marker, userMsg, assistantMsg, turnId, summaryEndTurn, summaryStartTurn } = item;
           const isCollapsed = !expandedSummaries.has(turnId);
           return (
             <div
               key={`summary-${turnId}`}
               data-summary-turn={turnId}
               data-summary-end={summaryEndTurn ?? ""}
-              // Let the context circle snap to the summary's anchor position
-              // (its end turn). The handle reads [data-turn-number] elements.
-              data-turn-number={summaryEndTurn != null ? summaryEndTurn : undefined}
+              // Let the context circle snap to the summary's anchor position.
+              // Half-step (endTurn + 0.5) keeps the block distinct from the
+              // live turn carrying the same number. The handle reads
+              // [data-turn-number] with parseFloat.
+              data-turn-number={summaryEndTurn != null ? summaryEndTurn + 0.5 : undefined}
               className="animate-in fade-in slide-in-from-bottom-1 duration-200"
             >
               <SummaryTurnWrapper
+                marker={marker}
                 userMsg={userMsg}
                 assistantMsg={assistantMsg}
                 summaryEndTurn={summaryEndTurn}
@@ -225,11 +257,16 @@ export function MessageList() {
             </div>
           );
         } else {
-          // Regular message
+          // Regular message (or a standalone summary system marker while a
+          // summary is streaming / after it failed — no user/assistant pair).
+          const anchor = item.isSummary
+            ? (item.summaryEndTurn != null ? item.summaryEndTurn + 0.5 : undefined)
+            : (item.turnId != null ? item.turnId : undefined);
           return (
             <div
               key={i}
-              data-turn-number={item.isSummary ? undefined : (item.turnId != null ? item.turnId : undefined)}
+              data-turn-number={anchor}
+              {...(item.isSummary && item.summaryEndTurn != null ? { "data-summary-end": String(item.summaryEndTurn) } : {})}
               className="animate-in fade-in slide-in-from-bottom-1 duration-200"
             >
               <MessageRow message={item} />
@@ -275,6 +312,7 @@ export function MessageList() {
 }
 
 interface SummaryTurnWrapperProps {
+  marker?: Message;
   userMsg: Message;
   assistantMsg: Message;
   summaryEndTurn: number | undefined;
@@ -287,6 +325,7 @@ interface SummaryTurnWrapperProps {
 import type { Message } from "../../../../_shared/types/message";
 
 function SummaryTurnWrapper({
+  marker,
   userMsg,
   assistantMsg,
   summaryEndTurn,
@@ -318,7 +357,7 @@ function SummaryTurnWrapper({
     <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 overflow-hidden">
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-left focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
         onClick={onToggle}
         title={tooltip}
       >
@@ -328,6 +367,8 @@ function SummaryTurnWrapper({
       {!isCollapsed && (
         <div className="px-3 pb-3 animate-in fade-in slide-in-from-top-1 duration-150 border-t border-blue-500/20">
           <div className="space-y-1">
+            {/* Generation marker sits at the top of the expanded card. */}
+            {marker && <MessageRow message={marker} />}
             <MessageRow message={userMsg} />
             <MessageRow message={assistantMsg} />
           </div>

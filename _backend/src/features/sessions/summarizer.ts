@@ -49,6 +49,8 @@ export interface SummarizerResult {
     totalTokens: number;
     reasoningTokens?: number;
   } | null;
+  /** Reasoning/thinking deltas emitted while the summary was generated. */
+  reasoning: string[];
 }
 
 export async function runSummarizer(
@@ -60,6 +62,8 @@ export async function runSummarizer(
     messages: { role: "user" | "assistant"; content: string }[];
     sessionId?: string;
     workspaceRoot?: string;
+    /** Called per text/reasoning delta (for live persistence/broadcast). */
+    onStream?: (delta: { type: "text" | "reasoning"; text: string }) => void;
   }
 ): Promise<SummarizerResult> {
   const config = await loadConfig(dataDir);
@@ -100,14 +104,15 @@ export async function runSummarizer(
     });
   };
 
-  const streamFrom = async (prov: Provider, mdl: Provider["models"][0]): Promise<{ text: string; usage: SummarizerResult["usage"] }> => {
+  const streamFrom = async (prov: Provider, mdl: Provider["models"][0]): Promise<{ text: string; usage: SummarizerResult["usage"]; reasoning: string[] }> => {
     const sdk = makeSdkProvider(prov);
     if (!sdk) {
-      return { text: "[Test model — no streaming preview applicable]", usage: null };
+      return { text: "[Test model — no streaming preview applicable]", usage: null, reasoning: [] };
     }
 
     let fullText = "";
     let finalUsage: SummarizerResult["usage"] = null;
+    const reasoning: string[] = [];
 
     const result = streamText({
       model: sdk(mdl.modelName),
@@ -119,7 +124,17 @@ export async function runSummarizer(
     for await (const event of result.fullStream) {
       if (event.type === "text-delta") {
         const text = "text" in event ? (event as { text?: string }).text : "";
-        if (text) fullText += text;
+        if (text) {
+          fullText += text;
+          opts.onStream?.({ type: "text", text });
+        }
+      } else if (event.type === "reasoning-delta") {
+        // AI SDK v7 reasoning deltas carry `text`.
+        const delta = (event as { text?: string }).text ?? "";
+        if (delta) {
+          reasoning.push(delta);
+          opts.onStream?.({ type: "reasoning", text: delta });
+        }
       } else if (event.type === "error") {
         const err = "error" in event ? (event as { error?: unknown }).error : undefined;
         throw err instanceof Error ? err : new Error(String(err));
@@ -135,7 +150,7 @@ export async function runSummarizer(
       }
     }
 
-    return { text: fullText, usage: finalUsage };
+    return { text: fullText, usage: finalUsage, reasoning };
   };
 
   try {

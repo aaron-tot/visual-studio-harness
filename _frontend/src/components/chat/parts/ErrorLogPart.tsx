@@ -19,6 +19,7 @@ interface ErrorLogPartProps {
   category?: string;
   timestamp?: string;
   retries?: RetryEntry[];
+  providerName?: string;
 }
 
 function formatTime(iso?: string): string {
@@ -47,14 +48,15 @@ const OUTCOME_META: Record<RetryEntry["status"], { label: string; cls: string }>
   aborted: { label: "aborted", cls: "text-zinc-400/80" },
 };
 
-export function ErrorLogPart({ message, raw, isCustom, timestamp, retries }: ErrorLogPartProps) {
+export function ErrorLogPart({ message, raw, isCustom, timestamp, retries, providerName }: ErrorLogPartProps) {
   const [open, setOpen] = useState(true);
   const [showRaw, setShowRaw] = useState(false);
   const recovered = isRecovered(retries);
   const nRetries = retries?.length ?? 0;
   const canToggle = !!(isCustom && raw && raw.trim() && raw.trim() !== message.trim());
   const display = canToggle && showRaw ? raw! : message;
-  const title = recovered ? `Recovered after ${nRetries} retr${nRetries === 1 ? "y" : "ies"}` : "Error";
+  const providerLabel = providerName ? `Upstream Provider (${providerName}) Error` : "Upstream Provider Error";
+const title = recovered ? `Recovered after ${nRetries} retr${nRetries === 1 ? "y" : "ies"}` : providerLabel;
   const border = recovered ? "border-amber-500/40 bg-amber-950/30" : "border-red-500/40 bg-red-950/30";
   const text = recovered ? "text-amber-200" : "text-red-200";
   const icon = recovered ? "text-amber-400" : "text-red-400";

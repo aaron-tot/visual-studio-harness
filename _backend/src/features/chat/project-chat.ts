@@ -12,6 +12,44 @@ function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
 }
 
+/**
+ * Reads generation metadata (initiatedAt, initiator, requested range) from a
+ * summary turn's configSnapshotJson. The range fallback matters while a
+ * summary is STREAMING — the summary_ranges row is only written on success,
+ * so the placeholder's timeline anchor comes from the snapshot. Returns null
+ * for legacy rows / unparseable snapshots.
+ */
+function parseSummaryMeta(configSnapshotJson: string | null): {
+  initiatedAt?: string;
+  initiator?: string;
+  range?: { startTurn: number; endTurn: number };
+  childSessionId?: string;
+} | null {
+  if (!configSnapshotJson) return null;
+  try {
+    const meta = JSON.parse(configSnapshotJson) as {
+      initiatedAt?: unknown;
+      initiator?: unknown;
+      range?: { startTurn?: unknown; endTurn?: unknown };
+      childSessionId?: unknown;
+    };
+    if (!meta || typeof meta !== "object") return null;
+    if (meta.initiatedAt == null && meta.initiator == null && meta.range == null && meta.childSessionId == null) return null;
+    const range =
+      meta.range && typeof meta.range.startTurn === "number" && typeof meta.range.endTurn === "number"
+        ? { startTurn: meta.range.startTurn, endTurn: meta.range.endTurn }
+        : undefined;
+    return {
+      initiatedAt: typeof meta.initiatedAt === "string" ? meta.initiatedAt : undefined,
+      initiator: typeof meta.initiator === "string" ? meta.initiator : undefined,
+      range,
+      childSessionId: typeof meta.childSessionId === "string" ? meta.childSessionId : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ── Chat projection: turns → Message[] ───────────────────────────────
 
 export function projectSessionChat(sessionId: string, dataDir?: string): Message[] {
@@ -68,8 +106,12 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
   for (const t of turnRows) {
     if ((t.kind ?? "turn") === "summary") {
       const rng = rangeBySummaryTurn.get(t.id);
-      const endTurn = rng?.endTurn ?? t.turnNumber;
-      const startTurn = rng?.startTurn ?? endTurn;
+      const meta = parseSummaryMeta(t.configSnapshotJson);
+      // While a summary is streaming there is NO summary_ranges row yet (it is
+      // written on success), so anchor to the snapshot's requested range —
+      // the placeholder must sit at the summary position, not the timeline end.
+      const endTurn = rng?.endTurn ?? meta?.range?.endTurn ?? t.turnNumber;
+      const startTurn = rng?.startTurn ?? meta?.range?.startTurn ?? endTurn;
       // Half-step after last covered turn ⇒ between covered range and live turns.
       order.push({
         pos: endTurn + 0.5,
@@ -130,12 +172,41 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
       }
     });
 
-    // Summary turns: emit as a full turn pair (user + assistant) just like normal turns.
-    // The user message contains the summarization prompt; the assistant contains the summary.
+    // Summary turns: emit a system marker (generation placeholder) followed by
+    // the full turn pair (user + assistant) once complete. While the summary
+    // is streaming (or after a failure) the marker is the ONLY message — it
+    // occupies the summary position so the UI shows progress / failure in
+    // place. The user message contains the summarization prompt; the assistant
+    // contains the summary.
     // NOTE on identifiers: turnId = the END turn (circle anchor) for display/context
     // anchoring between covered turns; turnNumber = the summary's REAL DB turn_number,
     // used by inspection ({ }) and any DB row lookups. The two intentionally differ.
     if (o.isSummary) {
+      const summaryMeta = parseSummaryMeta(t.configSnapshotJson);
+      const markerContent = summaryMeta?.initiatedAt
+        ? `SUMMARY BEING GENERATED AT ${summaryMeta.initiatedAt}: initiated by [${summaryMeta.initiator ?? "manual"}]`
+        : "Summary generated";
+
+      // System marker (id negative to stay unique vs user id*2 / assistant id*2+1)
+      out.push({
+        id: -t.id,
+        role: "system",
+        content: markerContent,
+        timestamp: t.userTimestamp,
+        turnId: o.turnId,
+        turnNumber: t.turnNumber,
+        agentName: t.agentName ?? undefined,
+        isSummary: true,
+        summaryEndTurn: o.endTurn,
+        summaryStartTurn: o.startTurn,
+        status: t.status,
+        success: t.success ?? undefined,
+        childSessionId: summaryMeta?.childSessionId,
+      });
+
+      // Streaming/failed placeholders have no user/assistant pair yet.
+      if ((t.status ?? "turn") !== "success") continue;
+
       // User message (the summarization prompt)
       out.push({
         id: t.id * 2,

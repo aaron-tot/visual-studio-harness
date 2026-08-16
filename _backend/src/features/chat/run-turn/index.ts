@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { ConfigFile, Message, MessagePartType, ThinkingEffort } from "../../../../../_shared/types";
-import { effectiveFirstTurnFromAnchor, snapBoundaryToRanges } from "../../../../../_shared/types";
+import { effectiveFirstTurnFromAnchor, snapBoundaryToRanges } from "../../../../../_shared/types/context";
 import { toJSONSchema } from "zod/v4";
 import {
   createSession,

@@ -137,6 +137,7 @@ export function MessagePart({ part, allParts, toolCacheByCallId, isStreaming, ag
           category={part.category}
           timestamp={part.timestamp}
           retries={part.retries}
+          providerName={part.providerName}
         />
       );
 

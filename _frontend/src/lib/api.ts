@@ -1464,6 +1464,7 @@ export interface SessionContextConfig {
   summarizationModel?: string;
   summarizationFallbackModel?: string;
   summarizationPromptMd?: string;
+  summarizeIncludePriorSummary?: boolean;
 }
 
 export function getSessionContextConfig(sessionId: string) {
@@ -1515,6 +1516,8 @@ export function summarizeRange(req: {
   model?: string;
   fallbackModel?: string;
   includePriorSummary?: boolean;
+  /** Who started the generation (e.g. "slider", "keyboard", "context-menu"). */
+  initiator?: string;
 }) {
   return fetchJson<{
     summaryTurnId: number;

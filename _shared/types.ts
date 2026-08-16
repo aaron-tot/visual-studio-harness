@@ -8,3 +8,4 @@ export * from "./types/research";
 export * from "./types/trace";
 export * from "./types/step-batch";
 export * from "./types/app-info";
+export * from "./types/context";

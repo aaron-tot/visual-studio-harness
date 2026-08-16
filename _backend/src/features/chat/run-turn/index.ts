@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { ConfigFile, Message, MessagePartType, ThinkingEffort } from "../../../../../_shared/types";
+import { effectiveFirstTurnFromAnchor, snapBoundaryToRanges } from "../../../../../_shared/types";
 import { toJSONSchema } from "zod/v4";
 import {
   createSession,
@@ -63,7 +64,7 @@ import { resolveContextTurnIds } from "../project-chat";
 import { buildModelMessages } from "../message-builder";
 import { buildSystemBlockBase, buildAdditionalSystemInfoBlock, buildAdditionalSystemInfoSections } from "../../system-prompt/builder";
 import { DEFAULT_ADDITIONAL_SYSTEM_INFO, DEFAULT_SYSTEM_PROMPT_SECTIONS } from "../../../../../_shared/types/config";
-import { getSessionModelConfigJson } from "../../sessions/db";
+import { getSessionModelConfigJson, getSummaryRangesForSession } from "../../sessions/db";
 import {
   resolveRuntimeFirstTurnNumber,
   resolveRuntimeHistoryInclusion,
@@ -286,10 +287,18 @@ export async function runTurn(
     global: globalCtx,
     completedTurnNumbers,
   });
-  const firstTurnNumber = resolvedCtx.firstTurnNumber;
   const contextSource: ContextSource = resolvedCtx.source;
 
-  console.error("[run-turn] ctxFirstTurnNumber final:", firstTurnNumber, "source:", contextSource);
+  // Summary-aware anchor normalization. An integer boundary that falls inside
+  // a covered range snaps to the summary block (endTurn + 0.5) — the context
+  // line can never start mid-summary. A summary anchor resolves to the first
+  // live turn after the block. Mirrors the frontend via the shared helpers so
+  // the displayed handle position and the effective context always agree.
+  const ranges = getSummaryRangesForSession(dataDir, sessionId);
+  const contextAnchor = snapBoundaryToRanges(resolvedCtx.firstTurnNumber, ranges);
+  const firstTurnNumber = effectiveFirstTurnFromAnchor(contextAnchor);
+
+  console.error("[run-turn] ctxFirstTurnNumber final:", firstTurnNumber, "source:", contextSource, "anchor:", contextAnchor);
 
   const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns: historyFlags.includeFailedTurnsInHistory, firstTurnNumber });
 
@@ -554,7 +563,7 @@ export async function runTurn(
       includePatchesInHistory: historyFlags.includePatchesInHistory,
       includeOtherPartsInHistory: historyFlags.includeOtherPartsInHistory,
       contextMaxTurns: historyFlags.contextMaxTurns,
-      firstTurnNumber,
+      firstTurnNumber: contextAnchor,
       promptSnapshotId,
       toolsSnapshotId,
     }, dataDir);

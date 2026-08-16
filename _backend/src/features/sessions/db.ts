@@ -1,6 +1,6 @@
 import { eq, desc, and, lte, lt } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
-import { sessions, sessionLayouts, summaryRanges } from "../../db/schema";
+import { sessions, sessionLayouts, summaryRanges, turns } from "../../db/schema";
 import type { SessionMeta, LayoutNode } from "../../../../_shared/types";
 
 export function dbFor(dataDir?: string) {
@@ -398,4 +398,68 @@ export function getSummaryRangesForSession(
     .where(eq(summaryRanges.sessionId, sessionId))
     .orderBy(summaryRanges.endTurn)
     .all();
+}
+
+/**
+ * Summary turns currently being generated (kind='summary', status='streaming').
+ * Used to guard against concurrent generation for the same range and to
+ * recover from crashes that left a stale streaming row behind.
+ */
+export interface StreamingSummaryTurn {
+  id: number;
+  turnNumber: number;
+  configSnapshotJson: string | null;
+  startedAt: string | null;
+}
+
+export function getStreamingSummaryTurns(
+  dataDir: string,
+  sessionId: string
+): StreamingSummaryTurn[] {
+  const db = dbFor(dataDir);
+  return db
+    .select({
+      id: turns.id,
+      turnNumber: turns.turnNumber,
+      configSnapshotJson: turns.configSnapshotJson,
+      startedAt: turns.startedAt,
+    })
+    .from(turns)
+    .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "summary"), eq(turns.status, "streaming")))
+    .all();
+}
+
+/** Mark a summary turn as failed (status='error', success=0). */
+export function markSummaryTurnError(dataDir: string, turnId: number): void {
+  const db = dbFor(dataDir);
+  db.update(turns)
+    .set({ status: "error", success: false })
+    .where(eq(turns.id, turnId))
+    .run();
+}
+
+/**
+ * Convert stale in-progress summary turns (startedAt older than `olderThanMs`)
+ * into errors so a fresh generation is not blocked forever by a crashed run.
+ * Returns the ids that were marked.
+ */
+export function expireStaleStreamingSummaries(
+  dataDir: string,
+  sessionId: string,
+  olderThanMs: number
+): number[] {
+  const now = Date.now();
+  const expired: number[] = [];
+  for (const row of getStreamingSummaryTurns(dataDir, sessionId)) {
+    if (!row.startedAt) {
+      expired.push(row.id);
+      continue;
+    }
+    const started = new Date(row.startedAt).getTime();
+    if (Number.isNaN(started) || now - started > olderThanMs) {
+      expired.push(row.id);
+    }
+  }
+  for (const id of expired) markSummaryTurnError(dataDir, id);
+  return expired;
 }

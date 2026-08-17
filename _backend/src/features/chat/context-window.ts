@@ -6,13 +6,10 @@
 export type ContextSource = "ws" | "session" | "project" | "global" | "auto" | "none";
 
 export interface ContextScopeConfig {
-  mode?: "auto" | "manual" | "sliding" | "fixed" | string;
-  maxTurns?: number;
+  // sliding keeps the last N turns; fixed pins to a specific turn (null pin =
+  // pinned to the first message = all turns).
+  mode?: "sliding" | "fixed" | string;
   firstTurnNumber?: number | null;
-  manualMode?: "turnsBack" | "pinned" | string;
-  manualTurnsBack?: number;
-  // New (context-revamp) schema: sliding keeps the last N turns; fixed pins to
-  // a specific turn (null pin = pinned to the first message = all turns).
   windowSize?: number;
   pinnedTurn?: number | null;
   // Auto compaction (v2): when enabled and the last-turn input context reaches
@@ -47,10 +44,7 @@ export interface ResolveRuntimeFirstTurnInput {
   session?: ContextScopeConfig | null;
   project?: ContextScopeConfig | null;
   global?: ContextScopeConfig | null;
-  /**
-   * Prior completed turn numbers for this session (exclude the turn being built).
-   * Used to convert auto maxTurns → firstTurnNumber.
-   */
+  /** Prior completed turn numbers for this session (exclude the turn being built). */
   completedTurnNumbers: number[];
 }
 
@@ -60,31 +54,30 @@ export interface ResolveRuntimeFirstTurnResult {
 }
 
 /**
- * Convert a window size (auto maxTurns / sliding windowSize) into firstTurnNumber
- * using prior completed turns only. N = keep the last N completed turns (current
- * turn is separate). -1 = all (null), 0 = none (beyond last).
+ * Convert a sliding window size into firstTurnNumber using prior completed turns
+ * only. N = keep the last N completed turns (current turn is separate).
+ * -1 = all (null), 0 = none (beyond last).
  */
-export function computeFirstTurnFromMaxTurns(
+export function computeFirstTurnFromWindowSize(
   completedTurnNumbers: number[],
-  maxTurns: number,
+  windowSize: number,
 ): number | null {
   const numbers = [...completedTurnNumbers].sort((a, b) => a - b);
-  if (maxTurns === -1) return null;
+  if (windowSize === -1) return null;
   if (numbers.length === 0) {
-    if (maxTurns === 0) return 1;
+    if (windowSize === 0) return 1;
     return null;
   }
   const last = numbers[numbers.length - 1]!;
-  if (maxTurns === 0) return last + 1;
-  if (maxTurns >= numbers.length) return null;
-  return numbers[numbers.length - maxTurns] ?? null;
+  if (windowSize === 0) return last + 1;
+  if (windowSize >= numbers.length) return null;
+  return numbers[numbers.length - windowSize] ?? null;
 }
 
 function sessionContributes(ctx: ContextScopeConfig | null | undefined): boolean {
   if (!ctx) return false;
   if (ctx.enabled === true) return true;
-  // Migration: a manual/sliding/fixed pin without `enabled` still owns context.
-  if (ctx.mode === "manual" && ctx.firstTurnNumber != null) return true;
+  // A sliding/fixed pin without `enabled` still owns context.
   if (ctx.mode === "fixed" && ctx.pinnedTurn != null) return true;
   if (ctx.mode === "sliding" && ctx.windowSize != null) return true;
   if (ctx.windowSize != null || ctx.pinnedTurn != null) return true;
@@ -110,16 +103,7 @@ function applyScope(
   if (ctx.mode === "sliding") {
     const size = ctx.windowSize ?? DEFAULT_WINDOW_SIZE;
     return {
-      firstTurnNumber: computeFirstTurnFromMaxTurns(completedTurnNumbers, size),
-      source,
-    };
-  }
-  if (ctx.mode === "manual" && ctx.firstTurnNumber != null) {
-    return { firstTurnNumber: ctx.firstTurnNumber, source };
-  }
-  if (ctx.mode === "auto" && ctx.maxTurns != null) {
-    return {
-      firstTurnNumber: computeFirstTurnFromMaxTurns(completedTurnNumbers, ctx.maxTurns),
+      firstTurnNumber: computeFirstTurnFromWindowSize(completedTurnNumbers, size),
       source,
     };
   }
@@ -135,7 +119,7 @@ function applyScope(
  * 1. WS client value (if set)
  * 2. Session (if enabled or manual pin)
  * 3. Project (if enabled)
- * 4. Global (always available as base when it has mode/maxTurns/firstTurnNumber)
+ * 4. Global (always available as base when it has mode/firstTurnNumber)
  */
 export function resolveRuntimeFirstTurnNumber(
   input: ResolveRuntimeFirstTurnInput,
@@ -156,7 +140,7 @@ export function resolveRuntimeFirstTurnNumber(
     if (r) return r;
   }
 
-  if (input.global && (input.global.mode != null || input.global.maxTurns != null || input.global.firstTurnNumber != null || input.global.windowSize != null || input.global.pinnedTurn != null)) {
+  if (input.global && (input.global.mode != null || input.global.firstTurnNumber != null || input.global.windowSize != null || input.global.pinnedTurn != null)) {
     const r = applyScope(input.global, turns, "global");
     if (r) return r;
   }

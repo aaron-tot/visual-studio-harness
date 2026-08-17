@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  computeFirstTurnFromMaxTurns,
+  computeFirstTurnFromWindowSize,
   resolveRuntimeFirstTurnNumber,
   resolveRuntimeHistoryInclusion,
   type ContextScopeConfig,
@@ -11,30 +11,29 @@ import {
   isSummaryAnchor,
 } from "../../../../_shared/types/context";
 
-describe("computeFirstTurnFromMaxTurns", () => {
-  // Mirrors ContextHistoryLine auto-mode formula on completed turn numbers.
-  // maxTurns = N previous completed turns (current turn is not yet in the list).
+describe("computeFirstTurnFromWindowSize", () => {
+  // Mirrors ContextHistoryLine sliding formula on completed turn numbers.
+  // windowSize = N previous completed turns (current turn is not yet in the list).
 
-  test("maxTurns=-1 means all turns (null)", () => {
-    expect(computeFirstTurnFromMaxTurns([1, 2, 3, 4, 5], -1)).toBeNull();
+  test("windowSize=-1 means all turns (null)", () => {
+    expect(computeFirstTurnFromWindowSize([1, 2, 3, 4, 5], -1)).toBeNull();
   });
 
-  test("maxTurns=0 means none (beyond last)", () => {
-    expect(computeFirstTurnFromMaxTurns([1, 2, 3], 0)).toBe(4);
+  test("windowSize=0 means none (beyond last)", () => {
+    expect(computeFirstTurnFromWindowSize([1, 2, 3], 0)).toBe(4);
   });
 
-  test("maxTurns=2 with 5 completed turns keeps last 2", () => {
-    // numbers=[1..5], idx = 5 - 2 - 1 = 2 → turn 3, but UI uses length - N - 1
-    // waiting for current: with only completed turns, last N means index = length - N
-    expect(computeFirstTurnFromMaxTurns([1, 2, 3, 4, 5], 2)).toBe(4);
+  test("windowSize=2 with 5 completed turns keeps last 2", () => {
+    // last N means index = length - N
+    expect(computeFirstTurnFromWindowSize([1, 2, 3, 4, 5], 2)).toBe(4);
   });
 
-  test("maxTurns larger than history yields null (all)", () => {
-    expect(computeFirstTurnFromMaxTurns([1, 2], 10)).toBeNull();
+  test("windowSize larger than history yields null (all)", () => {
+    expect(computeFirstTurnFromWindowSize([1, 2], 10)).toBeNull();
   });
 
   test("empty history yields null", () => {
-    expect(computeFirstTurnFromMaxTurns([], 2)).toBeNull();
+    expect(computeFirstTurnFromWindowSize([], 2)).toBeNull();
   });
 });
 
@@ -44,36 +43,36 @@ describe("resolveRuntimeFirstTurnNumber", () => {
   test("WS value wins when provided", () => {
     const r = resolveRuntimeFirstTurnNumber({
       wsFirstTurnNumber: 5,
-      session: { mode: "manual", firstTurnNumber: 8, enabled: true },
+      session: { mode: "fixed", pinnedTurn: 8, enabled: true },
       completedTurnNumbers: turns,
     });
     expect(r).toEqual({ firstTurnNumber: 5, source: "ws" });
   });
 
-  test("session manual pin used when WS null (no enabled required)", () => {
+  test("session fixed pin used when WS null (no enabled required)", () => {
     const r = resolveRuntimeFirstTurnNumber({
       wsFirstTurnNumber: null,
-      session: { mode: "manual", firstTurnNumber: 5, enabled: false },
+      session: { mode: "fixed", pinnedTurn: 5, enabled: false },
       completedTurnNumbers: turns,
     });
     expect(r).toEqual({ firstTurnNumber: 5, source: "session" });
   });
 
-  test("session auto maxTurns computes firstTurnNumber when WS null", () => {
+  test("session sliding windowSize computes firstTurnNumber when WS null", () => {
     const r = resolveRuntimeFirstTurnNumber({
       wsFirstTurnNumber: null,
-      session: { mode: "auto", maxTurns: 2, enabled: true },
+      session: { mode: "sliding", windowSize: 2, enabled: true },
       completedTurnNumbers: turns,
     });
     expect(r.firstTurnNumber).toBe(8); // last 2 of 9 → starts at 8
     expect(r.source).toBe("session");
   });
 
-  test("falls through to global auto when session disabled without pin", () => {
-    const global: ContextScopeConfig = { mode: "auto", maxTurns: 1 };
+  test("falls through to global sliding when session disabled without pin", () => {
+    const global: ContextScopeConfig = { mode: "sliding", windowSize: 1 };
     const r = resolveRuntimeFirstTurnNumber({
       wsFirstTurnNumber: null,
-      session: { mode: "manual", enabled: false },
+      session: { mode: "fixed", pinnedTurn: null, enabled: false },
       global,
       completedTurnNumbers: turns,
     });
@@ -85,8 +84,8 @@ describe("resolveRuntimeFirstTurnNumber", () => {
     const r = resolveRuntimeFirstTurnNumber({
       wsFirstTurnNumber: null,
       session: { enabled: false },
-      project: { mode: "auto", maxTurns: 3, enabled: true },
-      global: { mode: "auto", maxTurns: 1 },
+      project: { mode: "sliding", windowSize: 3, enabled: true },
+      global: { mode: "sliding", windowSize: 1 },
       completedTurnNumbers: turns,
     });
     expect(r.firstTurnNumber).toBe(7); // last 3
@@ -97,20 +96,20 @@ describe("resolveRuntimeFirstTurnNumber", () => {
     const r = resolveRuntimeFirstTurnNumber({
       wsFirstTurnNumber: null,
       session: {},
-      project: { mode: "auto", maxTurns: 3, enabled: false },
-      global: { mode: "auto", maxTurns: 1 },
+      project: { mode: "sliding", windowSize: 3, enabled: false },
+      global: { mode: "sliding", windowSize: 1 },
       completedTurnNumbers: turns,
     });
     expect(r.firstTurnNumber).toBe(9);
     expect(r.source).toBe("global");
   });
 
-  test("manual pin on session preferred over project/global", () => {
+  test("fixed pin on session preferred over project/global", () => {
     const r = resolveRuntimeFirstTurnNumber({
       wsFirstTurnNumber: null,
-      session: { mode: "manual", firstTurnNumber: 4 },
-      project: { mode: "auto", maxTurns: 2, enabled: true },
-      global: { mode: "auto", maxTurns: 1 },
+      session: { mode: "fixed", pinnedTurn: 4 },
+      project: { mode: "sliding", windowSize: 2, enabled: true },
+      global: { mode: "sliding", windowSize: 1 },
       completedTurnNumbers: turns,
     });
     expect(r).toEqual({ firstTurnNumber: 4, source: "session" });
@@ -249,9 +248,9 @@ describe("resolveRuntimeHistoryInclusion", () => {
     expect(r.includeReasoningInHistory).toBe(false);
   });
 
-  test("session manual pin contributes even without enabled", () => {
+  test("session fixed pin contributes even without enabled", () => {
     const r = resolveRuntimeHistoryInclusion({
-      session: { mode: "manual", firstTurnNumber: 4, includeReasoningInHistory: true },
+      session: { mode: "fixed", pinnedTurn: 4, includeReasoningInHistory: true },
       global: { includeReasoningInHistory: false },
       defaults,
     });

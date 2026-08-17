@@ -37,7 +37,6 @@ export interface BuildModelMessagesOptions {
   includeReasoningParts: boolean;
   includePatchParts: boolean;
   includeOtherParts: boolean;
-  maxTurns?: number;
   currentTurnNumber: number;
   firstTurnNumber?: number | null; // slider position (firstTurnNumber from context config)
   currentUserMessage: string;
@@ -216,7 +215,7 @@ export async function buildModelMessages(
   // like any other turn (user prompt + assistant summary text). No special
   // handling needed here.
 
-  // 1. Filter contextTurnIds by completion status and maxTurns
+  // 1. Filter contextTurnIds by completion status
   let filteredTurnIds = [...options.contextTurnIds];
 
   // Filter by completion status

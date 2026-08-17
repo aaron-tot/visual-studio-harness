@@ -1,6 +1,6 @@
 import type { ModelConfig } from "./types";
 
-export type AuthType = "none" | "bearer";
+export type AuthType = "none" | "bearer" | "oauth";
 
 export interface FieldDescriptor {
   key: string;
@@ -28,6 +28,14 @@ export interface ProviderDescriptor {
 
 const DEFAULT_MODEL_PLACEHOLDER: ModelConfig[] = [
   { displayName: "Default Model", modelName: "default" },
+];
+
+/** Default Grok models offered by the xAI API. Placeholders until live fetch replaces them. */
+const XAI_MODELS: ModelConfig[] = [
+  { displayName: "Grok 4", modelName: "grok-4" },
+  { displayName: "Grok 4 Fast", modelName: "grok-4-fast" },
+  { displayName: "Grok 3", modelName: "grok-3" },
+  { displayName: "Grok 3 Mini", modelName: "grok-3-mini" },
 ];
 
 const TEST_MODELS: ModelConfig[] = [
@@ -102,6 +110,19 @@ export const PRECONFIGURED_PROVIDERS: ProviderDescriptor[] = [
     capabilities: { thinking: true },
     supportsProviderRouting: true,
     defaultModels: DEFAULT_MODEL_PLACEHOLDER,
+  },
+  {
+    id: "xai",
+    name: "Grok",
+    icon: "𝕏",
+    baseUrl: "https://api.x.ai/v1",
+    authType: "oauth",
+    extraFields: [
+      { key: "apiKey", label: "API Key (optional)", type: "password", required: false, placeholder: "Optional xAI API key (sk-/xai-...)" },
+    ],
+    editorComponent: "xai",
+    capabilities: { thinking: true },
+    defaultModels: XAI_MODELS,
   },
 ];
 

@@ -186,7 +186,19 @@ async function doInstall() {
     await mkdir(join(installPath, "sessions"), { recursive: true });
     await mkdir(join(installPath, "logs"), { recursive: true });
     const defaultConfig = {
-      providers: [{ displayName: "OpenCode Zen", baseUrl: "https://opencode.ai/zen/v1", models: [{ displayName: "Default Model", modelName: "default" }] }],
+      providers: [
+        { displayName: "OpenCode Zen", baseUrl: "https://opencode.ai/zen/v1", models: [{ displayName: "Default Model", modelName: "default" }] },
+        {
+          displayName: "Grok",
+          baseUrl: "https://api.x.ai/v1",
+          models: [
+            { displayName: "Grok 4", modelName: "grok-4" },
+            { displayName: "Grok 4 Fast", modelName: "grok-4-fast" },
+            { displayName: "Grok 3", modelName: "grok-3" },
+            { displayName: "Grok 3 Mini", modelName: "grok-3-mini" },
+          ],
+        },
+      ],
       defaultProvider: "OpenCode Zen",
       defaultModel: "Default Model",
       headless: false,

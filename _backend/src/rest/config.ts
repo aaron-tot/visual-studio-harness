@@ -4,6 +4,7 @@ import { loadConfig, saveConfig } from "../storage/config";
 import { migrateConfig } from "../config/migrate";
 import { broadcastConfig } from "../ws/configPush";
 import { serverOriginFromBaseUrl } from "../llm/slots";
+import { resolveXaiBearer } from "../features/oauth/xai";
 import { getSearchProviderRegistry } from "../features/tools/host/search-provider-registry";
 import { getModelPricing, refreshModelPricing } from "../features/pricing/models-dev";
 
@@ -180,7 +181,14 @@ export function registerConfigRoutes(
     }
 
     const headers: Record<string, string> = { "Content-Type": "application/json" };
+    // xAI/Grok account-based login: resolve the OAuth access token (refreshed
+    // as needed), falling back to a manual apiKey. keep default-constructed
+    // headers for non-Grok providers.
     if (provider.apiKey) headers["Authorization"] = `Bearer ${provider.apiKey}`;
+    else {
+      const xaiBearer = await resolveXaiBearer(provider);
+      if (xaiBearer) headers["Authorization"] = `Bearer ${xaiBearer}`;
+    }
 
     const url = `${provider.baseUrl.replace(/\/+$/, "")}/models`;
     let res: Response;

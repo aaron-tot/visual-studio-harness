@@ -6,6 +6,7 @@ import { mkdir, appendFile, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { initConfigWatcher } from "./config/load";
 import { registerConfigRoutes } from "./rest/config";
+import { registerOAuthRoutes } from "./rest/oauth";
 import { registerSessionRoutes } from "./rest/sessions";
 import { registerMessageRoutes } from "./rest/messages";
 import { registerFsRoutes } from "./rest/fs";
@@ -240,6 +241,7 @@ async function main() {
   registerConfigRoutes(app, DATA_DIR, () => currentConfig, (c) => {
     currentConfig = c;
   });
+  registerOAuthRoutes(app, DATA_DIR);
   registerSessionRoutes(app, DATA_DIR);
   registerMessageRoutes(app, DATA_DIR, () => currentConfig);
   registerFsRoutes(app);

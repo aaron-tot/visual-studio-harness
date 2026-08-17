@@ -5,6 +5,7 @@ import { fetchProviderModels } from "../../lib/api";
 import { getDescriptorByDisplayName, supportsProviderRouting } from "../../../../_shared/provider-registry";
 import type { FieldDescriptor, AuthType } from "../../../../_shared/provider-registry";
 import { ModelRoutingEditor, RoutingButton } from "./ModelRoutingEditor";
+import { GrokOAuthPanel } from "./GrokOAuthPanel";
 
 interface TemplateProviderEditorProps {
   providerIndex: number;
@@ -155,6 +156,13 @@ export function TemplateProviderEditor({ providerIndex }: TemplateProviderEditor
       </div>
 
       {renderFields()}
+
+      {descriptor.editorComponent === "xai" && (
+        <div className="space-y-2">
+          <div className="border-b border-zinc-800 pb-1 text-[11px] text-zinc-400">Account-based login (optional)</div>
+          <GrokOAuthPanel />
+        </div>
+      )}
 
       <button
         onClick={saveAndConnect}

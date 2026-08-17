@@ -15,6 +15,7 @@ import { ensureTestServer, buildMockTools, hasMockActions } from "../../llm/mock
 import type { StreamChatOptions, StreamChatResult } from "./stream-types";
 import { getRetryableLabel, DEFAULT_STREAM_RETRY_CONFIG, calculateRetryDelay, canRetryInWindow, recordRetryAttempt } from "./stream-retry";
 import { createVerboseFetch } from "./raw-capture-fetch";
+import { resolveXaiBearer } from "../oauth/xai";
 import { parseFinishStepEvent, flattenUsage } from "./step-finish-meta";
 import { StepToolBatch } from "./step-tool-batch";
 import { isThinkingEffortOn, withThinkingReasoningEcho } from "./thinking-wire";
@@ -28,13 +29,24 @@ export function normalizeHeaders(init: HeadersInit | undefined): Record<string, 
   const out: Record<string, string> = {};
   if (typeof Headers !== "undefined" && init instanceof Headers) {
     init.forEach((v, k) => { out[k] = v; });
-    return out;
+    return redactHeaders(out);
   }
   if (Array.isArray(init)) {
     for (const [k, v] of init) out[k] = v;
-    return out;
+    return redactHeaders(out);
   }
-  return { ...(init as Record<string, string>) };
+  return redactHeaders({ ...(init as Record<string, string>) });
+}
+
+/** Never persist OAuth/API bearer tokens into raw captures or logs. */
+function redactHeaders(headers: Record<string, string>): Record<string, string> {
+  const out = { ...headers };
+  for (const key of Object.keys(out)) {
+    if (key.toLowerCase() === "authorization" && typeof out[key] === "string" && out[key].startsWith("Bearer ")) {
+      out[key] = "Bearer [redacted]";
+    }
+  }
+  return out;
 }
 
 export async function streamChat(options: StreamChatOptions): Promise<StreamChatResult> {
@@ -69,22 +81,25 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
   // previous step's tool results) — a system message cannot be emitted as a tool
   // call, so the model cannot invoke it and no NoSuchToolError can occur.
 
-  const makeSdkProvider = (fetchImpl: typeof fetch) =>
-    isTest && !useMockEndpoint
-      ? null
-      : createOpenAICompatible({
-          baseURL: useMockEndpoint ? ensureTestServer() : provider.baseUrl,
-          apiKey: provider.apiKey || "no-key",
-          headers: {
-            ...(useMockEndpoint
-              ? {}
-              : identityHeaders({ sessionId: options.sessionId, parentSessionId: options.parentSessionId })),
-            ...(useMockEndpoint ? { "x-test-speed": String(options.modelSpeed || 0) } : {}),
-            ...(provider.headers ?? {}),
-          },
-          name: provider.displayName,
-          fetch: fetchImpl,
-        });
+  const makeSdkProvider = async (fetchImpl: typeof fetch) => {
+    if (isTest && !useMockEndpoint) return null;
+    // Grok/xAI account-based login: use the OAuth bearer when present, else the
+    // manual apiKey. promptycally resolves/refreshes on each stream attempt.
+    const bearer = await resolveXaiBearer(provider);
+    return createOpenAICompatible({
+      baseURL: useMockEndpoint ? ensureTestServer() : provider.baseUrl,
+      apiKey: (bearer ?? provider.apiKey) || "no-key",
+      headers: {
+        ...(useMockEndpoint
+          ? {}
+          : identityHeaders({ sessionId: options.sessionId, parentSessionId: options.parentSessionId })),
+        ...(useMockEndpoint ? { "x-test-speed": String(options.modelSpeed || 0) } : {}),
+        ...(provider.headers ?? {}),
+      },
+      name: provider.displayName,
+      fetch: fetchImpl,
+    });
+  };
 
   const hasTools = sdkTools && Object.keys(sdkTools).length > 0;
   const bus = hookCtx ? getBus() : null;
@@ -226,7 +241,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
         lastCap.fetch,
         isThinkingEffortOn(thinkingEffort),
       );
-      const sdkProvider = makeSdkProvider(fetchForProvider);
+      const sdkProvider = await makeSdkProvider(fetchForProvider);
       stepExchangeStart = [];
       if (DEBUG_CHAT_MESSAGES) {
         const ts = new Date().toISOString().slice(11, 19);

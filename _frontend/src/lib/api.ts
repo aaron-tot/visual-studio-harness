@@ -137,6 +137,41 @@ export function listFs(path?: string) {
   return fetchJson<FsListResult>(`${BASE}/fs${q}`);
 }
 
+export interface XaiDeviceCodeResult {
+  ok: boolean;
+  verification_uri?: string;
+  user_code?: string;
+  expires_in?: number;
+  error?: string;
+}
+
+export interface XaiStatusResult {
+  ok: boolean;
+  status: string;
+  loggedIn: boolean;
+  error?: string;
+}
+
+export async function xaiOAuthDevice(): Promise<XaiDeviceCodeResult> {
+  const res = await fetch(`${BASE}/oauth/xai/device`);
+  return res.json();
+}
+
+export async function xaiOAuthStatus(): Promise<XaiStatusResult> {
+  const res = await fetch(`${BASE}/oauth/xai/status`);
+  return res.json();
+}
+
+export async function xaiOAuthLoggedIn(): Promise<{ ok: boolean; loggedIn: boolean }> {
+  const res = await fetch(`${BASE}/oauth/xai/logged-in`);
+  return res.json();
+}
+
+export async function xaiOAuthDisconnect(): Promise<{ ok: boolean }> {
+  const res = await fetch(`${BASE}/oauth/xai`, { method: "DELETE" });
+  return res.json();
+}
+
 export async function fetchProviderModels(index: number) {
   const res = await fetch(`${BASE}/providers/${index}/models`);
   const data = (await res.json().catch(() => ({}))) as {

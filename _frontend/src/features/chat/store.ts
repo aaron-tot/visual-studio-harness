@@ -116,6 +116,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setContextConfigWindowSize: (n: number) => set({ contextConfigWindowSize: n }),
   contextConfigVersion: 0,
   bumpContextConfigVersion: () => set((s) => ({ contextConfigVersion: s.contextConfigVersion + 1 })),
+  compacting: false,
+  setCompacting: (v: boolean) => set({ compacting: v }),
   stagedChatInput: "",
   subagentConfigPrompt: null,
   setSubagentConfigPrompt: (prompt) => set({ subagentConfigPrompt: prompt }),

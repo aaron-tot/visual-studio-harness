@@ -134,6 +134,7 @@ export function ContextHistoryLine({
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
   const setStoreCtxMode = useChatStore((s) => s.setContextConfigMode);
   const setStoreCtxWindowSize = useChatStore((s) => s.setContextConfigWindowSize);
+  const setCompacting = useChatStore((s) => s.setCompacting);
 
 // Sync store value immediately when local firstTurnNumber changes
   const setStoreCtxTn = useChatStore((s) => s.setContextFirstTurnNumber);
@@ -381,6 +382,7 @@ export function ContextHistoryLine({
     }
     if (summarizing) return;
     setSummarizing(true);
+    setCompacting(true);
     setSummarizeError(null);
     try {
       const result = await summarizeRange({
@@ -417,8 +419,9 @@ export function ContextHistoryLine({
       setSummarizeError(msg);
     } finally {
       setSummarizing(false);
+      setCompacting(false);
     }
-  }, [sessionId, summarizeEndTurn, summarizing, workspaceRoot, config, summarizeDisabledReason]);
+  }, [sessionId, summarizeEndTurn, summarizing, workspaceRoot, config, summarizeDisabledReason, setCompacting]);
 
   // Cmd/Ctrl+Shift+S → summarize at slider
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { ChevronDown, ChevronLeft, Send, Square, FolderOpen, ArrowUpToLine, Home, Copy, Check } from "lucide-react";
+import { ChevronDown, ChevronLeft, Send, Square, FolderOpen, ArrowUpToLine, Home, Copy, Check, Loader2 } from "lucide-react";
 
 import { ErrorBoundary } from "../ErrorBoundary";
 import { useConfigStore } from "../../stores/config";
@@ -323,7 +323,8 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   const messages = useChatStore((s) => s.messages);
   const streaming = useChatStore((s) => s.streaming);
   const stopping = useChatStore((s) => s.stopping);
-  const turnActive = streaming || stopping;
+  const compacting = useChatStore((s) => s.compacting);
+  const turnActive = streaming || stopping || compacting;
   const sessionId = useChatStore((s) => s.sessionId);
   const sessionMeta = useChatStore((s) => s.sessionMeta);
   const composerResetEpoch = useChatStore((s) => s.composerResetEpoch);
@@ -508,6 +509,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   useEffect(() => { autoResize(); }, [stagedChatInput, autoResize]);
 
   const handleSubmit = useCallback(() => {
+    if (turnActive) return; // streaming / stopping / compacting
     if (!stagedChatInput.trim()) return;
     if (!currentConfig.providerName || !currentConfig.modelName) {
       setModelError(true);
@@ -517,7 +519,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
     sendMessage(stagedChatInput, currentConfig);
     inputRef.current?.focus();
     if (!submitted) setSubmitted(true);
-  }, [stagedChatInput, sendMessage, submitted, currentConfig]);
+  }, [stagedChatInput, sendMessage, submitted, currentConfig, turnActive]);
 
   const handleContinue = useCallback(() => {
     sendMessage("continue", currentConfig);
@@ -612,7 +614,10 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
           onKeyDown={handleKeyDown}
           placeholder="Type a message..." rows={1} className={chatTextarea} />
       </div>
-      {turnActive ? (
+      {compacting ? (
+        <button data-testid="compacting" type="button" disabled title="Compacting context…"
+          className={stopButtonStopping}><Loader2 size={14} className="animate-spin" /></button>
+      ) : turnActive ? (
         <button data-testid="stop" type="button" onClick={stopStreaming} disabled={stopping} className={stopping ? stopButtonStopping : stopButton}><Square size={14} fill="currentColor" /></button>
       ) : inSession && !stagedChatInput.trim() ? (
         <button data-testid="continue" type="button" onClick={handleContinue}

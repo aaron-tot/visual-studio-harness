@@ -51,6 +51,9 @@ export interface ChatState {
   setContextConfigWindowSize: (n: number) => void;
   contextConfigVersion: number;
   bumpContextConfigVersion: () => void;
+  /** True while a summary/compaction is in flight — disables sending. */
+  compacting: boolean;
+  setCompacting: (v: boolean) => void;
   clearMessages: () => void;
   stopStreaming: () => void;
   appendToken: (token: string, seq?: number, tps?: number) => void;

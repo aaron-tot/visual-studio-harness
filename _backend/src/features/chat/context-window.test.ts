@@ -123,6 +123,61 @@ describe("resolveRuntimeFirstTurnNumber", () => {
     });
     expect(r).toEqual({ firstTurnNumber: null, source: "none" });
   });
+
+  test("sliding windowSize computes last N turns (WS null, no enabled needed)", () => {
+    const r = resolveRuntimeFirstTurnNumber({
+      wsFirstTurnNumber: null,
+      session: { mode: "sliding", windowSize: 2 },
+      completedTurnNumbers: turns,
+    });
+    expect(r).toEqual({ firstTurnNumber: 8, source: "session" }); // last 2 of 9 → 8
+  });
+
+  test("sliding windowSize larger than history yields all turns (null)", () => {
+    const r = resolveRuntimeFirstTurnNumber({
+      wsFirstTurnNumber: null,
+      session: { mode: "sliding", windowSize: 99 },
+      completedTurnNumbers: turns,
+    });
+    expect(r.firstTurnNumber).toBeNull();
+  });
+
+  test("fixed pinnedTurn pins to that turn (WS null, no enabled needed)", () => {
+    const r = resolveRuntimeFirstTurnNumber({
+      wsFirstTurnNumber: null,
+      session: { mode: "fixed", pinnedTurn: 4 },
+      completedTurnNumbers: turns,
+    });
+    expect(r).toEqual({ firstTurnNumber: 4, source: "session" });
+  });
+
+  test("fixed pinnedTurn null (enabled) = pinned to first message = all turns", () => {
+    const r = resolveRuntimeFirstTurnNumber({
+      wsFirstTurnNumber: null,
+      session: { mode: "fixed", pinnedTurn: null, enabled: true },
+      completedTurnNumbers: turns,
+    });
+    expect(r).toEqual({ firstTurnNumber: null, source: "session" });
+  });
+
+  test("fixed pinnedTurn null without enabled falls through to none (all)", () => {
+    const r = resolveRuntimeFirstTurnNumber({
+      wsFirstTurnNumber: null,
+      session: { mode: "fixed", pinnedTurn: null },
+      completedTurnNumbers: turns,
+    });
+    expect(r).toEqual({ firstTurnNumber: null, source: "none" });
+  });
+
+  test("global sliding windowSize used as fallback when none of session/project", () => {
+    const r = resolveRuntimeFirstTurnNumber({
+      wsFirstTurnNumber: null,
+      session: { enabled: false },
+      global: { mode: "sliding", windowSize: 3 },
+      completedTurnNumbers: turns,
+    });
+    expect(r).toEqual({ firstTurnNumber: 7, source: "global" }); // last 3 of 9 → 7
+  });
 });
 
 describe("summary anchors (shared helpers)", () => {

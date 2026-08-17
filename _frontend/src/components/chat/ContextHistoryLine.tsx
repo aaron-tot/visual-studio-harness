@@ -20,11 +20,10 @@ export function ContextHistoryLine({
 }) {
   const barRef = useRef<HTMLDivElement>(null);
   const [firstTurnNumber, setFirstTurnNumber] = useState<number | null>(null);
-  const [contextMode, setContextMode] = useState<"auto" | "manual">("manual");
-  const [contextMaxTurns, setContextMaxTurns] = useState(10);
+  const [contextMode, setContextMode] = useState<"sliding" | "fixed">("fixed");
+  const [windowSize, setWindowSize] = useState(10);
+  const [pinnedTurn, setPinnedTurn] = useState<number | null>(null);
   const [contextOwner, setContextOwner] = useState<"session" | "project" | "global" | "none">("none");
-  const [pinned, setPinned] = useState(false); // manual mode: pinned to specific turn
-  const [manualTurnsBack, setManualTurnsBack] = useState(10); // unpinned: N turns back from end
   const [dragging, setDragging] = useState(false);
   const [dragClientY, setDragClientY] = useState(0);
   const dragClientYRef = useRef(0);
@@ -134,57 +133,39 @@ export function ContextHistoryLine({
 
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
   const setStoreCtxMode = useChatStore((s) => s.setContextConfigMode);
-  const setStoreCtxMaxTurns = useChatStore((s) => s.setContextConfigMaxTurns);
+  const setStoreCtxWindowSize = useChatStore((s) => s.setContextConfigWindowSize);
 
 // Sync store value immediately when local firstTurnNumber changes
   const setStoreCtxTn = useChatStore((s) => s.setContextFirstTurnNumber);
   useEffect(() => {
     if (!sessionId) return;
-setStoreCtxTn(firstTurnNumber);
+    setStoreCtxTn(firstTurnNumber);
   }, [firstTurnNumber, sessionId, setStoreCtxTn]);
 
-  // ── Manual mode: pinned = fixed to specific turn, unpinned = N turns back ──────
+  // Reset the handle immediately when switching sessions/chats so it never
+  // lingers at a stale position from the previous conversation while the new
+  // session's turns (and recompute) load. The mode/window effects below will
+  // re-derive the correct firstTurnNumber once turns are measured.
   useEffect(() => {
-    // pinned isn't a dep on purpose: pinning/unpinning must NOT move the
-    // handle. Only a change in manualTurnsBack or turnPositions recomputes.
-    if (contextMode !== "manual" || turnPositions.length === 0) return;
-    if (pinned) return; // pinned: keep handle where it is
-    // "N turns back" counts LIVE turns only; summary blocks are not turns.
-    const numbers = turnPositions.map((t) => t.number).filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
-    const lastTurn = numbers[numbers.length - 1];
-    let firstTn: number | null;
-    if (manualTurnsBack === -1) {
-      firstTn = null;
-    } else if (manualTurnsBack === 0) {
-      firstTn = lastTurn + 1;
-    } else {
-      const idx = numbers.length - manualTurnsBack - 1;
-      const tn = idx >= 0 ? numbers[Math.min(idx, numbers.length - 1)] : numbers[0];
-      firstTn = tn > numbers[0] ? tn : null;
-    }
-    // Snap so the boundary never lands inside a summarized range — the handle
-    // may rest on a summary block (fractional anchor).
-    const snapped = snapBoundaryToRanges(firstTn, summaryRanges);
-    setFirstTurnNumber(snapped);
-    setStoreCtxTn(snapped);
-  }, [manualTurnsBack, turnPositions, summaryRanges]);
+    setFirstTurnNumber(null);
+    setTurnPositions([]);
+  }, [sessionId]);
 
-  // ── Auto-mode: recompute firstTurnNumber from maxTurns ────────────
+  // ── Sliding mode: recompute firstTurnNumber from windowSize ────────────
   useEffect(() => {
-    if (contextMode !== "auto" || turnPositions.length === 0) return;
+    if (contextMode !== "sliding" || turnPositions.length === 0) return;
     // "N turns" counts LIVE turns only; summary blocks are not turns.
     const numbers = turnPositions.map((t) => t.number).filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
     const lastTurn = numbers[numbers.length - 1];
     let firstTn: number | null;
-    if (contextMaxTurns === -1) {
+    if (windowSize === -1) {
       firstTn = null; // all turns (no filtering)
-    } else if (contextMaxTurns === 0) {
+    } else if (windowSize === 0) {
       firstTn = lastTurn + 1; // no turns (beyond last turn)
     } else {
-      // "N turns" = N previous completed turns + current (N+1 total)
-      // firstTurnNumber = the (N)-th previous completed turn from the end
-      // i.e., index = length - N - 1 (skip the current streaming turn)
-      const idx = numbers.length - contextMaxTurns - 1;
+      // "N turns" = the last N turns in context (current turn is always sent).
+      // firstTurnNumber = the (N)-th-from-last turn = numbers[length - N].
+      const idx = numbers.length - windowSize;
       const tn = idx >= 0 ? numbers[Math.min(idx, numbers.length - 1)] : numbers[0];
       firstTn = tn > numbers[0] ? tn : null;
     }
@@ -195,8 +176,20 @@ setStoreCtxTn(firstTurnNumber);
     // Immediate sync to store so sendMessage sees the value without extra render cycle
     setStoreCtxTn(snapped);
     setStoreCtxMode(contextMode);
-    setStoreCtxMaxTurns(contextMaxTurns);
-  }, [contextMode, contextMaxTurns, turnPositions, summaryRanges]);
+    setStoreCtxWindowSize(windowSize);
+  }, [contextMode, windowSize, turnPositions, summaryRanges]);
+
+  // ── Fixed mode: firstTurnNumber stays at pinnedTurn (unless user drags) ──
+  useEffect(() => {
+    if (contextMode !== "fixed" || turnPositions.length === 0) return;
+    if (pinnedTurn != null) {
+      const snapped = snapBoundaryToRanges(pinnedTurn, summaryRanges);
+      setFirstTurnNumber(snapped);
+      setStoreCtxTn(snapped);
+      setStoreCtxMode(contextMode);
+      setStoreCtxWindowSize(windowSize);
+    }
+  }, [contextMode, pinnedTurn, turnPositions, summaryRanges]);
 
   // Re-load when store version bumps (ContextPanel saves)
   const ctxCfgVersion = useChatStore((s) => s.contextConfigVersion);
@@ -216,22 +209,20 @@ setStoreCtxTn(firstTurnNumber);
     return () => { cancelled = true; };
   }, [sessionId, ctxCfgVersion, messageCount]);
 
-  // ── Load context config (also reads mode/maxTurns) ────────────────
+  // ── Load context config (also reads mode/windowSize/pinnedTurn) ────────────────
   useEffect(() => {
     if (!sessionId) return;
     getEffectiveContextConfig(sessionId, workspaceRoot || undefined)
       .then((c) => {
         setConfig(c);
-        setFirstTurnNumber(c.firstTurnNumber);
-        setContextMode(c.mode ?? "manual");
-        setContextMaxTurns(c.maxTurns ?? 10);
+        setFirstTurnNumber(c.firstTurnNumber ?? null);
+        setContextMode(c.mode ?? "fixed");
+        setWindowSize(c.windowSize ?? 10);
+        setPinnedTurn(c.pinnedTurn ?? null);
         setContextOwner(c.owner ?? "none");
-        // Restore manual persistence: pinned (turn number vs turns-back) + N
-        setPinned((c.mode ?? "manual") === "manual" ? c.manualMode === "pinned" : false);
-        setManualTurnsBack(c.manualTurnsBack ?? 10);
         // Sync to store so sendMessage always has the effective config
-        setStoreCtxMode(c.mode ?? "manual");
-        setStoreCtxMaxTurns(c.maxTurns ?? 10);
+        setStoreCtxMode(c.mode ?? "fixed");
+        setStoreCtxWindowSize(c.windowSize ?? 10);
       })
       .catch(() => {});
   }, [sessionId, ctxCfgVersion, workspaceRoot]);
@@ -314,44 +305,56 @@ setStoreCtxTn(firstTurnNumber);
       if (snap == null || !sessionId) return;
       const minTurn = turnPositions.length > 0 ? turnPositions[0].number : 1;
       const value = snap <= minTurn ? null : snap;
-      // Switch to manual mode (user explicitly adjusted)
-      setContextMode("manual");
+      // User explicitly adjusted → switch to fixed mode (pinned to this turn)
+      setContextMode("fixed");
       setFirstTurnNumber(value);
-      setPinned(true); // pin to this specific turn
-      putSessionContextConfig(sessionId, { firstTurnNumber: value, mode: "manual", manualMode: "pinned", enabled: true }).catch(() => {});
+      setPinnedTurn(value);
+      putSessionContextConfig(sessionId, { pinnedTurn: value, mode: "fixed", enabled: true }).catch(() => {});
     },
     [getSnapTurn, sessionId, turnPositions],
   );
 
   const togglePin = useCallback(() => {
-    const next = !pinned;
-    // When unpinning, convert the current pinned position into "N turns back"
-    // so the circle stays exactly where it is, only the meaning changes.
-    // Inverse of the manual effect formula:
-    //   idx = numbers.length - manualTurnsBack - 1  =>  manualTurnsBack = length - 1 - idx
-    let turnsBack = manualTurnsBack ?? 10;
-    if (pinned && firstTurnNumber != null && turnPositions.length > 0) {
+    if (contextMode === "fixed") {
+      // Unpin: convert current pinned position to a sliding window size.
       const numbers = turnPositions.map((t) => t.number).filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
-      if (Number.isInteger(firstTurnNumber)) {
-        const idx = numbers.indexOf(firstTurnNumber);
-        if (idx >= 0) turnsBack = numbers.length - 1 - idx;
-      } else {
-        // Summary anchor E+0.5 → "N turns back" = live turns after E.
-        turnsBack = numbers.filter((n) => n > Math.floor(firstTurnNumber)).length;
+      let windowSize = 10;
+      if (pinnedTurn != null && numbers.length > 0) {
+        if (Number.isInteger(pinnedTurn)) {
+          const idx = numbers.indexOf(pinnedTurn);
+          if (idx >= 0) windowSize = numbers.length - idx;
+        } else {
+          // Summary anchor E+0.5 → live turns after E
+          windowSize = numbers.filter((n) => n > Math.floor(pinnedTurn)).length;
+        }
+      } else if (numbers.length > 0) {
+        // Pinned to the first message → keep all turns as the window size
+        windowSize = numbers.length;
+      }
+      setWindowSize(windowSize);
+      setContextMode("sliding");
+      setPinnedTurn(null);
+      if (sessionId) {
+        putSessionContextConfig(sessionId, {
+          mode: "sliding",
+          windowSize,
+          pinnedTurn: null,
+          enabled: true,
+        }).catch(() => {});
+      }
+    } else if (contextMode === "sliding" && firstTurnNumber != null) {
+      // Pin: convert current sliding position to fixed
+      setContextMode("fixed");
+      setPinnedTurn(firstTurnNumber);
+      if (sessionId) {
+        putSessionContextConfig(sessionId, {
+          mode: "fixed",
+          pinnedTurn: firstTurnNumber,
+          enabled: true,
+        }).catch(() => {});
       }
     }
-    setManualTurnsBack(turnsBack);
-    setPinned(next);
-    if (sessionId) {
-      putSessionContextConfig(sessionId, {
-        mode: "manual",
-        manualMode: next ? "pinned" : "turnsBack",
-        firstTurnNumber,
-        manualTurnsBack: turnsBack,
-        enabled: true,
-      }).catch(() => {});
-    }
-  }, [sessionId, firstTurnNumber, manualTurnsBack, turnPositions, pinned]);
+  }, [sessionId, contextMode, firstTurnNumber, pinnedTurn, turnPositions]);
 
   // endTurnNum = slider position (turn the handle sits on), per design spec.
   // firstTurnNumber set → that turn; null (all turns) → last turn on the line.
@@ -482,30 +485,33 @@ setStoreCtxTn(firstTurnNumber);
   // Live turns only — summary blocks are boundaries, not turns.
   const livePositions = turnPositions.filter((t) => Number.isInteger(t.number));
   let turnsLabel: string;
-  if (contextMode === "auto") {
-    if (contextMaxTurns === -1) turnsLabel = "All turns";
-    else if (contextMaxTurns === 0) turnsLabel = "None";
-    else turnsLabel = `${contextMaxTurns} turn${contextMaxTurns === 1 ? "" : "s"}`;
+  if (contextMode === "sliding") {
+    if (windowSize === -1) turnsLabel = "All turns";
+    else if (windowSize === 0) turnsLabel = "None";
+    else turnsLabel = `${windowSize} turn${windowSize === 1 ? "" : "s"} (sliding)`;
   } else {
-    // Manual: count drives from firstTurnNumber to end (or all if null)
+    // Fixed: count drives from pinnedTurn to end (or all if null)
     if (firstTurnNumber == null) turnsLabel = "All turns";
     else if (!Number.isInteger(firstTurnNumber)) {
       // Summary anchor E+0.5 → live turns after E.
       const after = livePositions.filter((p) => p.number > Math.floor(firstTurnNumber)).length;
-      turnsLabel = `${after} turn${after === 1 ? "" : "s"}`;
+      turnsLabel = `${after} turn${after === 1 ? "" : "s"} (fixed)`;
     } else {
       const count = Math.max(0, livePositions.length - firstTurnNumber + 1);
-      turnsLabel = `${count} turn${count === 1 ? "" : "s"}`;
+      turnsLabel = `${count} turn${count === 1 ? "" : "s"} (fixed)`;
     }
   }
-  const pinLabel = firstTurnNumber != null && !Number.isInteger(firstTurnNumber)
-    ? `summary through turn ${Math.floor(firstTurnNumber)}`
-    : `turn ${firstTurnNumber}`;
-  const tooltipText = contextMode === "auto"
-    ? `${ownerLabel} · Auto · ${turnsLabel}`
-    : pinned
-      ? `${ownerLabel} · Manual · Pinned to ${pinLabel} (${turnsLabel} included)`
-      : `${ownerLabel} · Manual · ${turnsLabel} back`;
+  // In fixed mode it is ALWAYS pinned — either to the first message (no pin
+  // moved yet) or to a specific turn the user chose. Sliding off = pinned.
+  const isPinned = contextMode === "fixed";
+  const pinLabel = firstTurnNumber == null
+    ? "the first message"
+    : !Number.isInteger(firstTurnNumber)
+      ? `summary through turn ${Math.floor(firstTurnNumber)}`
+      : `turn ${firstTurnNumber}`;
+  const tooltipText = contextMode === "sliding"
+    ? `${ownerLabel} · Sliding · ${turnsLabel}`
+    : `${ownerLabel} · Fixed · Pinned to ${pinLabel} (${turnsLabel} included)`;
 
   // Line sits in center of the 64px gutter so pin/summarize stay inside the rail
   // (not over the message scroller, which was stealing clicks → scroll).
@@ -522,7 +528,7 @@ setStoreCtxTn(firstTurnNumber);
           {/* Gray line above the handle */}
           <div
             className={`absolute w-[3px] rounded-full transition-colors pointer-events-none ${
-              contextMode === "auto" && !dragging ? "opacity-50" : ""
+              contextMode === "sliding" && !dragging ? "opacity-50" : ""
             }`}
             style={{
               left: lineX - 1,
@@ -535,7 +541,7 @@ setStoreCtxTn(firstTurnNumber);
           {/* Colored line below the handle */}
           <div
             className={`absolute w-[3px] rounded-full pointer-events-none ${
-              contextMode === "auto" && !dragging ? "opacity-50" : ""
+              contextMode === "sliding" && !dragging ? "opacity-50" : ""
             }`}
             style={{
               left: lineX - 1,
@@ -595,7 +601,7 @@ setStoreCtxTn(firstTurnNumber);
               className={`w-[18px] h-[18px] rounded-full border-2 shadow-lg transition-all ${
                 dragging
                   ? "border-blue-300 bg-blue-500 shadow-blue-500/40 scale-125"
-                  : contextMode === "auto"
+                  : contextMode === "sliding"
                     ? "border-zinc-600 bg-zinc-800/40 hover:border-blue-400 hover:bg-blue-600/40"
                     : "border-zinc-600 bg-zinc-800 hover:border-blue-400 hover:bg-blue-600/40"
               }`}
@@ -612,20 +618,18 @@ setStoreCtxTn(firstTurnNumber);
               pointerEvents: "auto",
             }}
           >
-            {contextMode === "manual" && (
-              <button
-                type="button"
-                title={pinned ? "Unpin (switch to turns-back)" : "Pin to this turn"}
-                className="w-6 h-6 flex items-center justify-center rounded bg-zinc-900/90 border border-zinc-700 hover:bg-zinc-700 shrink-0"
-                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePin(); }}
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={pinned ? 2 : 1.5} className={pinned ? "text-amber-400" : "text-zinc-400"}>
-                  <path d="M2 10V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6" />
-                  <circle cx="6" cy="10" r="1" fill="currentColor" />
-                </svg>
-              </button>
-            )}
+            <button
+              type="button"
+              title={isPinned ? "Unpin (switch to sliding)" : "Pin to this turn (fixed)"}
+              className="w-6 h-6 flex items-center justify-center rounded bg-zinc-900/90 border border-zinc-700 hover:bg-zinc-700 shrink-0"
+              onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePin(); }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={isPinned ? 2 : 1.5} className={isPinned ? "text-amber-400" : "text-zinc-400"}>
+                <path d="M2 10V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6" />
+                <circle cx="6" cy="10" r="1" fill="currentColor" />
+              </svg>
+            </button>
             <button
               type="button"
               title={

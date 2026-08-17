@@ -109,11 +109,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   turns: {},
   inspectedTurnId: null,
   contextFirstTurnNumber: null,
-  contextConfigMode: "manual" as "auto" | "manual",
-  contextConfigMaxTurns: 10,
+  contextConfigMode: "fixed" as "sliding" | "fixed",
+  contextConfigWindowSize: 10,
   setContextFirstTurnNumber: (tn) => set({ contextFirstTurnNumber: tn }),
-  setContextConfigMode: (mode: "auto" | "manual") => set({ contextConfigMode: mode }),
-  setContextConfigMaxTurns: (n: number) => set({ contextConfigMaxTurns: n }),
+  setContextConfigMode: (mode: "sliding" | "fixed") => set({ contextConfigMode: mode }),
+  setContextConfigWindowSize: (n: number) => set({ contextConfigWindowSize: n }),
   contextConfigVersion: 0,
   bumpContextConfigVersion: () => set((s) => ({ contextConfigVersion: s.contextConfigVersion + 1 })),
   stagedChatInput: "",
@@ -258,8 +258,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const ctxCfg = await getEffectiveContextConfig(id, workspaceRootForCtx || undefined);
       set({
         contextFirstTurnNumber: ctxCfg.firstTurnNumber,
-        contextConfigMode: ctxCfg.mode ?? "manual",
-        contextConfigMaxTurns: ctxCfg.maxTurns ?? 10,
+        contextConfigMode: ctxCfg.mode ?? "fixed",
+        contextConfigWindowSize: ctxCfg.windowSize ?? 10,
       });
     } catch { /* ignore */ }
   },

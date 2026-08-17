@@ -280,11 +280,11 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     if (!session) return reply.code(404).send({ error: "session not found" });
     try {
       const raw = getSessionModelConfigJson(id, dataDir);
-      if (!raw) return { firstTurnNumber: null };
+      if (!raw) return { mode: "fixed", windowSize: 10, pinnedTurn: null };
       const parsed = JSON.parse(raw);
-      return parsed?.context ?? { firstTurnNumber: null };
+      return parsed?.context ?? { mode: "fixed", windowSize: 10, pinnedTurn: null };
     } catch {
-      return { firstTurnNumber: null };
+      return { mode: "fixed", windowSize: 10, pinnedTurn: null };
     }
   });
 
@@ -293,11 +293,9 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const session = await getSession(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const body = (request.body || {}) as {
-      firstTurnNumber?: number | null;
-      mode?: "auto" | "manual";
-      maxTurns?: number;
-      manualMode?: "turnsBack" | "pinned" | null;
-      manualTurnsBack?: number | null;
+      mode?: "sliding" | "fixed";
+      windowSize?: number;
+      pinnedTurn?: number | null;
       enabled?: boolean | null;
       summarizationModel?: string | null;
       summarizationFallbackModel?: string | null;
@@ -316,11 +314,9 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const existingCtx = (existing.context as Record<string, unknown>) ?? {};
     existing.context = {
       ...existingCtx,
-      firstTurnNumber: body.firstTurnNumber !== undefined ? body.firstTurnNumber : existingCtx.firstTurnNumber ?? null,
-      mode: body.mode !== undefined ? body.mode : existingCtx.mode ?? "manual",
-      maxTurns: body.maxTurns !== undefined ? body.maxTurns : existingCtx.maxTurns ?? 10,
-      manualMode: body.manualMode !== undefined ? body.manualMode : existingCtx.manualMode ?? "turnsBack",
-      manualTurnsBack: body.manualTurnsBack !== undefined ? body.manualTurnsBack : existingCtx.manualTurnsBack ?? 10,
+      mode: body.mode !== undefined ? body.mode : existingCtx.mode ?? "fixed",
+      windowSize: body.windowSize !== undefined ? body.windowSize : existingCtx.windowSize ?? 10,
+      pinnedTurn: body.pinnedTurn !== undefined ? body.pinnedTurn : existingCtx.pinnedTurn ?? null,
       enabled: body.enabled !== undefined ? body.enabled : existingCtx.enabled ?? false,
       summarizationModel: body.summarizationModel !== undefined ? body.summarizationModel : existingCtx.summarizationModel ?? undefined,
       summarizationFallbackModel: body.summarizationFallbackModel !== undefined ? body.summarizationFallbackModel : existingCtx.summarizationFallbackModel ?? undefined,
@@ -346,14 +342,14 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const q = request.query as { scope?: string; workspaceRoot?: string };
     const config = await readScopedCtx();
     if (q.scope === "global") {
-      return (config.global as Record<string, unknown>) ?? { mode: "manual", maxTurns: 10, firstTurnNumber: null };
+      return (config.global as Record<string, unknown>) ?? { mode: "fixed", windowSize: 10, pinnedTurn: null };
     }
     if (q.scope === "project") {
       const ws = q.workspaceRoot;
-      if (!ws) return { mode: "manual", maxTurns: 10, firstTurnNumber: null };
-      return ((config.workspaces as Record<string, unknown>)?.[ws] as Record<string, unknown>) ?? { mode: "manual", maxTurns: 10, firstTurnNumber: null };
+      if (!ws) return { mode: "fixed", windowSize: 10, pinnedTurn: null };
+      return ((config.workspaces as Record<string, unknown>)?.[ws] as Record<string, unknown>) ?? { mode: "fixed", windowSize: 10, pinnedTurn: null };
     }
-    return { mode: "manual", maxTurns: 10, firstTurnNumber: null };
+    return { mode: "fixed", windowSize: 10, pinnedTurn: null };
   });
 
   app.put("/api/context-config/scoped", async (request) => {
@@ -404,9 +400,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     // A scope only contributes when it is enabled. Default is OFF for
     // workspace/session so new scopes use global until the user opts in.
     // Global is always the base and is never gated.
-const sessionEnabled = session["enabled"] === true ||
-    (session["mode"] === "manual" && session["firstTurnNumber"] !== undefined && session["firstTurnNumber"] !== null);
-  const projectEnabled = project["enabled"] === true;
+    const sessionEnabled = session["enabled"] === true;
+    const projectEnabled = project["enabled"] === true;
 
     // Per-field resolution: session overrides project overrides global,
     // but only across scopes that are enabled.
@@ -420,8 +415,7 @@ const sessionEnabled = session["enabled"] === true ||
     // Owning scope = the highest-priority *enabled* scope that defines any setting.
     const hasOwn =
       (o: Record<string, unknown>) =>
-        o["mode"] !== undefined || o["maxTurns"] !== undefined || o["firstTurnNumber"] !== undefined ||
-        o["manualMode"] !== undefined || o["manualTurnsBack"] !== undefined ||
+        o["mode"] !== undefined || o["windowSize"] !== undefined || o["pinnedTurn"] !== undefined ||
         o["summarizationModel"] !== undefined || o["summarizationFallbackModel"] !== undefined || o["summarizationPromptMd"] !== undefined ||
         o["summarizeIncludePriorSummary"] !== undefined;
     const owner =
@@ -430,12 +424,16 @@ const sessionEnabled = session["enabled"] === true ||
       : hasOwn(global) ? "global"
       : "none";
 
+    // Compute firstTurnNumber from the resolved mode/windowSize/pinnedTurn
+    // This is derived at read time, not stored.
+    const resolvedMode = (pick("mode") as string) ?? "fixed";
+    const resolvedWindowSize = (pick("windowSize") as number) ?? 10;
+    const resolvedPinnedTurn = (pick("pinnedTurn") as number | null) ?? null;
+
     return {
-      mode: (pick("mode") as string) ?? "manual",
-      maxTurns: (pick("maxTurns") as number) ?? 10,
-      firstTurnNumber: (pick("firstTurnNumber") as number | null) ?? null,
-      manualMode: (pick("manualMode") as "turnsBack" | "pinned" | undefined) ?? "turnsBack",
-      manualTurnsBack: (pick("manualTurnsBack") as number | undefined) ?? 10,
+      mode: resolvedMode,
+      windowSize: resolvedWindowSize,
+      pinnedTurn: resolvedPinnedTurn,
       summarizationModel: pick("summarizationModel") as string | undefined,
       summarizationFallbackModel: pick("summarizationFallbackModel") as string | undefined,
       summarizationPromptMd: pick("summarizationPromptMd") as string | undefined,

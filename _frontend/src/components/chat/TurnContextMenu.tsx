@@ -66,9 +66,8 @@ export function TurnContextMenu({ sessionId, turnId, messages, x, y, onClose }: 
     const tn = turnId >= 2 ? turnId : null;
     setCtxTn(tn);
     putSessionContextConfig(sessionId, {
-      firstTurnNumber: tn,
-      mode: "manual",
-      manualMode: "pinned",
+      pinnedTurn: tn,
+      mode: "fixed",
       enabled: true,
     })
       .then(() => bumpContextConfigVersion())

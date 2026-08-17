@@ -1454,12 +1454,11 @@ export function knowledgeUploadFile(file: File, scope?: string) {
 // ── Session context config (turn range for SDK history) ──────────────
 
 export interface SessionContextConfig {
+  mode: "sliding" | "fixed";
+  windowSize: number;
+  pinnedTurn: number | null;
   firstTurnNumber: number | null;
-  mode: "auto" | "manual";
-  maxTurns: number;
   owner?: "session" | "project" | "global" | "none";
-  manualMode?: "turnsBack" | "pinned";
-  manualTurnsBack?: number;
   enabled?: boolean;
   summarizationModel?: string;
   summarizationFallbackModel?: string;

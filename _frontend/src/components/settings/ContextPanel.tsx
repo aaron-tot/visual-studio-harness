@@ -12,9 +12,9 @@ interface ContextPanelProps {
 
 export function ContextPanel({ sessionId }: ContextPanelProps) {
   const [scope, setScope] = useState<PlanScope>("session");
-  const [mode, setMode] = useState<"auto" | "manual">("manual");
-  const [autoMaxTurns, setAutoMaxTurns] = useState(10);
-  const [manualTurnsBack, setManualTurnsBack] = useState(10);
+  const [mode, setMode] = useState<"sliding" | "fixed">("fixed");
+  const [windowSize, setWindowSize] = useState(10);
+  const [pinnedTurn, setPinnedTurn] = useState<number | null>(null);
   const [summarizationModel, setSummarizationModel] = useState<string | undefined>();
   const [summarizationFallbackModel, setSummarizationFallbackModel] = useState<string | undefined>();
   const [summarizationPromptMd, setSummarizationPromptMd] = useState<string | undefined>();
@@ -27,7 +27,6 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   const [includeReasoning, setIncludeReasoning] = useState(false);
   const [includePatches, setIncludePatches] = useState(false);
   const [includeOtherParts, setIncludeOtherParts] = useState(false);
-  const [contextMaxTurns, setContextMaxTurns] = useState<number | undefined>();
   const [summarizeIncludePriorSummary, setSummarizeIncludePriorSummary] = useState(true);
 
   const bumpVer = useChatStore((s) => s.bumpContextConfigVersion);
@@ -39,14 +38,13 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     setLoading(true);
     try {
       let ctxConfig: {
-        mode: "auto" | "manual"; maxTurns: number; firstTurnNumber: number | null; enabled?: boolean;
+        mode: "sliding" | "fixed"; windowSize: number; pinnedTurn: number | null; enabled?: boolean;
         summarizationModel?: string; summarizationFallbackModel?: string; summarizationPromptMd?: string;
         includeFailedTurnsInHistory?: boolean;
         includeToolCallsInHistory?: boolean;
         includeReasoningInHistory?: boolean;
         includePatchesInHistory?: boolean;
         includeOtherPartsInHistory?: boolean;
-        contextMaxTurns?: number;
         summarizeIncludePriorSummary?: boolean;
       };
       if (scope === "session" && sessionId) {
@@ -54,8 +52,9 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       } else {
         ctxConfig = await getScopedContextConfig(scope, { workspaceRoot });
       }
-      setMode(ctxConfig.mode ?? "manual");
-      setAutoMaxTurns(ctxConfig.maxTurns ?? 10);
+      setMode(ctxConfig.mode ?? "fixed");
+      setWindowSize(ctxConfig.windowSize ?? 10);
+      setPinnedTurn(ctxConfig.pinnedTurn ?? null);
       setEnabled(scope === "global" ? true : (ctxConfig.enabled ?? false));
       setSummarizationModel(ctxConfig.summarizationModel);
       setSummarizationFallbackModel(ctxConfig.summarizationFallbackModel);
@@ -67,7 +66,6 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       setIncludeReasoning(ctxConfig.includeReasoningInHistory ?? false);
       setIncludePatches(ctxConfig.includePatchesInHistory ?? false);
       setIncludeOtherParts(ctxConfig.includeOtherPartsInHistory ?? false);
-      setContextMaxTurns(ctxConfig.contextMaxTurns);
       setSummarizeIncludePriorSummary(ctxConfig.summarizeIncludePriorSummary ?? true);
     } catch { /* ignore */ }
     setLoading(false);
@@ -78,7 +76,7 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   }, [scope, sessionId]);
 
   const save = async (partial: {
-    mode?: "auto" | "manual"; autoMaxTurns?: number; manualTurnsBack?: number; manualMode?: "turnsBack" | "pinned";
+    mode?: "sliding" | "fixed"; windowSize?: number; pinnedTurn?: number | null;
     enabled?: boolean;
     summarizationModel?: string | null; summarizationFallbackModel?: string | null; summarizationPromptMd?: string | null;
     includeFailedTurnsInHistory?: boolean;
@@ -86,13 +84,13 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     includeReasoningInHistory?: boolean;
     includePatchesInHistory?: boolean;
     includeOtherPartsInHistory?: boolean;
-    contextMaxTurns?: number;
     summarizeIncludePriorSummary?: boolean;
   }) => {
     const body: Record<string, unknown> = {
       mode: partial.mode ?? mode,
-      maxTurns: partial.autoMaxTurns ?? autoMaxTurns,
+      windowSize: partial.windowSize ?? windowSize,
     };
+    if (partial.pinnedTurn !== undefined) body.pinnedTurn = partial.pinnedTurn;
     if (partial.enabled !== undefined) body.enabled = partial.enabled;
     if (partial.summarizationModel !== undefined) body.summarizationModel = partial.summarizationModel;
     if (partial.summarizationFallbackModel !== undefined) body.summarizationFallbackModel = partial.summarizationFallbackModel;
@@ -102,19 +100,13 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     if (partial.includeReasoningInHistory !== undefined) body.includeReasoningInHistory = partial.includeReasoningInHistory;
     if (partial.includePatchesInHistory !== undefined) body.includePatchesInHistory = partial.includePatchesInHistory;
     if (partial.includeOtherPartsInHistory !== undefined) body.includeOtherPartsInHistory = partial.includeOtherPartsInHistory;
-    if (partial.contextMaxTurns !== undefined) body.contextMaxTurns = partial.contextMaxTurns;
     if (partial.summarizeIncludePriorSummary !== undefined) body.summarizeIncludePriorSummary = partial.summarizeIncludePriorSummary;
     try {
       if (scope === "session" && sessionId) {
         const current = await getSessionContextConfig(sessionId);
-        const manualMode = partial.manualMode ?? (current.manualMode ?? "turnsBack");
-        const manualTurnsBack = partial.manualTurnsBack ?? current.manualTurnsBack ?? 10;
         await putSessionContextConfig(sessionId, {
-          ...(body as { mode: "auto" | "manual"; maxTurns: number }),
+          ...body,
           enabled: partial.enabled !== undefined ? partial.enabled : (current.enabled ?? true),
-          firstTurnNumber: current.firstTurnNumber ?? null,
-          manualMode,
-          manualTurnsBack,
           summarizationModel: partial.summarizationModel ?? current.summarizationModel ?? undefined,
           summarizationFallbackModel: partial.summarizationFallbackModel ?? current.summarizationFallbackModel ?? undefined,
           summarizationPromptMd: partial.summarizationPromptMd ?? current.summarizationPromptMd ?? undefined,
@@ -124,8 +116,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       }
       bumpVer();
       if (partial.mode !== undefined) setMode(partial.mode);
-      if (partial.autoMaxTurns !== undefined) setAutoMaxTurns(partial.autoMaxTurns);
-      if (partial.manualTurnsBack !== undefined) setManualTurnsBack(partial.manualTurnsBack);
+      if (partial.windowSize !== undefined) setWindowSize(partial.windowSize);
+      if (partial.pinnedTurn !== undefined) setPinnedTurn(partial.pinnedTurn);
       if (partial.enabled !== undefined) setEnabled(partial.enabled);
       if (partial.summarizationModel !== undefined) setSummarizationModel(partial.summarizationModel ?? undefined);
       if (partial.summarizationFallbackModel !== undefined) setSummarizationFallbackModel(partial.summarizationFallbackModel ?? undefined);
@@ -135,7 +127,6 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       if (partial.includeReasoningInHistory !== undefined) setIncludeReasoning(partial.includeReasoningInHistory);
       if (partial.includePatchesInHistory !== undefined) setIncludePatches(partial.includePatchesInHistory);
       if (partial.includeOtherPartsInHistory !== undefined) setIncludeOtherParts(partial.includeOtherPartsInHistory);
-      if (partial.contextMaxTurns !== undefined) setContextMaxTurns(partial.contextMaxTurns);
       if (partial.summarizeIncludePriorSummary !== undefined) setSummarizeIncludePriorSummary(partial.summarizeIncludePriorSummary);
     } catch { /* ignore */ }
   };
@@ -285,26 +276,10 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                     </div>
                   </div>
                 </label>
-
-                <div>
-                  <label className="text-xs text-zinc-500">Max history turns (auto mode only)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={contextMaxTurns ?? ""}
-                    onChange={(e) => save({ contextMaxTurns: e.target.value ? Math.max(1, Number(e.target.value)) : undefined })}
-                    className="w-24 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center mt-1"
-                    placeholder="unlimited"
-                  />
-                  <span className="text-xs text-zinc-500">Leave empty for no limit</span>
-                </div>
               </div>
 
               <div className="border-t border-zinc-800 pt-4">
-            <h3 className="text-sm font-medium text-zinc-100 mb-1">
-              {mode === "auto" ? "Auto-limit" : "Manual"} Context
-            </h3>
+            <h3 className="text-sm font-medium text-zinc-100 mb-1">Context</h3>
             <p className="text-xs text-zinc-500 mb-3">
               {scope === "session"
                 ? "Settings here override any Project or Global settings."
@@ -316,51 +291,39 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={mode === "auto"}
-                onChange={(e) => save({ mode: e.target.checked ? "auto" : "manual" })}
+                checked={mode === "sliding"}
+                onChange={(e) => save({ mode: e.target.checked ? "sliding" : "fixed" })}
                 className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500"
               />
-              <span className="text-sm text-zinc-300">Limit context to last</span>
-              <input
-                type="number"
-                value={autoMaxTurns}
-                disabled={mode !== "auto"}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  if (!isNaN(v)) save({ autoMaxTurns: v });
-                }}
-                className="w-16 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200 disabled:opacity-40"
-              />
-              <span className="text-sm text-zinc-300">turns</span>
-            </label>
-          </div>
-
-          <div className="border-t border-zinc-800 pt-4">
-            <h3 className="text-sm font-medium text-zinc-100 mb-1">Manual</h3>
-            <p className="text-xs text-zinc-500 mb-3">
-              When auto-limit is off, drag the handle on the context history line to
-              choose exactly which turns are included in the LLM context.
-            </p>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <span className="text-sm text-zinc-300">Limit context to last</span>
-              <input
-                type="number"
-                value={manualTurnsBack}
-                disabled={mode === "auto"}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  if (!isNaN(v)) save({ manualTurnsBack: v });
-                }}
-                className="w-16 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200 disabled:opacity-40"
-              />
-              <span className="text-sm text-zinc-300">turns back</span>
+              <span className="text-sm text-zinc-300">Sliding window (keep the last N turns)</span>
             </label>
 
-            <p className="text-xs text-zinc-500 mt-2">
-              Drag the handle on the context history line to pin to a specific turn,
-              or use the numeric input above to set "N turns back" precisely.
-            </p>
+            {mode === "sliding" ? (
+              <label className="flex items-center gap-3 cursor-pointer ml-6 mt-2">
+                <span className="text-sm text-zinc-300">N turns:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={windowSize}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v)) save({ windowSize: Math.max(1, v) });
+                  }}
+                  className="w-16 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200"
+                />
+              </label>
+            ) : (
+              <div className="ml-6 mt-2 text-sm text-zinc-500">
+                {pinnedTurn != null ? (
+                  <>Pinned to turn {pinnedTurn} — context includes turns from this point forward.</>
+                ) : (
+                  <>Pinned to the first message — context includes all turns.</>
+                )}
+                <br />
+                <span className="text-xs">Drag the handle on the history line and click the pin icon to pin to a specific turn.</span>
+              </div>
+            )}
           </div>
 
           <SummarizationCard

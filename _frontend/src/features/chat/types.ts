@@ -45,10 +45,10 @@ export interface ChatState {
   sendMessage: (content: string, config: SessionConfig) => void;
   contextFirstTurnNumber: number | null;
   setContextFirstTurnNumber: (tn: number | null) => void;
-  contextConfigMode: "auto" | "manual";
-  contextConfigMaxTurns: number;
-  setContextConfigMode: (mode: "auto" | "manual") => void;
-  setContextConfigMaxTurns: (n: number) => void;
+  contextConfigMode: "sliding" | "fixed";
+  contextConfigWindowSize: number;
+  setContextConfigMode: (mode: "sliding" | "fixed") => void;
+  setContextConfigWindowSize: (n: number) => void;
   contextConfigVersion: number;
   bumpContextConfigVersion: () => void;
   clearMessages: () => void;

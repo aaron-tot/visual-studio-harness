@@ -6,11 +6,15 @@
 export type ContextSource = "ws" | "session" | "project" | "global" | "auto" | "none";
 
 export interface ContextScopeConfig {
-  mode?: "auto" | "manual" | string;
+  mode?: "auto" | "manual" | "sliding" | "fixed" | string;
   maxTurns?: number;
   firstTurnNumber?: number | null;
   manualMode?: "turnsBack" | "pinned" | string;
   manualTurnsBack?: number;
+  // New (context-revamp) schema: sliding keeps the last N turns; fixed pins to
+  // a specific turn (null pin = pinned to the first message = all turns).
+  windowSize?: number;
+  pinnedTurn?: number | null;
   enabled?: boolean;
   // "History Included in Context" flags — these control which part types are
   // re-sent from PREVIOUS turns. The current turn always carries everything.
@@ -51,9 +55,9 @@ export interface ResolveRuntimeFirstTurnResult {
 }
 
 /**
- * Convert auto maxTurns into firstTurnNumber using prior completed turns only.
- * maxTurns = N means keep the last N completed turns (current turn is separate).
- * -1 = all (null), 0 = none (beyond last).
+ * Convert a window size (auto maxTurns / sliding windowSize) into firstTurnNumber
+ * using prior completed turns only. N = keep the last N completed turns (current
+ * turn is separate). -1 = all (null), 0 = none (beyond last).
  */
 export function computeFirstTurnFromMaxTurns(
   completedTurnNumbers: number[],
@@ -74,8 +78,11 @@ export function computeFirstTurnFromMaxTurns(
 function sessionContributes(ctx: ContextScopeConfig | null | undefined): boolean {
   if (!ctx) return false;
   if (ctx.enabled === true) return true;
-  // Migration: manual pin without enabled still owns context (audit Fix A2 / B)
+  // Migration: a manual/sliding/fixed pin without `enabled` still owns context.
   if (ctx.mode === "manual" && ctx.firstTurnNumber != null) return true;
+  if (ctx.mode === "fixed" && ctx.pinnedTurn != null) return true;
+  if (ctx.mode === "sliding" && ctx.windowSize != null) return true;
+  if (ctx.windowSize != null || ctx.pinnedTurn != null) return true;
   return false;
 }
 
@@ -83,11 +90,25 @@ function projectContributes(ctx: ContextScopeConfig | null | undefined): boolean
   return ctx?.enabled === true;
 }
 
+const DEFAULT_WINDOW_SIZE = 10;
+
 function applyScope(
   ctx: ContextScopeConfig,
   completedTurnNumbers: number[],
   source: ContextSource,
 ): ResolveRuntimeFirstTurnResult | null {
+  // Fixed = pinned. pinnedTurn null means pinned to the first message (all turns).
+  if (ctx.mode === "fixed") {
+    return { firstTurnNumber: ctx.pinnedTurn ?? null, source };
+  }
+  // Sliding = keep the last windowSize turns.
+  if (ctx.mode === "sliding") {
+    const size = ctx.windowSize ?? DEFAULT_WINDOW_SIZE;
+    return {
+      firstTurnNumber: computeFirstTurnFromMaxTurns(completedTurnNumbers, size),
+      source,
+    };
+  }
   if (ctx.mode === "manual" && ctx.firstTurnNumber != null) {
     return { firstTurnNumber: ctx.firstTurnNumber, source };
   }
@@ -130,7 +151,7 @@ export function resolveRuntimeFirstTurnNumber(
     if (r) return r;
   }
 
-  if (input.global && (input.global.mode != null || input.global.maxTurns != null || input.global.firstTurnNumber != null)) {
+  if (input.global && (input.global.mode != null || input.global.maxTurns != null || input.global.firstTurnNumber != null || input.global.windowSize != null || input.global.pinnedTurn != null)) {
     const r = applyScope(input.global, turns, "global");
     if (r) return r;
   }

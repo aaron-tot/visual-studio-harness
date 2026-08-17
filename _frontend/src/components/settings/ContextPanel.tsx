@@ -218,11 +218,12 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                 </div>
               ) : (
                 <>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={mode === "sliding"} onChange={(e) => saveMode({ mode: e.target.checked ? "sliding" : "fixed" })}
-                      className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500" />
-                    <span className="text-sm text-zinc-300">Sliding window (keep the last N turns)</span>
-                  </label>
+                  <div className="flex items-center gap-2 mb-3">
+                    <button type="button" onClick={() => saveMode({ mode: "sliding" })}
+                      className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${mode === "sliding" ? "border-blue-500 bg-blue-500/10 text-blue-300" : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"}`}>Sliding</button>
+                    <button type="button" onClick={() => saveMode({ mode: "fixed" })}
+                      className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${mode !== "sliding" ? "border-blue-500 bg-blue-500/10 text-blue-300" : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"}`}>Fixed (Pinned)</button>
+                  </div>
                   {mode === "sliding" ? (
                     <label className="flex items-center gap-3 cursor-pointer ml-6 mt-2">
                       <span className="text-sm text-zinc-300">N turns:</span>

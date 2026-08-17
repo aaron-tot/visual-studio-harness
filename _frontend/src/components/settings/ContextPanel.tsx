@@ -15,6 +15,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   const [mode, setMode] = useState<"sliding" | "fixed">("fixed");
   const [windowSize, setWindowSize] = useState(10);
   const [pinnedTurn, setPinnedTurn] = useState<number | null>(null);
+  const [autoCompactionEnabled, setAutoCompactionEnabled] = useState(false);
+  const [autoCompactionTriggerTokens, setAutoCompactionTriggerTokens] = useState(0);
   const [summarizationModel, setSummarizationModel] = useState<string | undefined>();
   const [summarizationFallbackModel, setSummarizationFallbackModel] = useState<string | undefined>();
   const [summarizationPromptMd, setSummarizationPromptMd] = useState<string | undefined>();
@@ -39,6 +41,7 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     try {
       let ctxConfig: {
         mode: "sliding" | "fixed"; windowSize: number; pinnedTurn: number | null; enabled?: boolean;
+        autoCompactionEnabled?: boolean; autoCompactionTriggerTokens?: number;
         summarizationModel?: string; summarizationFallbackModel?: string; summarizationPromptMd?: string;
         includeFailedTurnsInHistory?: boolean;
         includeToolCallsInHistory?: boolean;
@@ -55,6 +58,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       setMode(ctxConfig.mode ?? "fixed");
       setWindowSize(ctxConfig.windowSize ?? 10);
       setPinnedTurn(ctxConfig.pinnedTurn ?? null);
+      setAutoCompactionEnabled(ctxConfig.autoCompactionEnabled ?? false);
+      setAutoCompactionTriggerTokens(ctxConfig.autoCompactionTriggerTokens ?? 0);
       setEnabled(scope === "global" ? true : (ctxConfig.enabled ?? false));
       setSummarizationModel(ctxConfig.summarizationModel);
       setSummarizationFallbackModel(ctxConfig.summarizationFallbackModel);
@@ -77,6 +82,7 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
 
   const save = async (partial: {
     mode?: "sliding" | "fixed"; windowSize?: number; pinnedTurn?: number | null;
+    autoCompactionEnabled?: boolean; autoCompactionTriggerTokens?: number;
     enabled?: boolean;
     summarizationModel?: string | null; summarizationFallbackModel?: string | null; summarizationPromptMd?: string | null;
     includeFailedTurnsInHistory?: boolean;
@@ -91,6 +97,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       windowSize: partial.windowSize ?? windowSize,
     };
     if (partial.pinnedTurn !== undefined) body.pinnedTurn = partial.pinnedTurn;
+    if (partial.autoCompactionEnabled !== undefined) body.autoCompactionEnabled = partial.autoCompactionEnabled;
+    if (partial.autoCompactionTriggerTokens !== undefined) body.autoCompactionTriggerTokens = partial.autoCompactionTriggerTokens;
     if (partial.enabled !== undefined) body.enabled = partial.enabled;
     if (partial.summarizationModel !== undefined) body.summarizationModel = partial.summarizationModel;
     if (partial.summarizationFallbackModel !== undefined) body.summarizationFallbackModel = partial.summarizationFallbackModel;
@@ -118,6 +126,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       if (partial.mode !== undefined) setMode(partial.mode);
       if (partial.windowSize !== undefined) setWindowSize(partial.windowSize);
       if (partial.pinnedTurn !== undefined) setPinnedTurn(partial.pinnedTurn);
+      if (partial.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(partial.autoCompactionEnabled);
+      if (partial.autoCompactionTriggerTokens !== undefined) setAutoCompactionTriggerTokens(partial.autoCompactionTriggerTokens);
       if (partial.enabled !== undefined) setEnabled(partial.enabled);
       if (partial.summarizationModel !== undefined) setSummarizationModel(partial.summarizationModel ?? undefined);
       if (partial.summarizationFallbackModel !== undefined) setSummarizationFallbackModel(partial.summarizationFallbackModel ?? undefined);
@@ -323,6 +333,40 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                 <br />
                 <span className="text-xs">Drag the handle on the history line and click the pin icon to pin to a specific turn.</span>
               </div>
+            )}
+          </div>
+
+          <div className="border-t border-zinc-800 pt-4">
+            <h3 className="text-sm font-medium text-zinc-100 mb-1">Auto Compaction</h3>
+            <p className="text-xs text-zinc-500 mb-3">
+              When enabled, after an agent turn finishes it checks the full input context
+              (provider-reported tokens) of the last step. If it is at or above the threshold,
+              it automatically summarizes the conversation and pins context to the new summary.
+            </p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoCompactionEnabled}
+                onChange={(e) => save({ autoCompactionEnabled: e.target.checked })}
+                className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500"
+              />
+              <span className="text-sm text-zinc-300">Enable auto compaction</span>
+            </label>
+            {autoCompactionEnabled && (
+              <label className="flex items-center gap-3 cursor-pointer ml-6 mt-2">
+                <span className="text-sm text-zinc-300">Trigger at input tokens &ge;</span>
+                <input
+                  type="number"
+                  min={1000}
+                  step={1000}
+                  value={autoCompactionTriggerTokens || ""}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v)) save({ autoCompactionTriggerTokens: Math.max(0, v) });
+                  }}
+                  className="w-28 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200"
+                />
+              </label>
             )}
           </div>
 

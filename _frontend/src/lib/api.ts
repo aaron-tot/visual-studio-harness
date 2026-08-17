@@ -1458,6 +1458,8 @@ export interface SessionContextConfig {
   windowSize: number;
   pinnedTurn: number | null;
   firstTurnNumber: number | null;
+  autoCompactionEnabled?: boolean;
+  autoCompactionTriggerTokens?: number;
   owner?: "session" | "project" | "global" | "none";
   enabled?: boolean;
   summarizationModel?: string;

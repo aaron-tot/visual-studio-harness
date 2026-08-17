@@ -15,6 +15,11 @@ export interface ContextScopeConfig {
   // a specific turn (null pin = pinned to the first message = all turns).
   windowSize?: number;
   pinnedTurn?: number | null;
+  // Auto compaction (v2): when enabled and the last-turn input context reaches
+  // autoCompactionTriggerTokens, the session auto-summarizes and pins to the
+  // new summary once the turn completes.
+  autoCompactionEnabled?: boolean;
+  autoCompactionTriggerTokens?: number;
   enabled?: boolean;
   // "History Included in Context" flags — these control which part types are
   // re-sent from PREVIOUS turns. The current turn always carries everything.

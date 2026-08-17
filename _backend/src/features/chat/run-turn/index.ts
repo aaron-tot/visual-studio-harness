@@ -58,6 +58,7 @@ import {
   writeStepRaw,
   persistRetryLogPart,
 } from "../db-trace";
+import { maybeAutoCompact } from "../auto-compaction";
 import { getModelPricing } from "../../pricing/models-dev";
 import { computeCostUsd } from "../../../../../_shared/types/config";
 import { resolveContextTurnIds } from "../project-chat";
@@ -952,6 +953,15 @@ onStepFinish: async (info) => {
     const responseDurationMs = Date.now() - turnStarted;
 
     await bus?.emit("turn.complete", hookCtx, { sessionId, meta, workspaceRoot, userMessage, assistantMessage, durationMs: responseDurationMs });
+
+    // v2 auto compaction: after a successful turn, if the last input context hit
+    // the threshold, summarize + pin so the next turn starts compact. Runs to
+    // completion here so the next send cannot race it.
+    try {
+      await maybeAutoCompact(sessionId, dataDir ?? "", workspaceRoot ?? undefined);
+    } catch (err) {
+      console.error("[auto-compaction] error at turn.complete:", err);
+    }
 
     if (assistantMessage) {
       assistantMessage.modelName = model.displayName;

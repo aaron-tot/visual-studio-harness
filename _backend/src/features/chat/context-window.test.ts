@@ -177,6 +177,25 @@ describe("resolveRuntimeFirstTurnNumber", () => {
     });
     expect(r).toEqual({ firstTurnNumber: 7, source: "global" }); // last 3 of 9 → 7
   });
+
+  test("auto compaction on is exclusive: sliding windowSize is ignored (fixed pin wins)", () => {
+    const r = resolveRuntimeFirstTurnNumber({
+      wsFirstTurnNumber: null,
+      session: { autoCompactionEnabled: true, mode: "sliding", windowSize: 2, pinnedTurn: 4 },
+      completedTurnNumbers: turns,
+    });
+    // Auto drives the boundary → fixed at the pinned turn; windowSize (2 → 8) is ignored.
+    expect(r).toEqual({ firstTurnNumber: 4, source: "session" });
+  });
+
+  test("auto compaction on with no pin yet = all turns (null)", () => {
+    const r = resolveRuntimeFirstTurnNumber({
+      wsFirstTurnNumber: null,
+      session: { autoCompactionEnabled: true, mode: "sliding", windowSize: 2, pinnedTurn: null },
+      completedTurnNumbers: turns,
+    });
+    expect(r).toEqual({ firstTurnNumber: null, source: "session" });
+  });
 });
 
 describe("summary anchors (shared helpers)", () => {

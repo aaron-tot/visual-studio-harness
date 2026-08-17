@@ -298,75 +298,90 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                 : "Default settings for all sessions. Can be overridden by Project or Session."}
             </p>
 
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={mode === "sliding"}
-                onChange={(e) => save({ mode: e.target.checked ? "sliding" : "fixed" })}
-                className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500"
-              />
-              <span className="text-sm text-zinc-300">Sliding window (keep the last N turns)</span>
-            </label>
+            {/* Single exclusive mode: Manual (sliding/fixed) OR Auto Compaction */}
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => save({ autoCompactionEnabled: false })}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  autoCompactionEnabled
+                    ? "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                    : "border-blue-500 bg-blue-500/10 text-blue-300"
+                }`}
+              >Manual</button>
+              <button
+                type="button"
+                onClick={() => save({ autoCompactionEnabled: true })}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  autoCompactionEnabled
+                    ? "border-violet-500 bg-violet-500/10 text-violet-300"
+                    : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                }`}
+              >Auto Compaction</button>
+            </div>
 
-            {mode === "sliding" ? (
-              <label className="flex items-center gap-3 cursor-pointer ml-6 mt-2">
-                <span className="text-sm text-zinc-300">N turns:</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={200}
-                  value={windowSize}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!isNaN(v)) save({ windowSize: Math.max(1, v) });
-                  }}
-                  className="w-16 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200"
-                />
-              </label>
-            ) : (
-              <div className="ml-6 mt-2 text-sm text-zinc-500">
-                {pinnedTurn != null ? (
-                  <>Pinned to turn {pinnedTurn} — context includes turns from this point forward.</>
-                ) : (
-                  <>Pinned to the first message — context includes all turns.</>
-                )}
-                <br />
-                <span className="text-xs">Drag the handle on the history line and click the pin icon to pin to a specific turn.</span>
+            {autoCompactionEnabled ? (
+              <div>
+                <p className="text-xs text-zinc-400 mb-2">
+                  After an agent turn finishes, if the full input context (provider-reported
+                  tokens) of the last step is at or above the threshold, it automatically
+                  summarizes the conversation and pins context to the new summary. The
+                  manual slider / pinning is off while auto compaction is on.
+                </p>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <span className="text-sm text-zinc-300">Trigger at input tokens &ge;</span>
+                  <input
+                    type="number"
+                    min={1000}
+                    step={1000}
+                    value={autoCompactionTriggerTokens || ""}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      if (!isNaN(v)) save({ autoCompactionTriggerTokens: Math.max(0, v) });
+                    }}
+                    className="w-28 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200"
+                  />
+                </label>
               </div>
-            )}
-          </div>
+            ) : (
+              <>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={mode === "sliding"}
+                    onChange={(e) => save({ mode: e.target.checked ? "sliding" : "fixed" })}
+                    className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-zinc-300">Sliding window (keep the last N turns)</span>
+                </label>
 
-          <div className="border-t border-zinc-800 pt-4">
-            <h3 className="text-sm font-medium text-zinc-100 mb-1">Auto Compaction</h3>
-            <p className="text-xs text-zinc-500 mb-3">
-              When enabled, after an agent turn finishes it checks the full input context
-              (provider-reported tokens) of the last step. If it is at or above the threshold,
-              it automatically summarizes the conversation and pins context to the new summary.
-            </p>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoCompactionEnabled}
-                onChange={(e) => save({ autoCompactionEnabled: e.target.checked })}
-                className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500"
-              />
-              <span className="text-sm text-zinc-300">Enable auto compaction</span>
-            </label>
-            {autoCompactionEnabled && (
-              <label className="flex items-center gap-3 cursor-pointer ml-6 mt-2">
-                <span className="text-sm text-zinc-300">Trigger at input tokens &ge;</span>
-                <input
-                  type="number"
-                  min={1000}
-                  step={1000}
-                  value={autoCompactionTriggerTokens || ""}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!isNaN(v)) save({ autoCompactionTriggerTokens: Math.max(0, v) });
-                  }}
-                  className="w-28 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200"
-                />
-              </label>
+                {mode === "sliding" ? (
+                  <label className="flex items-center gap-3 cursor-pointer ml-6 mt-2">
+                    <span className="text-sm text-zinc-300">N turns:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={windowSize}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        if (!isNaN(v)) save({ windowSize: Math.max(1, v) });
+                      }}
+                      className="w-16 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200"
+                    />
+                  </label>
+                ) : (
+                  <div className="ml-6 mt-2 text-sm text-zinc-500">
+                    {pinnedTurn != null ? (
+                      <>Pinned to turn {pinnedTurn} — context includes turns from this point forward.</>
+                    ) : (
+                      <>Pinned to the first message — context includes all turns.</>
+                    )}
+                    <br />
+                    <span className="text-xs">Drag the handle on the history line and click the pin icon to pin to a specific turn.</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
 

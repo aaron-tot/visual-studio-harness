@@ -77,6 +77,7 @@ export function computeFirstTurnFromWindowSize(
 function sessionContributes(ctx: ContextScopeConfig | null | undefined): boolean {
   if (!ctx) return false;
   if (ctx.enabled === true) return true;
+  if (ctx.autoCompactionEnabled === true) return true;
   // A sliding/fixed pin without `enabled` still owns context.
   if (ctx.mode === "fixed" && ctx.pinnedTurn != null) return true;
   if (ctx.mode === "sliding" && ctx.windowSize != null) return true;
@@ -95,6 +96,10 @@ function applyScope(
   completedTurnNumbers: number[],
   source: ContextSource,
 ): ResolveRuntimeFirstTurnResult | null {
+  // Auto compaction owns the boundary and is exclusive with manual sliding.
+  if (ctx.autoCompactionEnabled === true) {
+    return { firstTurnNumber: ctx.pinnedTurn ?? null, source };
+  }
   // Fixed = pinned. pinnedTurn null means pinned to the first message (all turns).
   if (ctx.mode === "fixed") {
     return { firstTurnNumber: ctx.pinnedTurn ?? null, source };

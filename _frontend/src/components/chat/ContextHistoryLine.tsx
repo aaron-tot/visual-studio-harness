@@ -514,6 +514,8 @@ export function ContextHistoryLine({
   // In auto compaction the handle is driven by the system — read-only (greyed).
   const interactive = !autoCompaction;
   const noop = () => {};
+  // Auto compaction hides the manual slider entirely (mutually exclusive).
+  const autoHidden = autoCompaction ? { display: "none" } as const : {};
   const pinLabel = firstTurnNumber == null
     ? "the first message"
     : !Number.isInteger(firstTurnNumber)
@@ -545,6 +547,7 @@ export function ContextHistoryLine({
               top: 0,
               height: Math.max(0, visibleHandleY),
               background: dragging ? "rgba(96, 165, 250, 0.35)" : "rgba(113, 113, 122, 0.25)",
+              ...autoHidden,
             }}
           />
 
@@ -560,6 +563,7 @@ export function ContextHistoryLine({
               background: dragging
                 ? "linear-gradient(180deg, rgba(59,130,246,0.9) 0%, rgba(59,130,246,0.4) 100%)"
                 : "linear-gradient(180deg, rgba(59,130,246,0.6) 0%, rgba(59,130,246,0.2) 100%)",
+              ...autoHidden,
             }}
           />
 
@@ -595,6 +599,7 @@ export function ContextHistoryLine({
               height: 18,
               pointerEvents: autoCompaction ? "none" : "auto",
               touchAction: "none",
+              ...autoHidden,
             }}
             title={tooltipText}
             onPointerDown={interactive ? handlePointerDown : noop}
@@ -628,6 +633,7 @@ export function ContextHistoryLine({
               top: visibleHandleY + 12,
               width: 52,
               pointerEvents: "auto",
+              ...autoHidden,
             }}
           >
             <button

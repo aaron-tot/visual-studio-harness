@@ -429,9 +429,11 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       : hasOwn(global) ? "global"
       : "none";
 
-    // Compute firstTurnNumber from the resolved mode/windowSize/pinnedTurn
-    // This is derived at read time, not stored.
-    const resolvedMode = (pick("mode") as string) ?? "fixed";
+    // Auto compaction and manual (sliding/fixed) are MUTUALLY EXCLUSIVE.
+    // When auto compaction is on it drives the boundary, so the manual mode is
+    // forced to fixed and any sliding windowSize is ignored to avoid conflict.
+    const autoCompactionOn = (pick("autoCompactionEnabled") as boolean | undefined) ?? false;
+    const resolvedMode = autoCompactionOn ? "fixed" : ((pick("mode") as string) ?? "fixed");
     const resolvedWindowSize = (pick("windowSize") as number) ?? 10;
     const resolvedPinnedTurn = (pick("pinnedTurn") as number | null) ?? null;
 

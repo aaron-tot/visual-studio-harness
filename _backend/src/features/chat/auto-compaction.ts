@@ -8,7 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { and, eq, desc, lt } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { getDbForDataDir } from "../../db/client";
 import { turns, stepParts } from "../../db/schema";
 import { getSessionModelConfigJson } from "../sessions/db";
@@ -32,10 +32,6 @@ import type { ContextScopeConfig } from "./context-window";
 
 /** Sessions currently performing an auto compaction (avoids double-firing). */
 const compactingSessions = new Set<string>();
-
-export function isSessionCompacting(sessionId: string): boolean {
-  return compactingSessions.has(sessionId);
-}
 
 interface EffectiveAutoConfig {
   enabled: boolean;

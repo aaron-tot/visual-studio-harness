@@ -309,10 +309,12 @@ export function resolveContextTurnIds(
   const db = dbFor(dataDir);
   const includeFailed = opts?.includeFailedTurns ?? true;
 
-  // Query completed turns directly from turns table (no turnContext dependency)
+  // Query completed turns directly from turns table (no turnContext dependency).
+  // Summary turns are ordinary context turns at their numeric position: if the
+  // turn is in range it is included, in order, exactly like a normal turn.
   const whereClause = includeFailed
-    ? and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn"))
-    : and(eq(turns.sessionId, sessionId), eq(turns.success, true), eq(turns.kind, "turn"));
+    ? eq(turns.sessionId, sessionId)
+    : and(eq(turns.sessionId, sessionId), eq(turns.success, true));
 
   const rows = db
     .select({ id: turns.id, turnNumber: turns.turnNumber })

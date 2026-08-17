@@ -1,6 +1,6 @@
-import { inArray, eq, and, lt, desc } from "drizzle-orm";
+import { inArray, eq } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
-import { turns, stepParts, summaryRanges } from "../../db/schema";
+import { turns, stepParts } from "../../db/schema";
 import type { ModelMessage as CoreMessage, TextPart, ToolCallPart } from "ai";
 import { normalizeToolInput } from "./tool-input";
 
@@ -211,38 +211,10 @@ export async function buildModelMessages(
 ): Promise<BuildModelMessagesResult> {
   const db = dbFor(dataDir);
 
-  // When the context boundary starts after a summary (pinned to a summary),
-  // inject that summary's text as the leading "Previous summary" message and
-  // drop the covered turns (they are already excluded from contextTurnIds by
-  // resolveContextTurnIds). This is what lets compaction actually shrink tokens
-  // while keeping the agent informed of the summarized history.
-  let compactionSummary: string | null = null;
-  if (options.firstTurnNumber != null) {
-    const covered = db
-      .select({ summaryTurnId: summaryRanges.summaryTurnId, endTurn: summaryRanges.endTurn })
-      .from(summaryRanges)
-      .where(and(eq(summaryRanges.sessionId, sessionId), lt(summaryRanges.endTurn, options.firstTurnNumber)))
-      .orderBy(desc(summaryRanges.endTurn))
-      .limit(1)
-      .get();
-    if (covered) {
-      const part = db
-        .select({ data: stepParts.data })
-        .from(stepParts)
-        .where(and(eq(stepParts.turnId, covered.summaryTurnId), eq(stepParts.type, "text")))
-        .orderBy(stepParts.seq)
-        .limit(1)
-        .get();
-      if (part?.data) {
-        try {
-          const parsed = JSON.parse(part.data);
-          if (typeof parsed.content === "string" && parsed.content) compactionSummary = parsed.content;
-        } catch {
-          compactionSummary = part.data;
-        }
-      }
-    }
-  }
+  // Summary turns are ordinary context turns: resolveContextTurnIds includes
+  // them at their numeric position, so they flow through buildModelMessages
+  // like any other turn (user prompt + assistant summary text). No special
+  // handling needed here.
 
   // 1. Filter contextTurnIds by completion status and maxTurns
   let filteredTurnIds = [...options.contextTurnIds];
@@ -345,11 +317,6 @@ export async function buildModelMessages(
   const finalMessages: CoreMessage[] = [];
   if (systemBlock.trim()) {
     finalMessages.push({ role: "system", content: systemBlock });
-  }
-  // Inject the pinned summary as the leading context (before the covered tail),
-  // so the model sees a compact history instead of the dropped turns.
-  if (compactionSummary) {
-    finalMessages.push({ role: "user", content: `Previous summary:\n${compactionSummary}` });
   }
   finalMessages.push(...messages);
 

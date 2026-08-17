@@ -304,12 +304,14 @@ async function performAutoCompaction(
     createdAt: now,
   });
 
-  // Pin context to the new summary: first live turn after the summary turn.
-  const firstLiveAfterSummary = summaryTurnNumber + 1;
+  // Pin context to the new summary: the summary turn itself (it is a normal
+  // context turn now, so include it; turns before it are dropped by the
+  // boundary). firstTurnNumber = the summary turn's number.
+  const pinnedTurn = summaryTurnNumber;
   try {
     const raw = getSessionModelConfigJson(sessionId, dataDir);
     const parsed = raw ? JSON.parse(raw) : {};
-    parsed.context = { ...(parsed.context ?? {}), mode: "fixed", pinnedTurn: firstLiveAfterSummary, enabled: true };
+    parsed.context = { ...(parsed.context ?? {}), mode: "fixed", pinnedTurn, enabled: true };
     // Persist through the same storage path used elsewhere.
     const { setSessionModelConfigJson } = await import("../sessions/db");
     setSessionModelConfigJson(sessionId, JSON.stringify(parsed), dataDir);
@@ -318,6 +320,6 @@ async function performAutoCompaction(
   }
 
   console.error(
-    `[auto-compaction] ok session=${sessionId} range=${startTurn}–${endTurnNum} summaryTurn=${summaryTurnNumber} pinnedTurn=${firstLiveAfterSummary}`,
+    `[auto-compaction] ok session=${sessionId} range=${startTurn}–${endTurnNum} summaryTurn=${summaryTurnNumber} pinnedTurn=${pinnedTurn}`,
   );
 }

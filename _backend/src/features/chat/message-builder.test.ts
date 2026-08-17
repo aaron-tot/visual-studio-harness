@@ -231,31 +231,20 @@ describe("buildModelMessages tool parts", () => {
   });
 });
 
-describe("buildModelMessages summary injection (basis fix)", () => {
-  test("pinning to a summary injects its text and keeps the tail after the boundary", async () => {
+describe("buildModelMessages summary turns as normal context", () => {
+  test("a summary turn in contextTurnIds is built as a user+assistant pair (in order)", async () => {
     const db = getDbForDataDir(dataDir);
-    // Summary range covers turns 20-22; context pinned to start at turn 23.
-    const summaryTurnId = createTurn(SESSION_ID, 300, "Summarize conversation turns 20–22", new Date().toISOString(), {}, dataDir);
+    const summaryTurnId = createTurn(SESSION_ID, 15, "Summarize conversation turns 20–22", new Date().toISOString(), {}, dataDir);
     const summaryStepId = createStep(summaryTurnId, SESSION_ID, 0, {}, dataDir);
     insertStepPart(SESSION_ID, summaryTurnId, summaryStepId, "text", { content: "CHAIN_SUMMARY_NEEDLE" }, 1, "completed", {}, dataDir);
-    db.insert(summaryRanges).values({
-      sessionId: SESSION_ID,
-      summaryTurnId,
-      startTurn: 20,
-      endTurn: 22,
-      prevRangeId: null,
-      originalTokens: 100,
-      summaryTokens: 10,
-      createdAt: new Date().toISOString(),
-    }).run();
 
     const t23 = await makeTurn(23, [{ type: "text", data: { content: "twenty three" } }], true);
 
     const { messages } = await buildModelMessages(SESSION_ID, "sys", options({
-      contextTurnIds: [t23],
+      // Summary turn first (number 300), then live turn 23 — correct order.
+      contextTurnIds: [summaryTurnId, t23],
       currentTurnNumber: 24,
       currentUserMessage: "current",
-      firstTurnNumber: 23,
     }), dataDir);
 
     const textMessages = messages
@@ -264,30 +253,15 @@ describe("buildModelMessages summary injection (basis fix)", () => {
         Array.isArray(m.content) ? (m.content as any[]).map((p) => p.text).join("") : (m.content as string),
       );
 
-    // The pinned summary text IS injected as leading context.
+    // The summary's prompt (user) and summary text (assistant) both appear,
+    // followed by the live turn and the current message — treated as a normal
+    // turn at its numeric position.
+    expect(textMessages.some((t) => t.includes("Summarize conversation"))).toBe(true);
     expect(textMessages.some((t) => t.includes("CHAIN_SUMMARY_NEEDLE"))).toBe(true);
-    // The fresh tail after the boundary is retained.
     expect(textMessages.some((t) => t.includes("twenty three"))).toBe(true);
     expect(textMessages.some((t) => t.includes("current"))).toBe(true);
-    // It appears before the tail.
-    expect(textMessages[0]).toContain("CHAIN_SUMMARY_NEEDLE");
 
     db.delete(summaryRanges).where(eq(summaryRanges.sessionId, SESSION_ID)).run();
-  });
-
-  test("summary is NOT injected when no pin boundary is set", async () => {
-    const t400 = await makeTurn(400, [{ type: "text", data: { content: "four hundred" } }], true);
-    const { messages } = await buildModelMessages(SESSION_ID, "sys", options({
-      contextTurnIds: [t400],
-      currentTurnNumber: 401,
-      currentUserMessage: "current",
-    }), dataDir);
-    const textMessages = messages
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) =>
-        Array.isArray(m.content) ? (m.content as any[]).map((p) => p.text).join("") : (m.content as string),
-      );
-    expect(textMessages.some((t) => t.includes("CHAIN_SUMMARY_NEEDLE"))).toBe(false);
   });
 });
 

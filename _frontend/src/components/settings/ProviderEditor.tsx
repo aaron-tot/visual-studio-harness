@@ -16,6 +16,7 @@ export function ProviderEditor({ providerIndex }: ProviderEditorProps) {
   const [apiKey, setApiKey] = useState(provider?.apiKey || "");
   const [showApiKey, setShowApiKey] = useState(false);
   const [status, setStatus] = useState<"idle" | "connecting" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (provider) {
@@ -40,6 +41,7 @@ export function ProviderEditor({ providerIndex }: ProviderEditorProps) {
 
   const saveAndConnect = async () => {
     setStatus("connecting");
+    setErrorMsg(null);
     save();
 
     // Test providers are mock — skip connection check
@@ -58,9 +60,13 @@ export function ProviderEditor({ providerIndex }: ProviderEditorProps) {
         setStatus("success");
       } else {
         setStatus("error");
+        setErrorMsg("Provider returned no models");
+        return;
       }
-    } catch {
+    } catch (err) {
       setStatus("error");
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      return;
     }
     setTimeout(() => setStatus("idle"), 3000);
   };
@@ -135,6 +141,11 @@ export function ProviderEditor({ providerIndex }: ProviderEditorProps) {
           "Save & Connect"
         )}
       </button>
+      {status === "error" && errorMsg && (
+        <p className="text-xs text-red-400 whitespace-pre-wrap break-words">
+          {errorMsg}
+        </p>
+      )}
     </div>
   );
 }

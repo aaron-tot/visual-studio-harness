@@ -57,7 +57,7 @@ describe("resolveContextTurnIds", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  test("excludes kind=summary rows", () => {
+  test("includes kind=summary rows as normal context turns (in range)", () => {
     const ids = resolveContextTurnIds(SESSION_ID, dataDir, { firstTurnNumber: null });
     const db = getDbForDataDir(dataDir);
     const rows = db
@@ -65,11 +65,13 @@ describe("resolveContextTurnIds", () => {
       .from(turns)
       .all()
       .filter((r) => ids.includes(r.id));
-    expect(rows.every((r) => (r.kind ?? "turn") === "turn")).toBe(true);
-    expect(rows.some((r) => r.turnNumber === 11)).toBe(false);
+    // All 10 turns + the 1 summary row (11) are included, ordered by number.
+    expect(rows.length).toBe(11);
+    expect(rows.some((r) => (r.kind ?? "turn") === "summary")).toBe(true);
+    expect(rows.some((r) => r.turnNumber === 11)).toBe(true);
   });
 
-  test("pin firstTurnNumber=5 keeps only turns >= 5", () => {
+  test("pin firstTurnNumber=5 keeps only turns >= 5 (summary at 11 included)", () => {
     const ids = resolveContextTurnIds(SESSION_ID, dataDir, { firstTurnNumber: 5 });
     const db = getDbForDataDir(dataDir);
     const nums = db
@@ -81,6 +83,22 @@ describe("resolveContextTurnIds", () => {
       .sort((a, b) => a - b);
     expect(nums[0]).toBe(5);
     expect(nums.every((n) => n >= 5)).toBe(true);
-    expect(nums).not.toContain(11);
+    expect(nums).toContain(11); // the summary is in range
+    expect(nums).not.toContain(4); // out of range
+  });
+
+  test("pin after the summary drops it (out of range) but keeps later live turns", () => {
+    insertTurn(12); // a live turn after the summary at 11
+    const ids = resolveContextTurnIds(SESSION_ID, dataDir, { firstTurnNumber: 12 });
+    const db = getDbForDataDir(dataDir);
+    const nums = db
+      .select({ id: turns.id, turnNumber: turns.turnNumber })
+      .from(turns)
+      .all()
+      .filter((r) => ids.includes(r.id))
+      .map((r) => r.turnNumber);
+    expect(nums).toContain(12);
+    expect(nums).not.toContain(11); // summary is out of range (before the boundary)
+    expect(nums.every((n) => n >= 12)).toBe(true);
   });
 });

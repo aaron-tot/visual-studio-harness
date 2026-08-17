@@ -795,7 +795,6 @@ export async function getTurnStepRawCapture(
     includeReasoningInHistory: boolean;
     includePatchesInHistory: boolean;
     includeOtherPartsInHistory: boolean;
-    contextMaxTurns?: number;
     firstTurnNumber?: number | null;
   }
   let configSnap: ConfigSnap | undefined;

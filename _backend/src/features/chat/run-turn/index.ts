@@ -268,7 +268,6 @@ export async function runTurn(
       includeReasoningInHistory: config.includeReasoningInHistory ?? false,
       includePatchesInHistory: config.includePatchesInHistory ?? false,
       includeOtherPartsInHistory: config.includeOtherPartsInHistory ?? false,
-      contextMaxTurns: config.contextMaxTurns,
     },
   });
 
@@ -563,7 +562,6 @@ export async function runTurn(
       includeReasoningInHistory: historyFlags.includeReasoningInHistory,
       includePatchesInHistory: historyFlags.includePatchesInHistory,
       includeOtherPartsInHistory: historyFlags.includeOtherPartsInHistory,
-      contextMaxTurns: historyFlags.contextMaxTurns,
       firstTurnNumber: contextAnchor,
       promptSnapshotId,
       toolsSnapshotId,

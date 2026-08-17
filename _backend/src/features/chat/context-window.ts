@@ -25,7 +25,6 @@ export interface ContextScopeConfig {
   includeReasoningInHistory?: boolean;
   includePatchesInHistory?: boolean;
   includeOtherPartsInHistory?: boolean;
-  contextMaxTurns?: number;
 }
 
 /** Effective "History Included in Context" flags resolved for a turn. */
@@ -35,7 +34,6 @@ export interface HistoryInclusionFlags {
   includeReasoningInHistory: boolean;
   includePatchesInHistory: boolean;
   includeOtherPartsInHistory: boolean;
-  contextMaxTurns?: number;
 }
 
 export interface ResolveRuntimeFirstTurnInput {
@@ -195,6 +193,5 @@ export function resolveRuntimeHistoryInclusion(
     includeReasoningInHistory: pick("includeReasoningInHistory"),
     includePatchesInHistory: pick("includePatchesInHistory"),
     includeOtherPartsInHistory: pick("includeOtherPartsInHistory"),
-    contextMaxTurns: pick("contextMaxTurns"),
   };
 }

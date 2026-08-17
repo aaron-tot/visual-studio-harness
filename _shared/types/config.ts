@@ -311,8 +311,6 @@ export interface ConfigFile {
   includePatchesInHistory?: boolean;
   /** Include other part types (snapshot, error, question, etc.) from previous turns in SDK messages (default: false) */
   includeOtherPartsInHistory?: boolean;
-  /** Maximum number of historical turns to include (context window) */
-  contextMaxTurns?: number;
   /** Include the previous summary in the summarizer input (default: true) */
   summarizeIncludePriorSummary?: boolean;
   /** Error message substring (case-insensitive) that triggers a streaming retry. */

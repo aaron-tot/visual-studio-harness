@@ -230,7 +230,6 @@ export const ConfigFileSchema = z.object({
   includeReasoningInHistory: z.boolean().default(false),
   includePatchesInHistory: z.boolean().default(false),
   includeOtherPartsInHistory: z.boolean().default(false),
-  contextMaxTurns: z.number().int().positive().optional(),
   /** Error message string that should trigger a streaming retry (case-insensitive substring match) */
   streamRetryErrorName: z.string().default("Streaming response failed"),
   /** Enable automatic retry on provider errors (5xx, timeout, network, etc.) */

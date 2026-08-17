@@ -1197,7 +1197,6 @@ for (const m of chatMessages) {
       includeReasoningInHistory: boolean;
       includePatchesInHistory: boolean;
       includeOtherPartsInHistory: boolean;
-      contextMaxTurns?: number;
       firstTurnNumber?: number | null;
       promptSnapshotId?: number;
       toolsSnapshotId?: number;

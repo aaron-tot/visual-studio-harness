@@ -24,6 +24,8 @@ export function ContextHistoryLine({
   const [windowSize, setWindowSize] = useState(10);
   const [pinnedTurn, setPinnedTurn] = useState<number | null>(null);
   const [contextOwner, setContextOwner] = useState<"session" | "project" | "global" | "none">("none");
+  // Auto compaction mode drives the handle automatically → line is read-only.
+  const [autoCompaction, setAutoCompaction] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [dragClientY, setDragClientY] = useState(0);
   const dragClientYRef = useRef(0);
@@ -221,6 +223,7 @@ export function ContextHistoryLine({
         setWindowSize(c.windowSize ?? 10);
         setPinnedTurn(c.pinnedTurn ?? null);
         setContextOwner(c.owner ?? "none");
+        setAutoCompaction(c.autoCompactionEnabled ?? false);
         // Sync to store so sendMessage always has the effective config
         setStoreCtxMode(c.mode ?? "fixed");
         setStoreCtxWindowSize(c.windowSize ?? 10);
@@ -429,6 +432,7 @@ export function ContextHistoryLine({
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return;
       if (e.key !== "S" && e.key !== "s") return;
+      if (autoCompaction) return; // auto mode summarizes itself
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       e.preventDefault();
@@ -436,7 +440,7 @@ export function ContextHistoryLine({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sessionId, runSummarize]);
+  }, [sessionId, runSummarize, autoCompaction]);
 
   // Handle Y in scroll-container-relative coords
   let handleY: number | null = null;
@@ -507,6 +511,9 @@ export function ContextHistoryLine({
   // In fixed mode it is ALWAYS pinned — either to the first message (no pin
   // moved yet) or to a specific turn the user chose. Sliding off = pinned.
   const isPinned = contextMode === "fixed";
+  // In auto compaction the handle is driven by the system — read-only (greyed).
+  const interactive = !autoCompaction;
+  const noop = () => {};
   const pinLabel = firstTurnNumber == null
     ? "the first message"
     : !Number.isInteger(firstTurnNumber)
@@ -580,33 +587,35 @@ export function ContextHistoryLine({
           {/* Drag circle ONLY — separate from action buttons.
               move/up on this node (setPointerCapture target). */}
           <div
-            className="absolute z-40 cursor-ns-resize group/handle"
+            className={`absolute z-40 group/handle ${interactive ? "cursor-ns-resize" : "cursor-default"}`}
             style={{
               left: lineX - 9,
               top: visibleHandleY - 9,
               width: 18,
               height: 18,
-              pointerEvents: "auto",
+              pointerEvents: autoCompaction ? "none" : "auto",
               touchAction: "none",
             }}
             title={tooltipText}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
+            onPointerDown={interactive ? handlePointerDown : noop}
+            onPointerMove={interactive ? handlePointerMove : noop}
+            onPointerUp={interactive ? handlePointerUp : noop}
             onPointerCancel={() => setDragging(false)}
-            onContextMenu={(e) => {
+            onContextMenu={interactive ? (e) => {
               e.preventDefault();
               e.stopPropagation();
               setCtxMenu({ x: e.clientX, y: e.clientY });
-            }}
+            } : noop}
           >
             <div
               className={`w-[18px] h-[18px] rounded-full border-2 shadow-lg transition-all ${
                 dragging
                   ? "border-blue-300 bg-blue-500 shadow-blue-500/40 scale-125"
-                  : contextMode === "sliding"
-                    ? "border-zinc-600 bg-zinc-800/40 hover:border-blue-400 hover:bg-blue-600/40"
-                    : "border-zinc-600 bg-zinc-800 hover:border-blue-400 hover:bg-blue-600/40"
+                  : autoCompaction
+                    ? "border-zinc-600/50 bg-zinc-800/30 opacity-60"
+                    : contextMode === "sliding"
+                      ? "border-zinc-600 bg-zinc-800/40 hover:border-blue-400 hover:bg-blue-600/40"
+                      : "border-zinc-600 bg-zinc-800 hover:border-blue-400 hover:bg-blue-600/40"
               }`}
             />
           </div>
@@ -623,10 +632,11 @@ export function ContextHistoryLine({
           >
             <button
               type="button"
-              title={isPinned ? "Unpin (switch to sliding)" : "Pin to this turn (fixed)"}
-              className="w-6 h-6 flex items-center justify-center rounded bg-zinc-900/90 border border-zinc-700 hover:bg-zinc-700 shrink-0"
+              title={autoCompaction ? "Auto compaction manages the context" : (isPinned ? "Unpin (switch to sliding)" : "Pin to this turn (fixed)")}
+              disabled={!interactive}
+              className="w-6 h-6 flex items-center justify-center rounded bg-zinc-900/90 border border-zinc-700 hover:bg-zinc-700 shrink-0 disabled:opacity-40 disabled:hover:bg-zinc-900/90"
               onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePin(); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (interactive) togglePin(); }}
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={isPinned ? 2 : 1.5} className={isPinned ? "text-amber-400" : "text-zinc-400"}>
                 <path d="M2 10V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v6" />
@@ -636,23 +646,28 @@ export function ContextHistoryLine({
             <button
               type="button"
               title={
-                canSummarize
-                  ? `Summarize up to turn ${summarizeEndTurn} (Ctrl/⌘+Shift+S)`
-                  : summarizing
-                    ? "Summarizing…"
-                    : summarizeDisabledReason ?? "No turns to summarize"
+                autoCompaction
+                  ? "Auto compaction summarizes automatically"
+                  : canSummarize
+                    ? `Summarize up to turn ${summarizeEndTurn} (Ctrl/⌘+Shift+S)`
+                    : summarizing
+                      ? "Summarizing…"
+                      : summarizeDisabledReason ?? "No turns to summarize"
               }
               className={`w-6 h-6 flex items-center justify-center rounded border transition-colors shrink-0 ${
                 summarizing
                   ? "bg-violet-900/80 border-violet-500 text-violet-200 animate-pulse"
-                  : canSummarize
-                    ? "bg-zinc-900/90 border-zinc-700 text-violet-400 hover:bg-violet-950 hover:border-violet-500"
-                    : "bg-zinc-900/50 border-zinc-800 text-zinc-600"
+                  : autoCompaction
+                    ? "bg-zinc-900/30 border-zinc-800 text-zinc-600"
+                    : canSummarize
+                      ? "bg-zinc-900/90 border-zinc-700 text-violet-400 hover:bg-violet-950 hover:border-violet-500"
+                      : "bg-zinc-900/50 border-zinc-800 text-zinc-600"
               }`}
+              disabled={!interactive}
               onPointerDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (e.button === 0) void runSummarize("slider");
+                if (interactive && e.button === 0) void runSummarize("slider");
               }}
               onClick={(e) => {
                 e.preventDefault();

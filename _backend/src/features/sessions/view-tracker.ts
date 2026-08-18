@@ -5,6 +5,7 @@ import { getSession } from "./db";
 import { projectSessionChat, projectStreamingContent } from "../chat/project-chat";
 import { sessionHasTurns, getActiveTraceTurn } from "../chat/db-trace";
 import { maxStepPartSeq } from "../chat/project-chat";
+import { getLastContextTokenUsage } from "../chat/auto-compaction";
 import type { Message, MessagePartType } from "../../../../_shared/types";
 
 const socketToSession = new Map<WebSocket, string>();
@@ -55,17 +56,26 @@ export function sendToSession(sessionId: string, data: unknown) {
   chatDebug("sendToSession", "delivered", { sessionId, type, sent, skipped });
 }
 
-function buildSessionStatePayload(sessionId: string, requestId?: number): Record<string, unknown> {
+function buildSessionStatePayload(sessionId: string, requestId?: number, dataDir?: string): Record<string, unknown> {
   const history = projectSessionChat(sessionId);
   const openTurn = getActiveTraceTurn(sessionId);
   const streaming = openTurn ? projectStreamingContent(sessionId) : null;
   const meta = getSession(sessionId);
-  return { type: "session_state", sessionId, ...(requestId != null ? { requestId } : {}), history, streaming, meta };
+  // Seed the header context indicator from the last completed turn's usage so it
+  // shows a real value on load/navigation (not only while a turn streams).
+  const contextTokens = dataDir
+    ? (() => { try { return getLastContextTokenUsage(dataDir, sessionId, meta?.workspaceRoot); } catch { return null; } })()
+    : null;
+  return {
+    type: "session_state", sessionId, ...(requestId != null ? { requestId } : {}),
+    history, streaming, meta,
+    ...(contextTokens ? { contextTokens } : {}),
+  };
 }
 
-export function sendSessionState(socket: WebSocket, sessionId: string, requestId?: number): void {
+export function sendSessionState(socket: WebSocket, sessionId: string, requestId?: number, dataDir?: string): void {
   if (socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify(buildSessionStatePayload(sessionId, requestId)));
+  socket.send(JSON.stringify(buildSessionStatePayload(sessionId, requestId, dataDir)));
 }
 
 export function sendSessionStateToSession(sessionId: string): void {

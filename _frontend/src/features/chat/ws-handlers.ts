@@ -344,6 +344,11 @@ wsClient.on("session_state", (data: any) => {
     console.debug(`[session_state] ignored stale upToSeq=${snapshotSeq} < lastSeq=${curLast}`);
     return;
   }
+  // Only a fresh request (requestId present — session load/navigation) should
+  // seed/clear the live context-token indicator from the server snapshot.
+  // Same-session broadcasts (no requestId, e.g. post-turn refresh) must not
+  // clobber the live per-step value.
+  const persistCtx = data.requestId != null ? (data.contextTokens ?? null) : undefined;
   try {
     if (data.history) {
       // System messages are normally hidden, but summary-generation markers
@@ -371,7 +376,7 @@ wsClient.on("session_state", (data: any) => {
         const { streamingParts, streamingContent, partSeq } = partsFromSnapshot(lastAssistant.parts || []);
         const upTo = snapshotSeq ?? partSeq;
         const wsRoot = data.meta?.workspaceRoot;
-        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, streamingOutputTps: null, contextTokens: null, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
+        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, streamingOutputTps: null, contextTokens: persistCtx !== undefined ? persistCtx : useChatStore.getState().contextTokens, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
         touchStreamTimeout();
       } else {
         const upTo = snapshotSeq ?? maxSeqOf(msgs.flatMap((m: any) => m.parts || []));
@@ -395,7 +400,7 @@ wsClient.on("session_state", (data: any) => {
           streamingContent: isStreaming ? data.streaming : "",
           streamingParts: isStreaming ? cur.streamingParts : [],
           streamingOutputTps: null,
-          contextTokens: null,
+          contextTokens: persistCtx !== undefined ? persistCtx : cur.contextTokens,
           lastSeq: upTo,
           _partSeq: upTo,
           _reasonIdx: 0,

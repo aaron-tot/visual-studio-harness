@@ -105,6 +105,36 @@ function resolveEffectiveAutoConfig(
   };
 }
 
+/**
+ * Last completed live turn's context token size (input + cache-read) against the
+ * effective auto-compaction threshold. Used to seed the header context indicator
+ * on session load/navigation (not just while a turn streams). Returns null when
+ * auto compaction is off/unset or there is no completed live turn yet.
+ */
+export function getLastContextTokenUsage(
+  dataDir: string,
+  sessionId: string,
+  workspaceRoot?: string,
+): { used: number; max: number } | null {
+  const cfg = resolveEffectiveAutoConfig(sessionId, dataDir, workspaceRoot);
+  if (!cfg.enabled || !cfg.triggerTokens || cfg.triggerTokens <= 0) return null;
+
+  const db = getDbForDataDir(dataDir);
+  const lastLive = db
+    .select({ inputTokens: turns.inputTokens, cacheReadTokens: turns.cacheReadTokens })
+    .from(turns)
+    .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn"), eq(turns.success, true)))
+    .orderBy(desc(turns.turnNumber))
+    .limit(1)
+    .get();
+  if (!lastLive) return null;
+
+  return {
+    used: (lastLive.inputTokens ?? 0) + (lastLive.cacheReadTokens ?? 0),
+    max: cfg.triggerTokens,
+  };
+}
+
 function readSummaryText(dataDir: string, summaryTurnId: number): string | null {
   const db = getDbForDataDir(dataDir);
   const part = db

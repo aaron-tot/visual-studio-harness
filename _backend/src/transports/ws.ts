@@ -204,7 +204,7 @@ export function registerWsHandler(
             // drop stale responses from rapid session switches.
             const requestId =
               typeof msg.requestId === "number" ? msg.requestId : undefined;
-            sendSessionState(socket, msg.sessionId, requestId);
+            sendSessionState(socket, msg.sessionId, requestId, getDataDir());
           }
         } else if (msg.type === "session_update") {
           const updatedMeta = await handleSessionUpdate(msg, getDataDir(), getConfig());

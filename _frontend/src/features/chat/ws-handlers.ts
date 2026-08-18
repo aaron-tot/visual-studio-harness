@@ -60,6 +60,13 @@ wsClient.on("token", (data: any) => {
   }
 });
 
+wsClient.on("context_tokens", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId !== currentId) return;
+  if (typeof data.used !== "number" || typeof data.max !== "number") return;
+  useChatStore.setState({ contextTokens: { used: data.used, max: data.max } });
+});
+
 wsClient.on("reasoning", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) {
@@ -364,7 +371,7 @@ wsClient.on("session_state", (data: any) => {
         const { streamingParts, streamingContent, partSeq } = partsFromSnapshot(lastAssistant.parts || []);
         const upTo = snapshotSeq ?? partSeq;
         const wsRoot = data.meta?.workspaceRoot;
-        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, streamingOutputTps: null, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
+        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, streamingOutputTps: null, contextTokens: null, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
         touchStreamTimeout();
       } else {
         const upTo = snapshotSeq ?? maxSeqOf(msgs.flatMap((m: any) => m.parts || []));
@@ -388,6 +395,7 @@ wsClient.on("session_state", (data: any) => {
           streamingContent: isStreaming ? data.streaming : "",
           streamingParts: isStreaming ? cur.streamingParts : [],
           streamingOutputTps: null,
+          contextTokens: null,
           lastSeq: upTo,
           _partSeq: upTo,
           _reasonIdx: 0,

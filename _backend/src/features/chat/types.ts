@@ -51,7 +51,7 @@ export interface TurnEvents {
   onToolBatchStart?: (e: StepToolBatchBeforePayload) => void | Promise<void>;
   onToolBatchEnd?: (e: StepToolBatchAfterPayload) => void | Promise<void>;
   /** Called after a step is finalized & persisted (used to refresh live usage/stats). */
-  onStepEnd?: (e: { stepIndex?: number }) => void | Promise<void>;
+  onStepEnd?: (e: { stepIndex?: number; contextTokens?: { used: number; max: number } }) => void | Promise<void>;
   /** Called when a retryable failure is recorded (before the retry wait). seq is turn-global. */
   onRetryError?: (e: { entry: RetryEntry; seq: number }) => void;
   /** Called when the reasoning/thinking phase ends (text, tool, or step finish after reasoning). */

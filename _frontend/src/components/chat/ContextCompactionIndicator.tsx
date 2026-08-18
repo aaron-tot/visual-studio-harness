@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getEffectiveContextConfig, type SessionContextConfig } from "../../lib/api";
+import { useChatStore } from "../../features/chat/store";
 
 const TOOLTIP =
   "At the max tokens listed it will trigger a compaction to bring the token " +
@@ -14,20 +15,23 @@ function fmtTokens(n: number): string {
  * Compact header badge showing current context tokens against the auto-compaction
  * trigger threshold (used / threshold + a progress bar). Only shown when auto
  * compaction is enabled AND the "show context indicator" toggle is on.
+ *
+ * `used` comes from the live per-step `context_tokens` WS event (the provider's
+ * input+cache-read token count for the last step), so it updates on every step
+ * return rather than sitting at 0.
  */
 export function ContextCompactionIndicator({
   sessionId,
   workspaceRoot,
-  contextTokens,
 }: {
   sessionId: string | null;
   workspaceRoot?: string;
-  contextTokens?: { used: number; max: number } | undefined;
 }) {
+  const contextTokens = useChatStore((s) => s.contextTokens);
   const [cfg, setCfg] = useState<SessionContextConfig | null>(null);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) { setCfg(null); return; }
     let cancelled = false;
     getEffectiveContextConfig(sessionId, workspaceRoot)
       .then((c) => { if (!cancelled) setCfg(c); })
@@ -39,7 +43,7 @@ export function ContextCompactionIndicator({
 
   const threshold = cfg.autoCompactionTriggerTokens ?? 0;
   const used = contextTokens?.used ?? 0;
-  const pct = threshold > 0 ? Math.min(100, Math.round((used / threshold) * 100)) : 0;
+  const pct = contextTokens && contextTokens.max > 0 ? Math.min(100, Math.round((used / contextTokens.max) * 100)) : 0;
 
   return (
     <div
@@ -48,13 +52,19 @@ export function ContextCompactionIndicator({
       data-testid="context-compaction-indicator"
     >
       <span className="shrink-0">
-        <span className="text-zinc-100">{fmtTokens(used)}</span>
-        <span className="text-zinc-500">/{fmtTokens(threshold)}</span>
+        {contextTokens ? (
+          <>
+            <span className="text-zinc-100">{fmtTokens(used)}</span>
+            <span className="text-zinc-500">/{fmtTokens(threshold)}</span>
+          </>
+        ) : (
+          <span className="text-zinc-500">…</span>
+        )}
       </span>
       <span className="inline-block w-16 h-1.5 rounded-full bg-zinc-700/70 overflow-hidden" aria-hidden>
         <span
           className={`block h-full rounded-full ${pct >= 90 ? "bg-amber-400" : "bg-zinc-400"}`}
-          style={{ width: `${Math.max(pct, 2)}%` }}
+          style={{ width: `${contextTokens ? Math.max(pct, 2) : 0}%` }}
         />
       </span>
     </div>

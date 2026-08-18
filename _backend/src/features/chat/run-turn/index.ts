@@ -254,6 +254,19 @@ export async function runTurn(
     }
   } catch { /* ignore */ }
 
+  // Effective auto-compaction threshold (session > project > global) — the "max"
+  // denominator for the per-step context-token indicator.
+  const scopeVal = (key: "autoCompactionEnabled" | "autoCompactionTriggerTokens" | "enabled") => {
+    const sessionOn = sessionCtx?.enabled === true;
+    const projectOn = projectCtx?.enabled === true;
+    if (sessionOn && sessionCtx?.[key] !== undefined) return sessionCtx[key];
+    if (projectOn && projectCtx?.[key] !== undefined) return projectCtx[key];
+    if (globalCtx?.[key] !== undefined) return globalCtx[key];
+    return undefined;
+  };
+  const autoCompactionOn = scopeVal("autoCompactionEnabled") === true;
+  const autoCompactionThreshold = scopeVal("autoCompactionTriggerTokens") as number | undefined ?? 0;
+
   // Effective "History Included in Context" flags from the context scopes
   // (session > project > global), falling back to base chat-config values.
   // These only control what is re-sent from PREVIOUS turns; the current turn
@@ -800,7 +813,13 @@ onStepFinish: async (info) => {
               costUsd: stepCostUsd ?? undefined,
             }, dataDir);
             // Emit after the step is persisted so live stats (usage tree) can refresh per step.
-            await events.onStepEnd?.({ stepIndex: info.stepIndex });
+            // When auto compaction is on, also surface the step's context size
+            // (input + cache-read tokens) so the UI can show progress toward the
+            // compaction threshold per provider step return.
+            const stepContextTokens = autoCompactionOn && autoCompactionThreshold > 0
+              ? { used: (info.inputTokens ?? 0) + (info.cacheReadTokens ?? 0), max: autoCompactionThreshold }
+              : undefined;
+            await events.onStepEnd?.({ stepIndex: info.stepIndex, contextTokens: stepContextTokens });
             currentStepId = null;
           }
         },        onToolCall: (e) => {

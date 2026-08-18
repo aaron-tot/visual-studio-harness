@@ -94,6 +94,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingContent: "",
   streamingParts: [],
   streamingOutputTps: null,
+  // Live context token size (used / auto-compaction threshold) from per-step
+  // provider returns. null = unknown (no step/usage seen yet).
+  contextTokens: null,
+  setContextTokens: (ctx) => set({ contextTokens: ctx }),
   lastSeq: 0,
   _partSeq: 0,
   _textSeq: 0,

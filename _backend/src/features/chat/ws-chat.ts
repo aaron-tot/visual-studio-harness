@@ -65,7 +65,7 @@ function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | 
     onToolUpdate: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_update", sessionId: sid, toolCallId: e.toolCallId, status: e.status, ...(e.seq != null ? { seq: e.seq } : {}), ...(e.taskId ? { taskId: e.taskId } : {}) }); },
     onToolBatchStart: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_start", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls }); },
     onToolBatchEnd: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_end", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls.map((t) => ({ toolCallId: t.toolCallId, toolName: t.toolName, result: t.result, status: t.isError ? "error" : "completed" })) }); },
-    onStepEnd: (e) => { const sid = getSessionId(); const tid = getTurnId(); sendToSession(sid, { type: "step_end", sessionId: sid, stepIndex: e.stepIndex, ...(tid != null ? { turnId: tid } : {}) }); },
+    onStepEnd: (e) => { const sid = getSessionId(); const tid = getTurnId(); sendToSession(sid, { type: "step_end", sessionId: sid, stepIndex: e.stepIndex, ...(tid != null ? { turnId: tid } : {}) }); if (e.contextTokens) sendToSession(sid, { type: "context_tokens", sessionId: sid, ...e.contextTokens }); },
     onThinkingEnd: () => { const sid = getSessionId(); sendToSession(sid, { type: "thinking_end", sessionId: sid }); },
     onRetryError: ({ entry, seq }) => {
       const sid = getSessionId();

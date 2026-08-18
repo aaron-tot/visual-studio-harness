@@ -16,6 +16,9 @@ export interface ChatState {
   streamingParts: MessagePartType[];
   /** Live output TPS estimate (chars/4, VSH-calculated) — under-bubble badge while streaming. */
   streamingOutputTps: number | null;
+  /** Live context token size (used / auto-compaction threshold) from per-step provider returns. */
+  contextTokens: { used: number; max: number } | null;
+  setContextTokens: (ctx: { used: number; max: number } | null) => void;
   lastSeq: number;
   _partSeq: number;
   _textSeq: number;

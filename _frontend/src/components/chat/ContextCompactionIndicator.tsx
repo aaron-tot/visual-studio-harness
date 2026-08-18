@@ -20,7 +20,7 @@ export function ContextCompactionIndicator({
   workspaceRoot,
   contextTokens,
 }: {
-  sessionId: string;
+  sessionId: string | null;
   workspaceRoot?: string;
   contextTokens?: { used: number; max: number } | undefined;
 }) {
@@ -43,17 +43,18 @@ export function ContextCompactionIndicator({
 
   return (
     <div
-      className="inline-flex items-center gap-1.5 text-[10px] text-zinc-400 font-mono cursor-help select-none"
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-zinc-700/60 bg-zinc-900/70 text-[10px] text-zinc-300 font-mono cursor-help select-none mx-1"
       title={TOOLTIP}
+      data-testid="context-compaction-indicator"
     >
       <span className="shrink-0">
-        <span className="text-zinc-300">{fmtTokens(used)}</span>
-        <span className="text-zinc-600"> / {fmtTokens(threshold)}</span>
+        <span className="text-zinc-100">{fmtTokens(used)}</span>
+        <span className="text-zinc-500">/{fmtTokens(threshold)}</span>
       </span>
-      <span className="inline-block w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden" aria-hidden>
+      <span className="inline-block w-16 h-1.5 rounded-full bg-zinc-700/70 overflow-hidden" aria-hidden>
         <span
-          className={`block h-full rounded-full ${pct >= 90 ? "bg-amber-400" : "bg-zinc-500"}`}
-          style={{ width: `${pct}%` }}
+          className={`block h-full rounded-full ${pct >= 90 ? "bg-amber-400" : "bg-zinc-400"}`}
+          style={{ width: `${Math.max(pct, 2)}%` }}
         />
       </span>
     </div>

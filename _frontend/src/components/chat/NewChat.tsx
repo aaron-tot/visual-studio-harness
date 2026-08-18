@@ -726,8 +726,10 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
         }}>
           {inSession ? (
             <>
-              <CopyButtonSimple text={workspaceRoot} />
-              <ContextCompactionIndicator sessionId={sessionId} workspaceRoot={workspaceRoot} />
+              <div className="flex flex-col items-center gap-1">
+                <CopyButtonSimple text={workspaceRoot} />
+                <ContextCompactionIndicator sessionId={sessionId} workspaceRoot={workspaceRoot} />
+              </div>
               {config.showSessionName && sessionMeta?.title ? (
                 <div
                   data-testid="session-name-header"

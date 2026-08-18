@@ -191,10 +191,11 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
             {enabled ? (
             <>
               <div className="border-t border-zinc-800 pt-4">
-                <h3 className="text-sm font-medium text-zinc-100 mb-1">Context</h3>
+                <h3 className="text-sm font-medium text-zinc-100 mb-1">Compaction &amp; Summary</h3>
                 <p className="text-xs text-zinc-500 mb-3">
-                  Choose how context is managed. Manual offers the slider / pin; Auto Compaction
-                  summarizes automatically once the input context reaches the threshold.
+                  Choose how context is managed and how summaries are produced. Manual offers the
+                  slider / pin; Auto Compaction summarizes automatically once the input context
+                  reaches the threshold.
                 </p>
                 <div className="flex items-center gap-2 mb-3">
                   <button type="button" onClick={() => saveMode({ autoCompactionEnabled: false })}
@@ -245,11 +246,24 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                     )}
                   </>
                 )}
+
+                <SummarizationCard
+                  sessionId={sessionId}
+                  workspaceRoot={workspaceRoot}
+                  model={summarizationModel}
+                  fallbackModel={summarizationFallbackModel}
+                  promptMd={summarizationPromptMd}
+                  includePriorSummary={summarizeIncludePriorSummary}
+                  onModel={(m) => save({ summarizationModel: m })}
+                  onFallbackModel={(m) => save({ summarizationFallbackModel: m })}
+                  onPromptMd={(p) => save({ summarizationPromptMd: p })}
+                  onIncludePriorSummary={(v) => save({ summarizeIncludePriorSummary: v })}
+                />
               </div>
 
-              {/* History Inclusion Settings */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-zinc-100 mb-2">History Included in Context</h3>
+              {/* General History group */}
+              <div className="border-t border-zinc-800 pt-4 space-y-3">
+                <h3 className="text-sm font-medium text-zinc-100 mb-1">General History</h3>
                 <p className="text-xs text-zinc-500 mb-1">
                   These apply to <span className="text-zinc-300">previous turns only</span> — everything
                   from the current turn is always sent to the model. Turning a part type off removes it
@@ -348,18 +362,6 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                 </label>
               </div>
 
-              <SummarizationCard
-            sessionId={sessionId}
-            workspaceRoot={workspaceRoot}
-            model={summarizationModel}
-            fallbackModel={summarizationFallbackModel}
-            promptMd={summarizationPromptMd}
-            includePriorSummary={summarizeIncludePriorSummary}
-            onModel={(m) => save({ summarizationModel: m })}
-            onFallbackModel={(m) => save({ summarizationFallbackModel: m })}
-            onPromptMd={(p) => save({ summarizationPromptMd: p })}
-            onIncludePriorSummary={(v) => save({ summarizeIncludePriorSummary: v })}
-          />
             </>
             ) : (
               <p className="text-xs text-zinc-500">

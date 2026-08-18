@@ -17,6 +17,8 @@ export interface ContextScopeConfig {
   // new summary once the turn completes.
   autoCompactionEnabled?: boolean;
   autoCompactionTriggerTokens?: number;
+  /** Show the header token/compaction indicator (default on). */
+  autoCompactionShowIndicator?: boolean;
   enabled?: boolean;
   // "History Included in Context" flags — these control which part types are
   // re-sent from PREVIOUS turns. The current turn always carries everything.

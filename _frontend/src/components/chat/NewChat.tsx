@@ -22,6 +22,7 @@ import { LastMessageButton } from "../chat/LastMessageButton";
 import { ContextBar } from "../chat/ContextBar";
 import { InjectIndicator } from "../InjectIndicator";
 import { ContextIndicator } from "../chat/input/ContextIndicator";
+import { ContextCompactionIndicator } from "./ContextCompactionIndicator";
 import { SlotWaitingBanner } from "../tools/SlotWaitingBanner";
 import { AgentChangeDock } from "../tools/AgentChangeDock";
 import type { SessionConfig, ThinkingEffort } from "../../../../_shared/types";
@@ -726,6 +727,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
           {inSession ? (
             <>
               <CopyButtonSimple text={workspaceRoot} />
+              <ContextCompactionIndicator sessionId={sessionId} workspaceRoot={workspaceRoot} contextTokens={contextTokens} />
               {config.showSessionName && sessionMeta?.title ? (
                 <div
                   data-testid="session-name-header"

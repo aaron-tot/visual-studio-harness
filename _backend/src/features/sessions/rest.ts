@@ -214,6 +214,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       pinnedTurn?: number | null;
       autoCompactionEnabled?: boolean | null;
       autoCompactionTriggerTokens?: number | null;
+      autoCompactionShowIndicator?: boolean | null;
       enabled?: boolean | null;
       summarizationModel?: string | null;
       summarizationFallbackModel?: string | null;
@@ -237,6 +238,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       pinnedTurn: body.pinnedTurn !== undefined ? body.pinnedTurn : existingCtx.pinnedTurn ?? null,
       autoCompactionEnabled: body.autoCompactionEnabled !== undefined ? body.autoCompactionEnabled : existingCtx.autoCompactionEnabled ?? false,
       autoCompactionTriggerTokens: body.autoCompactionTriggerTokens !== undefined ? body.autoCompactionTriggerTokens : existingCtx.autoCompactionTriggerTokens ?? 0,
+      autoCompactionShowIndicator: body.autoCompactionShowIndicator !== undefined ? body.autoCompactionShowIndicator : existingCtx.autoCompactionShowIndicator ?? true,
       enabled: body.enabled !== undefined ? body.enabled : existingCtx.enabled ?? false,
       summarizationModel: body.summarizationModel !== undefined ? body.summarizationModel : existingCtx.summarizationModel ?? undefined,
       summarizationFallbackModel: body.summarizationFallbackModel !== undefined ? body.summarizationFallbackModel : existingCtx.summarizationFallbackModel ?? undefined,
@@ -336,7 +338,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     const hasOwn =
       (o: Record<string, unknown>) =>
         o["mode"] !== undefined || o["windowSize"] !== undefined || o["pinnedTurn"] !== undefined ||
-        o["autoCompactionEnabled"] !== undefined || o["autoCompactionTriggerTokens"] !== undefined ||
+        o["autoCompactionEnabled"] !== undefined || o["autoCompactionTriggerTokens"] !== undefined || o["autoCompactionShowIndicator"] !== undefined ||
         o["summarizationModel"] !== undefined || o["summarizationFallbackModel"] !== undefined || o["summarizationPromptMd"] !== undefined ||
         o["summarizeIncludePriorSummary"] !== undefined;
     const owner =
@@ -359,6 +361,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       pinnedTurn: resolvedPinnedTurn,
       autoCompactionEnabled: (pick("autoCompactionEnabled") as boolean | undefined) ?? false,
       autoCompactionTriggerTokens: (pick("autoCompactionTriggerTokens") as number | undefined) ?? 0,
+      autoCompactionShowIndicator: (pick("autoCompactionShowIndicator") as boolean | undefined) ?? true,
       summarizationModel: pick("summarizationModel") as string | undefined,
       summarizationFallbackModel: pick("summarizationFallbackModel") as string | undefined,
       summarizationPromptMd: pick("summarizationPromptMd") as string | undefined,

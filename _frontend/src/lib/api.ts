@@ -1495,6 +1495,7 @@ export interface SessionContextConfig {
   firstTurnNumber: number | null;
   autoCompactionEnabled?: boolean;
   autoCompactionTriggerTokens?: number;
+  autoCompactionShowIndicator?: boolean;
   owner?: "session" | "project" | "global" | "none";
   enabled?: boolean;
   summarizationModel?: string;

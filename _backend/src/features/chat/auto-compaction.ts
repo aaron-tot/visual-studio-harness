@@ -1,10 +1,17 @@
 /**
- * Auto compaction (v2): when the last live turn's provider-reported input
- * context is at/above a configured token threshold, the session is pending.
- * The next runTurn (user send / auto-continue) compact first — (a) summarize
- * the currently in-context turns into a new summary turn and (b) pin the
- * session to that summary — then persist and stream the new user message.
- * The new message is never included in the summary.
+ * Auto compaction (v2): when the current context is at/above a configured
+ * token threshold, the session is pending. The next runTurn (user send /
+ * auto-continue) compact first — (a) summarize the currently in-context turns
+ * into a new summary turn and (b) pin the session to that summary — then
+ * persist and stream the new user message. The new message is never included
+ * in the summary.
+ *
+ * "Current context" = the LAST STEP's provider-reported input + cache-read
+ * token count for the last live (`kind === "turn"`, success) turn. Use the
+ * step, NOT the turn: `turns.input_tokens` is the SUM across every step of
+ * that turn (cost figure). An agentic turn re-sends the whole growing context
+ * once per step, so summing massively over-counts the real context window.
+ * The latest step is always the actual current context.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -53,6 +60,19 @@ export function isPendingAutoCompaction(args: {
   if (args.lastInputTokens < args.triggerTokens) return false;
   if (args.latestSummaryEndTurn != null && args.latestSummaryEndTurn >= args.lastTurnNumber) return false;
   return true;
+}
+
+/**
+ * Split a "Provider/Model" ref on the FIRST slash only, so a provider whose
+ * model ids contain slashes (OpenRouter vendor/model, e.g.
+ * "Openrouter/deepseek/deepseek-v4-flash-0731") is still valid. Both halves
+ * must be non-empty. Mirrors splitModelRef in sessions/summarizer.ts.
+ */
+export function validModelRefParts(ref?: string | null): { providerName: string; modelName: string } | null {
+  if (!ref) return null;
+  const idx = ref.indexOf("/");
+  if (idx <= 0 || idx === ref.length - 1) return null;
+  return { providerName: ref.slice(0, idx), modelName: ref.slice(idx + 1) };
 }
 
 /**
@@ -136,9 +156,54 @@ function resolveEffectiveAutoConfig(
 }
 
 /**
- * Last completed live turn's context token size (input + cache-read) against the
- * effective auto-compaction threshold. Used to seed the header context indicator
- * on session load/navigation (not just while a turn streams). Returns null when
+ * The current context is the LAST STEP's provider-reported input token count
+ * for the last live (`kind === "turn"`, success) turn. Always the latest
+ * step — never the turn aggregate: `turns.input_tokens` is summed across all
+ * steps of the turn (a cost figure), and an agentic turn re-sends the whole
+ * growing context once per step, so the aggregate massively over-counts the
+ * actual context window.
+ *
+ * `input_tokens` already includes the cached portion (OpenAI-compatible usage:
+ * `prompt_tokens` is the whole prompt; `prompt_tokens_details.cached_tokens`
+ * is a sub-slice). Cached + non-cached both occupy the context window, so the
+ * context size is `inputTokens` alone — never `inputTokens + cacheReadTokens`,
+ * which double-counts the cached portion.
+ *
+ * Returns the live turn's latest step usage (or null when there is no live
+ * turn or it has no steps yet).
+ */
+function readLastLiveContextUsage(
+  db: ReturnType<typeof getDbForDataDir>,
+  sessionId: string,
+): { turnNumber: number; used: number } | null {
+  const lastLive = db
+    .select({ id: turns.id, turnNumber: turns.turnNumber })
+    .from(turns)
+    .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn"), eq(turns.success, true)))
+    .orderBy(desc(turns.turnNumber))
+    .limit(1)
+    .get();
+  if (!lastLive) return null;
+
+  const lastStep = db
+    .select({ inputTokens: steps.inputTokens })
+    .from(steps)
+    .where(eq(steps.turnId, lastLive.id))
+    .orderBy(desc(steps.id))
+    .limit(1)
+    .get();
+  if (!lastStep) return null;
+
+  return {
+    turnNumber: lastLive.turnNumber,
+    used: lastStep.inputTokens ?? 0,
+  };
+}
+
+/**
+ * Last live turn's latest-step context token size against the effective
+ * auto-compaction threshold. Used to seed the header context indicator on
+ * session load/navigation (not just while a turn streams). Returns null when
  * auto compaction is off/unset or there is no completed live turn yet.
  */
 export function getLastContextTokenUsage(
@@ -150,16 +215,10 @@ export function getLastContextTokenUsage(
   if (!cfg.enabled || !cfg.triggerTokens || cfg.triggerTokens <= 0) return null;
 
   const db = getDbForDataDir(dataDir);
-  const lastLive = db
-    .select({ turnNumber: turns.turnNumber, inputTokens: turns.inputTokens, cacheReadTokens: turns.cacheReadTokens })
-    .from(turns)
-    .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn"), eq(turns.success, true)))
-    .orderBy(desc(turns.turnNumber))
-    .limit(1)
-    .get();
+  const lastLive = readLastLiveContextUsage(db, sessionId);
   if (!lastLive) return null;
 
-  const used = (lastLive.inputTokens ?? 0) + (lastLive.cacheReadTokens ?? 0);
+  const used = lastLive.used;
   const latest = getLatestSummaryRange(dataDir, sessionId);
   return {
     used,
@@ -207,16 +266,10 @@ export async function maybeAutoCompact(
   if (!cfg.enabled || !cfg.triggerTokens || cfg.triggerTokens <= 0) return false;
 
   const db = getDbForDataDir(dataDir);
-  const lastLive = db
-    .select({ turnNumber: turns.turnNumber, inputTokens: turns.inputTokens, cacheReadTokens: turns.cacheReadTokens })
-    .from(turns)
-    .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn"), eq(turns.success, true)))
-    .orderBy(desc(turns.turnNumber))
-    .limit(1)
-    .get();
+  const lastLive = readLastLiveContextUsage(db, sessionId);
   if (!lastLive) return false;
 
-  const lastInputTokens = (lastLive.inputTokens ?? 0) + (lastLive.cacheReadTokens ?? 0);
+  const lastInputTokens = lastLive.used;
   const latest = getLatestSummaryRange(dataDir, sessionId);
   if (!isPendingAutoCompaction({
     enabled: cfg.enabled,
@@ -298,7 +351,8 @@ async function performAutoCompaction(
   }
   const messages = buildSummarizationMessages(priorSummary, rangeTurns);
 
-  if (!cfg.modelRef || !/^[^/]+\/[^/]+$/.test(cfg.modelRef)) {
+  const refParts = validModelRefParts(cfg.modelRef);
+  if (!refParts) {
     throw new AutoCompactionBlockedError("auto-compaction: no valid summarization model configured");
   }
   const promptContent = (await readSummarizationPrompt(cfg.promptMd)) ?? `Summarize conversation turns ${startTurn}–${endTurnNum}`;
@@ -323,8 +377,8 @@ async function performAutoCompaction(
     kind: "subagent",
     parentId: sessionId,
     taskLabel: childLabel,
-    providerName: cfg.modelRef.split("/")[0] ?? "",
-    modelName: cfg.modelRef.split("/")[1] ?? "",
+    providerName: refParts.providerName ?? "",
+    modelName: refParts.modelName ?? "",
     workspaceRoot,
     created: now,
     updated: now,
@@ -344,12 +398,12 @@ async function performAutoCompaction(
   cloneRangeTurnsToChild(dataDir, childSessionId, rangeGroups, now, priorSummaryGroup);
   const childTurnNumber = getNextTurnNumber(childSessionId, dataDir);
   const childTurnId = createTurn(childSessionId, childTurnNumber, promptContent, now, {
-    providerName: cfg.modelRef.split("/")[0] ?? "unknown",
-    modelName: cfg.modelRef.split("/")[1] ?? "summarizer",
+    providerName: refParts.providerName ?? "unknown",
+    modelName: refParts.modelName ?? "summarizer",
   }, dataDir);
   const childStepId = createStep(childTurnId, childSessionId, 0, {
-    providerName: cfg.modelRef.split("/")[0] ?? "unknown",
-    modelId: cfg.modelRef.split("/")[1] ?? "summarizer",
+    providerName: refParts.providerName ?? "unknown",
+    modelId: refParts.modelName ?? "summarizer",
   }, dataDir);
   const childWriter = createStepStreamWriter(childSessionId, childTurnId, childStepId, dataDir);
   let childPartSeq = 0;
@@ -361,7 +415,7 @@ async function performAutoCompaction(
     kind: "summary",
     promptMd: cfg.promptMd ?? null,
     model: cfg.modelRef,
-    provider: cfg.modelRef.split("/")[0] ?? null,
+    provider: refParts.providerName ?? null,
     range: { startTurn, endTurn: endTurnNum },
     prevRangeId: prior?.id ?? null,
     originalTokens,
@@ -379,8 +433,8 @@ async function performAutoCompaction(
     userTimestamp: now,
     status: "pending",
     success: false,
-    providerName: cfg.modelRef.split("/")[0] ?? "unknown",
-    modelName: cfg.modelRef.split("/")[1] ?? "summarizer",
+    providerName: refParts.providerName ?? "unknown",
+    modelName: refParts.modelName ?? "summarizer",
     finishReason: null,
     durationMs: 0,
     startedAt: now,
@@ -478,8 +532,8 @@ async function performAutoCompaction(
   }).where(eq(turns.id, summaryTurnId)).run();
   const stepResult = db.insert(steps).values({
     sessionId, turnId: summaryTurnId, stepIndex: 0, status: "completed",
-    providerName: cfg.modelRef.split("/")[0] ?? "unknown",
-    modelId: cfg.modelRef.split("/")[1] ?? "summarizer",
+    providerName: refParts.providerName ?? "unknown",
+    modelId: refParts.modelName ?? "summarizer",
     finishReason: "stop", startedAt: now, completedAt: now, stepTimeMs: 0,
   }).returning({ id: steps.id }).get();
   const stepId = stepResult?.id;

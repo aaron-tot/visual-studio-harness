@@ -38,6 +38,8 @@ export interface ChatState {
   inspectedTurnId: number | null;
   streamingStartTime: number | null;
   retryCountdown: RetryCountdownState | null;
+  /** Timestamp of last backend activity (token, pulse, tool, etc.) for timeout tracking. */
+  lastBackendActivity: number;
   setWorkspaceRoot: (path: string) => void;
   updateSessionMeta: (patch: Partial<SessionMeta>) => void;
   loadSession: (id: string) => Promise<void>;
@@ -83,6 +85,8 @@ export interface ChatState {
   }) => void;
   /** Live retryable-error event: upserts the error part in streamingParts + starts the countdown bar. */
   onRetryError: (payload: { entry: RetryEntry; seq: number }) => void;
+  /** Live retry status update: updates the retry entry status (succeeded/failed/aborted) in streamingParts. */
+  onRetryUpdate: (entry: RetryEntry) => void;
   onToolStart: (e: {
     toolCallId: string;
     toolName: string;
@@ -173,6 +177,8 @@ export interface ChatState {
   setRetryCountdown: (state: RetryCountdownState) => void;
   updateRetryCountdown: (remainingMs: number) => void;
   clearRetryCountdown: () => void;
+  /** Update the last backend activity timestamp for streaming timeout tracking. */
+  setLastBackendActivity: (ts: number) => void;
   clearNewChatDraft: () => void;
   startNewChat: () => void;
 }
@@ -235,4 +241,5 @@ export type BufferedDelta =
       retries?: RetryEntry[];
       errorTime?: string;
     }
-  | { kind: "retry_error"; sessionId: string; entry: RetryEntry; seq: number };
+  | { kind: "retry_error"; sessionId: string; entry: RetryEntry; seq: number }
+  | { kind: "retry_update"; sessionId: string; entry: RetryEntry };

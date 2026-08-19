@@ -56,12 +56,26 @@ export async function handleSessionUpdate(msg: SessionUpdateWsMessage, dataDir: 
   return updateSessionMeta(dataDir, msg.sessionId, fields);
 }
 
-function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined, announceStreamStart: () => void): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate" | "onToolBatchStart" | "onToolBatchEnd" | "onStepEnd" | "onThinkingEnd" | "announceStreamStart" | "onRetryError"> {
+function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | undefined, announceStreamStart: () => void): Pick<TurnEvents, "onToken" | "onReasoning" | "onToolCall" | "onToolResult" | "onToolUpdate" | "onToolBatchStart" | "onToolBatchEnd" | "onStepEnd" | "onThinkingEnd" | "announceStreamStart" | "onRetryError" | "onRetryUpdate"> {
   return {
     onToken: (token, seq, tps) => { const sid = getSessionId(); sendToSession(sid, { type: "token", sessionId: sid, content: token, seq, ...(tps != null ? { tps } : {}) }); },
     onReasoning: (delta, seq, tps) => { const sid = getSessionId(); sendToSession(sid, { type: "reasoning", sessionId: sid, content: delta, seq, ...(tps != null ? { tps } : {}) }); },
-    onToolCall: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_start", sessionId: sid, toolCallId: e.toolCallId, toolName: e.toolName, args: e.args, stepIndex: e.stepIndex, ...(e.seq != null ? { seq: e.seq } : {}), ...(e.parentToolCallId ? { parentToolCallId: e.parentToolCallId } : {}) }); },
-    onToolResult: (e) => { const sid = getSessionId(); const tid = getTurnId(); sendToSession(sid, { type: "tool_end", sessionId: sid, toolCallId: e.toolCallId, status: e.isError ? "error" : "completed", result: e.output, error: e.isError ? String(e.output) : undefined, ...(e.seq != null ? { seq: e.seq } : {}), ...(tid != null ? { turnId: tid } : {}) }); },
+    onToolCall: (e) => {
+      const sid = getSessionId();
+      const tid = getTurnId();
+      // Send tool_executing heartbeat for streaming timeout tracking
+      sendToSession(sid, { type: "tool_executing", sessionId: sid, ...(tid != null ? { turnId: tid } : {}), toolCallId: e.toolCallId, toolName: e.toolName });
+      // Send original tool_start event
+      sendToSession(sid, { type: "tool_start", sessionId: sid, toolCallId: e.toolCallId, toolName: e.toolName, args: e.args, stepIndex: e.stepIndex, ...(e.seq != null ? { seq: e.seq } : {}), ...(e.parentToolCallId ? { parentToolCallId: e.parentToolCallId } : {}) });
+    },
+    onToolResult: (e) => {
+      const sid = getSessionId();
+      const tid = getTurnId();
+      // Send tool_completed heartbeat for streaming timeout tracking
+      sendToSession(sid, { type: "tool_completed", sessionId: sid, ...(tid != null ? { turnId: tid } : {}), toolCallId: e.toolCallId });
+      // Send original tool_end event
+      sendToSession(sid, { type: "tool_end", sessionId: sid, toolCallId: e.toolCallId, status: e.isError ? "error" : "completed", result: e.output, error: e.isError ? String(e.output) : undefined, ...(e.seq != null ? { seq: e.seq } : {}), ...(tid != null ? { turnId: tid } : {}) });
+    },
     onToolUpdate: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "tool_update", sessionId: sid, toolCallId: e.toolCallId, status: e.status, ...(e.seq != null ? { seq: e.seq } : {}), ...(e.taskId ? { taskId: e.taskId } : {}) }); },
     onToolBatchStart: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_start", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls }); },
     onToolBatchEnd: (e) => { const sid = getSessionId(); sendToSession(sid, { type: "step_tool_end", sessionId: sid, stepIndex: e.stepIndex, toolCalls: e.toolCalls.map((t) => ({ toolCallId: t.toolCallId, toolName: t.toolName, result: t.result, status: t.isError ? "error" : "completed" })) }); },
@@ -82,6 +96,23 @@ function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | 
         ...(entry.isCustom != null ? { isCustom: entry.isCustom } : {}),
         ...(entry.category ? { category: entry.category } : {}),
         errorTime: entry.errorTime,
+      });
+    },
+    onRetryUpdate: (entry) => {
+      const sid = getSessionId();
+      sendToSession(sid, {
+        type: "retry_update",
+        sessionId: sid,
+        attempt: entry.attempt,
+        maxAttempts: entry.maxAttempts,
+        errorLabel: entry.errorLabel,
+        status: entry.status,
+        errorTime: entry.errorTime,
+        message: entry.message,
+        ...(entry.raw ? { raw: entry.raw } : {}),
+        ...(entry.isCustom != null ? { isCustom: entry.isCustom } : {}),
+        ...(entry.category ? { category: entry.category } : {}),
+        ...(entry.errorCode != null ? { errorCode: entry.errorCode } : {}),
       });
     },
     announceStreamStart,

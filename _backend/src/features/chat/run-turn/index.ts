@@ -29,6 +29,7 @@ import {
   type HookSource,
   type HookContext,
 } from "../../hooks";
+import { sendToSession } from "../../sessions/view-tracker";
 import { resolveRuntimeFromSettings, getAgentSettings, resolveSessionRuntime, type ResolvedRuntime } from "../../agents/runtime-settings";
 import { readAgent } from "../../agents/rest";
 import { createPerStepSystemInfo } from "../per-step-system-prompt";
@@ -327,6 +328,8 @@ export async function runTurn(
   const session = await getLiveSessionMeta(dataDir, sessionId);
   if (!session) throw new Error("Session not found after create");
   events.onSessionReady?.({ sessionId, created, meta: session, turnId: turnNumber });
+  // Emit turn_started for frontend streaming timeout tracking
+  sendToSession(sessionId, { type: "turn_started", sessionId, turnId: turnNumber });
   await bus?.emit("turn.start", hookCtx, { sessionId, created, meta: session, workspaceRoot });
 
   const useTools = toolsEnabled();
@@ -659,6 +662,7 @@ export async function runTurn(
         providerRouting: model.providerOrder
           ? { order: model.providerOrder, allowFallbacks: model.allowProviderFallbacks ?? true }
           : undefined,
+        turnId: traceTurnId,
         onRetryAttempt: () => {
           if (traceTurnId != null) {
             clearTurnSteps(traceTurnId, dataDir);

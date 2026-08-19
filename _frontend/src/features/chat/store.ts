@@ -61,20 +61,32 @@ function clearDraftSaveTimeout() {
 // ── Streaming timeout safety net ──────────────────────────────────────────
 // Prevents "Thinking" from hanging forever if error/done events are lost
 // (e.g. WebSocket disconnect, backend crash, race condition).
-// Timer resets on every streaming event (token, reasoning, tool, etc).
-// If no events arrive within STREAM_TIMEOUT_MS, force-stop with an error.
-const STREAM_TIMEOUT_MS = 60_000;
+// Uses lastBackendActivity timestamp (updated on ANY backend event) instead of
+// timer reset. If no backend activity for STREAM_TIMEOUT_MS, force-stop with an error.
+const STREAM_TIMEOUT_MS = 90_000;
 let _streamTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-/** Reset the streaming-done timeout. Call on every streaming event. */
+/** Update lastBackendActivity and (re)start the streaming timeout check. */
 export function touchStreamTimeout(): void {
+  const now = Date.now();
+  useChatStore.getState().setLastBackendActivity(now);
   if (_streamTimeoutId) clearTimeout(_streamTimeoutId);
-  if (!useChatStore.getState().streaming) { _streamTimeoutId = null; return; }
   _streamTimeoutId = setTimeout(() => {
     _streamTimeoutId = null;
     const store = useChatStore.getState();
-    if (!store.streaming) return;
-    chatDebug("stream-timeout", "force-stopping after 60s inactivity");
+    const inactiveMs = Date.now() - store.lastBackendActivity;
+    if (inactiveMs < STREAM_TIMEOUT_MS) {
+      // Activity occurred after timeout was scheduled; re-arm.
+      touchStreamTimeout();
+      return;
+    }
+    chatDebug("stream-timeout", "force-stopping after inactivity", {
+      inactiveMs,
+      streaming: store.streaming,
+      streamingTurnId: store.streamingTurnId,
+      sessionId: store.sessionId,
+      lastBackendActivity: store.lastBackendActivity,
+    });
     store.failStreaming("Request timed out — no response from server. Please check the backend and try again.", { category: "network" });
   }, STREAM_TIMEOUT_MS);
 }
@@ -183,8 +195,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
       };
     });
   },
+  onRetryUpdate: (entry) => {
+    touchStreamTimeout();
+    return set((state) => {
+      const parts = [...state.streamingParts];
+      // Compute the same errorKey used in onRetryError
+      const errorKey = `${entry.errorCode ?? "none"}:${entry.category ?? "unknown"}:${entry.errorLabel}`;
+      // Find the error part for this upstream error
+      const idx = parts.findIndex(
+        (p) => p.type === "error" && (p as any).errorKey === errorKey,
+      );
+      if (idx < 0) return {}; // No matching error part (shouldn't happen)
+      const errPart = parts[idx] as { type: "error"; retries?: RetryEntry[]; errorKey?: string };
+      if (!errPart.retries || errPart.retries.length === 0) return {};
+      // Find the retry entry with matching attempt number and update its status
+      const retries = errPart.retries.map((r) =>
+        r.attempt === entry.attempt ? { ...r, status: entry.status } : r
+      );
+      parts[idx] = { ...errPart, retries } as any;
+      return { streamingParts: parts };
+    });
+  },
   streamingStartTime: null,
+  lastBackendActivity: 0,
   setStreamingStartTime: (time) => set({ streamingStartTime: time }),
+  setLastBackendActivity: (ts: number) => set({ lastBackendActivity: ts }),
 
   setWorkspaceRoot: (path) => {
     localStorage.setItem("VISUAL STUDIO HARNESS.workspaceRoot", path);

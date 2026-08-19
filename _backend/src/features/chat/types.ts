@@ -54,6 +54,8 @@ export interface TurnEvents {
   onStepEnd?: (e: { stepIndex?: number; contextTokens?: { used: number; max: number; pending?: boolean } }) => void | Promise<void>;
   /** Called when a retryable failure is recorded (before the retry wait). seq is turn-global. */
   onRetryError?: (e: { entry: RetryEntry; seq: number }) => void;
+  /** Called when a retry entry's status changes (succeeded/failed/aborted after wait). */
+  onRetryUpdate?: (entry: RetryEntry) => void;
   /** Called when the reasoning/thinking phase ends (text, tool, or step finish after reasoning). */
   onThinkingEnd?: () => void | Promise<void>;
   askPermission?: (toolName: string, args: unknown, callId: string) => Promise<boolean>;

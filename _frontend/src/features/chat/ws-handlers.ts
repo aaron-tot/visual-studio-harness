@@ -55,6 +55,7 @@ wsClient.on("token", (data: any) => {
       _pendingToken = "";
       _pendingSeq = 0;
       _pendingTokenTps = undefined;
+      touchStreamTimeout();
       useChatStore.getState().appendToken(t, s, tp);
     });
   }
@@ -64,6 +65,7 @@ wsClient.on("context_tokens", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
   if (typeof data.used !== "number" || typeof data.max !== "number") return;
+  touchStreamTimeout();
   useChatStore.setState({
     contextTokens: {
       used: data.used,
@@ -76,6 +78,7 @@ wsClient.on("context_tokens", (data: any) => {
 wsClient.on("compacting", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
+  touchStreamTimeout();
   useChatStore.getState().setCompacting(data.active === true);
 });
 
@@ -102,6 +105,7 @@ wsClient.on("reasoning", (data: any) => {
       _pendingReasoning = "";
       _pendingReasonSeq = 0;
       _pendingReasonTps = undefined;
+      touchStreamTimeout();
       useChatStore.getState().appendReasoning(r, s, t);
     });
   }
@@ -114,6 +118,7 @@ wsClient.on("thinking_end", (data: any) => {
     bufferDelta({ kind: "thinking_end", sessionId: data.sessionId });
     return;
   }
+  touchStreamTimeout();
   useChatStore.getState().endThinking();
 });
 
@@ -161,6 +166,7 @@ wsClient.on("done", (data: any) => {
     chatDebug("done", "ignored: store.streaming is false (no active turn)", { turnId: data.turnId });
     return;
   }
+  touchStreamTimeout();
   chatDebug("done", "applied", { turnId: data.turnId });
   store.doneStreaming(data.modelName, data.providerName, data.durationMs, data.turnId, data.agentName);
 });
@@ -178,14 +184,38 @@ wsClient.on("error", (data: any) => {
     bufferDelta({ kind: "error", sessionId: errSid || store.sessionId || "new", error: data?.error || "Unknown error", rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, status: data.status, retries: data?.retries, errorTime: data?.errorTime });
     return;
   }
+  touchStreamTimeout();
   chatDebug("error", "applied" + (!store.streaming ? " (streaming was false)" : ""), { error: data?.error, turnId: data.turnId, category: data?.category });
   console.error("chat error", data?.error, data?.rawError);
   store.failStreaming(data?.error || "Unknown error", { modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, status: data.status, category: data?.category, retries: data?.retries, errorTime: data?.errorTime });
 });
 
+wsClient.on("turn_started", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
+});
+
 wsClient.on("stream_pulse", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
-  if (data.sessionId !== currentId) return;
+  if (data.sessionId && data.sessionId !== currentId) return;
+  // Validate turnId if present (frontend's streamingTurnId is the source of truth)
+  const store = useChatStore.getState();
+  if (data.turnId != null && store.streamingTurnId != null && data.turnId !== store.streamingTurnId) {
+    return; // Stale pulse from old turn
+  }
+  touchStreamTimeout();
+});
+
+wsClient.on("tool_executing", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
+});
+
+wsClient.on("tool_completed", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId && data.sessionId !== currentId) return;
   touchStreamTimeout();
 });
 
@@ -218,18 +248,33 @@ wsClient.on("retry_start", (data: any) => {
 wsClient.on("retry_tick", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
   useChatStore.getState().updateRetryCountdown(data.remainingMs);
 });
 
 wsClient.on("retry_end", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
   useChatStore.getState().clearRetryCountdown();
+});
+
+wsClient.on("retry_update", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId && data.sessionId !== currentId) return;
+  if (awaitingSessionState) {
+    // Buffer the retry update to apply after session state is loaded
+    bufferDelta({ kind: "retry_update", sessionId: data.sessionId || useChatStore.getState().sessionId || "new", ...data });
+    return;
+  }
+  touchStreamTimeout();
+  useChatStore.getState().onRetryUpdate?.(data);
 });
 
 wsClient.on("tool_start", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
+  touchStreamTimeout();
   useChatStore.getState().clearOutputTps(); // output paused — hide live badge
   if (awaitingSessionState) {
     bufferDelta({ kind: "tool_start", sessionId: data.sessionId, toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, parentToolCallId: data.parentToolCallId, seq: data.seq, stepIndex: data.stepIndex });
@@ -241,6 +286,7 @@ wsClient.on("tool_start", (data: any) => {
 wsClient.on("tool_update", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
+  touchStreamTimeout();
   if (awaitingSessionState) {
     bufferDelta({ kind: "tool_update", sessionId: data.sessionId, toolCallId: data.toolCallId, status: data.status, partial: data.partial, seq: data.seq, ...(data.taskId ? { taskId: data.taskId } : {}) });
     return;
@@ -251,6 +297,7 @@ wsClient.on("tool_update", (data: any) => {
 wsClient.on("tool_end", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
+  touchStreamTimeout();
   if (awaitingSessionState) {
     bufferDelta({ kind: "tool_end", sessionId: data.sessionId, toolCallId: data.toolCallId, status: data.status, result: data.result, error: data.error, seq: data.seq, turnId: data.turnId });
     return;
@@ -262,6 +309,7 @@ wsClient.on("permission_request", (data: any) => {
   if (awaitingSessionState) return;
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
   if (data.toolCallId && data.toolName) {
     pendingPermToolNames.set(data.toolCallId, data.toolName);
   }
@@ -283,6 +331,7 @@ wsClient.on("permission_request", (data: any) => {
 wsClient.on("subagent_config_request", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
   if (data.toolCallId) useChatStore.getState().onToolUpdate({ toolCallId: data.toolCallId, status: "awaiting_config" });
   useChatStore.getState().setSubagentConfigPrompt({ requestId: data.requestId, sessionId: data.sessionId || useChatStore.getState().sessionId || "", toolCallId: data.toolCallId, reason: data.reason || "Configure subagent model", suggestedProvider: data.suggestedProvider, suggestedModel: data.suggestedModel });
 });
@@ -290,6 +339,7 @@ wsClient.on("subagent_config_request", (data: any) => {
 wsClient.on("slot_busy_request", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
   if (data.toolCallId) useChatStore.getState().onToolUpdate({ toolCallId: data.toolCallId, status: "awaiting_config" });
   useChatStore.getState().setSlotBusyPrompt({ requestId: data.requestId, sessionId: data.sessionId || useChatStore.getState().sessionId || "", toolCallId: data.toolCallId, detail: data.detail || "no free slots", free: typeof data.free === "number" ? data.free : 0, total: typeof data.total === "number" ? data.total : 0, modelAlias: data.modelAlias, baseUrl: data.baseUrl || "", defaultPollIntervalSec: data.defaultPollIntervalSec ?? 5, defaultWaitTimeoutSec: data.defaultWaitTimeoutSec ?? 300 });
 });
@@ -297,6 +347,7 @@ wsClient.on("slot_busy_request", (data: any) => {
 wsClient.on("agent_change_request", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
   if (data.toolCallId) useChatStore.getState().onToolUpdate({ toolCallId: data.toolCallId, status: "awaiting_agent_change" });
   useChatStore.getState().setAgentChangePrompt({ requestId: data.requestId, sessionId: data.sessionId || useChatStore.getState().sessionId || "", toolCallId: data.toolCallId, suggestedAgent: data.suggestedAgent || "", reason: data.reason || "", agents: data.agents || [] });
 });
@@ -304,6 +355,7 @@ wsClient.on("agent_change_request", (data: any) => {
 wsClient.on("slot_wait_started", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
   if (data.toolCallId) useChatStore.getState().onToolUpdate({ toolCallId: data.toolCallId, status: "awaiting_config" });
   useChatStore.setState({ slotWaitState: { requestId: data.requestId, toolCallId: data.toolCallId, detail: data.detail || "waiting for free slot", free: typeof data.free === "number" ? data.free : 0, total: typeof data.total === "number" ? data.total : 0, modelAlias: data.modelAlias, pollIntervalSec: data.pollIntervalSec ?? 5, waitTimeoutSec: data.waitTimeoutSec ?? 300, statusMessage: undefined } });
 });
@@ -311,6 +363,7 @@ wsClient.on("slot_wait_started", (data: any) => {
 wsClient.on("slot_wait_status", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
   const cur = useChatStore.getState().slotWaitState;
   if (!cur || (data.requestId && cur.requestId !== data.requestId)) return;
   useChatStore.setState({ slotWaitState: { ...cur, statusMessage: data.message || cur.statusMessage } });
@@ -319,6 +372,7 @@ wsClient.on("slot_wait_status", (data: any) => {
 wsClient.on("slot_wait_ended", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId && data.sessionId !== currentId) return;
+  touchStreamTimeout();
   const cur = useChatStore.getState().slotWaitState;
   if (!cur) return;
   if (data.requestId && cur.requestId !== data.requestId) return;

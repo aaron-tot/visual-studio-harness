@@ -50,7 +50,7 @@ function redactHeaders(headers: Record<string, string>): Record<string, string> 
 }
 
 export async function streamChat(options: StreamChatOptions): Promise<StreamChatResult> {
-  const { provider, model, messages, onToken, onReasoning, onToolCall, onToolResult, tools, maxSteps = 30, temperature, thinkingEffort, signal, hookCtx, prepareStep } = options;
+  const { provider, model, messages, onToken, onReasoning, onToolCall, onToolResult, tools, maxSteps = 30, temperature, thinkingEffort, signal, hookCtx, prepareStep, onRetryError, onRetryUpdate, turnId } = options;
 
   const errCtx = { provider: provider.displayName, model };
   const retryConfig = {
@@ -161,7 +161,12 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
 
   /** Settle every pending entry (at most one exists) to a terminal status. */
   const settleRetries = (status: RetryEntry["status"]) => {
-    for (const r of retryEntries) if (r.status === "pending") r.status = status;
+    for (const r of retryEntries) {
+      if (r.status === "pending") {
+        r.status = status;
+        options.onRetryUpdate?.(r);
+      }
+    }
   };
 
   if (bus && hookCtx) {
@@ -199,8 +204,8 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
         pulseInterval = null;
         return;
       }
-      sendToSession(sid, { type: "stream_pulse", sessionId: sid });
-    }, 30_000);
+      sendToSession(sid, { type: "stream_pulse", sessionId: sid, ...(turnId != null ? { turnId } : {}) });
+    }, 15_000);
   };
   const stopPulse = () => {
     if (pulseInterval) {
@@ -208,6 +213,9 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
       pulseInterval = null;
     }
   };
+
+  // Start pulse heartbeat immediately at turn start (before any provider call)
+  startPulse();
 
   assertExactlyOneSystemMessage(messages);
 
@@ -287,9 +295,6 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
               },
             })
           : { fullStream: createMockFullStream(model, signal, options.modelSpeed, options.workspaceRoot) };
-
-        // Start pulse heartbeat after stream is created
-        startPulse();
 
         const evtCounts: Record<string, number> = {};
         let firstEventLogged = false;

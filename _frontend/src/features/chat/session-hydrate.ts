@@ -70,5 +70,6 @@ export function replayPendingDeltas(sessionId: string, afterSeq: number) {
     else if (e.kind === "tool_end") useChatStore.getState().onToolEnd({ toolCallId: e.toolCallId, status: e.status, result: e.result, error: e.error, seq: e.seq, turnId: e.turnId });
     else if (e.kind === "tool_update") useChatStore.getState().onToolUpdate({ toolCallId: e.toolCallId, status: e.status, partial: e.partial, seq: e.seq, ...(e.taskId ? { taskId: e.taskId } : {}) });
     else if (e.kind === "retry_error") useChatStore.getState().onRetryError({ entry: e.entry, seq: e.seq });
+    else if (e.kind === "retry_update") useChatStore.getState().onRetryUpdate?.(e.entry);
   }
 }

@@ -42,6 +42,8 @@ export interface StreamChatOptions {
   onRetryAttempt?: (attempt: number) => void;
   /** Fires when a retryable failure is recorded (before the retry wait). */
   onRetryError?: (entry: RetryEntry) => void;
+  /** Fires when a retry entry's status changes (succeeded/failed/aborted after wait). */
+  onRetryUpdate?: (entry: RetryEntry) => void;
   onStepStart?: (info: { stepIndex: number; request?: unknown; warnings?: unknown[] }) => void;
   /** Full finish-step payload — prefer `meta` for DB writes */
   onStepFinish?: (info: StepFinishMeta) => void;
@@ -55,6 +57,8 @@ export interface StreamChatOptions {
   sessionId?: string;
   /** Parent conversation id for subagent turns (x-parent-session-id). */
   parentSessionId?: string;
+  /** Turn number (database turn_number) for heartbeat identification. */
+  turnId?: number;
   /** Fixed-provider routing for OpenAI-compatible/OpenRouter endpoints. */
   providerRouting?: { order?: string[]; allowFallbacks?: boolean };
   tools?: ToolSet;

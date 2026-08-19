@@ -4,6 +4,7 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { ChatArea } from "./components/layout/ChatArea";
 import { InfoPanel } from "./components/layout/InfoPanel";
 import { SettingsModal } from "./components/layout/SettingsModal";
+import { Toaster } from "./components/ui/Toaster";
 import { SubagentConfigModal } from "./components/tools/SubagentConfigModal";
 import { SlotBusyModal } from "./components/tools/SlotBusyModal";
 import { useChatStore } from "./stores/chat";
@@ -142,6 +143,7 @@ function App() {
           onClose={() => setSlotBusyPrompt(null)}
         />
       )}
+      <Toaster />
     </div>
   );
 }

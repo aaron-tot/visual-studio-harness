@@ -28,6 +28,9 @@ export function ContextCompactionIndicator({
   workspaceRoot?: string;
 }) {
   const contextTokens = useChatStore((s) => s.contextTokens);
+  // Re-fetch the effective config whenever a settings save bumps the version,
+  // so the threshold/label reflects edits (e.g. changing 20k → 50k) immediately.
+  const contextConfigVersion = useChatStore((s) => s.contextConfigVersion);
   const [cfg, setCfg] = useState<SessionContextConfig | null>(null);
 
   useEffect(() => {
@@ -37,13 +40,15 @@ export function ContextCompactionIndicator({
       .then((c) => { if (!cancelled) setCfg(c); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [sessionId, workspaceRoot]);
+  }, [sessionId, workspaceRoot, contextConfigVersion]);
 
   if (!cfg?.autoCompactionEnabled || !cfg.autoCompactionShowIndicator) return null;
 
+  // Threshold comes from the live effective config (reflects settings edits);
+  // used comes from the store (backend per-step / session-load snapshot).
   const threshold = cfg.autoCompactionTriggerTokens ?? 0;
   const used = contextTokens?.used ?? 0;
-  const pct = contextTokens && contextTokens.max > 0 ? Math.min(100, Math.round((used / contextTokens.max) * 100)) : 0;
+  const pct = threshold > 0 ? Math.min(100, Math.round((used / threshold) * 100)) : 0;
 
   return (
     <div

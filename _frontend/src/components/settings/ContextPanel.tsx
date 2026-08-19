@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getSessionContextConfig, putSessionContextConfig, getScopedContextConfig, putScopedContextConfig } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
+import { useToastStore } from "../../stores/toast";
 import { useConfigStore } from "../../stores/config";
 import { ScopePicker } from "../../features/info-panel/components/ScopePicker";
 import type { PlanScope } from "../../features/info-panel/types";
@@ -33,6 +34,7 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   const [summarizeIncludePriorSummary, setSummarizeIncludePriorSummary] = useState(true);
 
   const bumpVer = useChatStore((s) => s.bumpContextConfigVersion);
+  const notify = useToastStore((s) => s.notify);
   const workspaceRoot = useChatStore((s) => s.workspaceRoot);
   const config = useConfigStore((s) => s.config);
 
@@ -126,6 +128,7 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
         await putScopedContextConfig(scope, body, { workspaceRoot });
       }
       bumpVer();
+      notify("Context saved");
       if (partial.mode !== undefined) setMode(partial.mode);
       if (partial.windowSize !== undefined) setWindowSize(partial.windowSize);
       if (partial.pinnedTurn !== undefined) setPinnedTurn(partial.pinnedTurn);

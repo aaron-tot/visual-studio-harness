@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Save } from "lucide-react";
 import { getSessionContextConfig, putSessionContextConfig, getScopedContextConfig, putScopedContextConfig } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
 import { useToastStore } from "../../stores/toast";
@@ -18,6 +19,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   const [pinnedTurn, setPinnedTurn] = useState<number | null>(null);
   const [autoCompactionEnabled, setAutoCompactionEnabled] = useState(false);
   const [autoCompactionTriggerTokens, setAutoCompactionTriggerTokens] = useState(0);
+  // Free-typed string so the user can clear/replace the field; only validated+persisted on save-click.
+  const [thresholdDraft, setThresholdDraft] = useState("");
   const [autoCompactionShowIndicator, setAutoCompactionShowIndicator] = useState(true);
   const [summarizationModel, setSummarizationModel] = useState<string | undefined>();
   const [summarizationFallbackModel, setSummarizationFallbackModel] = useState<string | undefined>();
@@ -83,6 +86,23 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   useEffect(() => {
     loadConfig();
   }, [scope, sessionId]);
+
+  // Keep the editable threshold draft in sync with the committed value (initial
+  // load, scope switches, external saves). Deliberately not dependent on the
+  // draft itself so typing/clearing the field is never overridden mid-edit —
+  // the draft only commits on the Save button.
+  useEffect(() => {
+    setThresholdDraft(autoCompactionTriggerTokens ? String(autoCompactionTriggerTokens) : "");
+  }, [autoCompactionTriggerTokens]);
+
+  // Threshold save is gated on a valid whole number >= 10000. The draft is a
+  // plain string, so the Save button stays disabled until the value is valid.
+  const thresholdNum = Number(thresholdDraft.trim());
+  const thresholdValid = thresholdDraft.trim() !== "" && Number.isInteger(thresholdNum) && thresholdNum >= 10000;
+  const commitThreshold = () => {
+    if (!thresholdValid) return;
+    save({ autoCompactionTriggerTokens: thresholdNum });
+  };
 
   const save = async (partial: {
     mode?: "sliding" | "fixed"; windowSize?: number; pinnedTurn?: number | null;
@@ -218,12 +238,18 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                       conversation and pins context to the new summary. The manual slider / pinning is
                       off while auto compaction is on.
                     </p>
-                    <label className="flex items-center gap-3 cursor-pointer">
+                    <div className="flex items-center gap-2 mt-2">
                       <span className="text-sm text-zinc-300">Trigger at input tokens &ge;</span>
-                      <input type="number" min={1000} step={1000} value={autoCompactionTriggerTokens || ""}
-                        onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) save({ autoCompactionTriggerTokens: Math.max(0, v) }); }}
-                        className="w-28 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200" />
-                    </label>
+                      <input type="number" min={10000} step={1000} value={thresholdDraft}
+                        onChange={(e) => setThresholdDraft(e.target.value)}
+                        className="w-28 px-2 py-1 text-sm rounded bg-zinc-800 border border-zinc-700 text-zinc-200 focus:border-blue-500/50 focus:outline-none" />
+                      <button type="button" disabled={!thresholdValid} onClick={commitThreshold}
+                        title={thresholdValid ? "Save threshold" : "Enter a whole number ≥ 10000 to save"}
+                        className="p-1 rounded-md border border-zinc-700 text-zinc-400 transition-colors enabled:hover:text-emerald-300 enabled:hover:border-emerald-500/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        data-testid="save-threshold">
+                        <Save size={13} />
+                      </button>
+                    </div>
                     <label className="flex items-center gap-3 cursor-pointer mt-2">
                       <input type="checkbox" checked={autoCompactionShowIndicator}
                         onChange={(e) => save({ autoCompactionShowIndicator: e.target.checked })}

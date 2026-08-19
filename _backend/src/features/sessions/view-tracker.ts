@@ -1,6 +1,5 @@
 import WebSocket from "ws";
 import { chatDebug } from "../chat/debug";
-import { getLiveSessionMeta } from "./store";
 import { getSession } from "./db";
 import { projectSessionChat, projectStreamingContent } from "../chat/project-chat";
 import { sessionHasTurns, getActiveTraceTurn } from "../chat/db-trace";

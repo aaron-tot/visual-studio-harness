@@ -227,7 +227,7 @@ export function MessageList() {
         style={frozen ? { visibility: "hidden" } : undefined}
         data-scroll
       >
-      {groupedMessages.map((item, i) => {
+      {groupedMessages.map((item) => {
         if (typeof item === "object" && "userMsg" in item) {
           // Summary turn group
           const { marker, userMsg, assistantMsg, turnId, summaryEndTurn, summaryStartTurn } = item;
@@ -264,7 +264,7 @@ export function MessageList() {
             : (item.turnId != null ? item.turnId : undefined);
           return (
             <div
-              key={i}
+              key={item.id}
               data-turn-number={anchor}
               {...(item.isSummary && item.summaryEndTurn != null ? { "data-summary-end": String(item.summaryEndTurn) } : {})}
               className="animate-in fade-in slide-in-from-bottom-1 duration-200"

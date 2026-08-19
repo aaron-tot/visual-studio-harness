@@ -37,6 +37,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   const [includePatches, setIncludePatches] = useState(false);
   const [includeOtherParts, setIncludeOtherParts] = useState(false);
   const [summarizeIncludePriorSummary, setSummarizeIncludePriorSummary] = useState(true);
+  const [summarizationSafetyMargin, setSummarizationSafetyMargin] = useState(0.2);
+  const [summarizationPriorTurns, setSummarizationPriorTurns] = useState(0);
 
   const bumpVer = useChatStore((s) => s.bumpContextConfigVersion);
   const notify = useToastStore((s) => s.notify);
@@ -57,6 +59,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
         includePatchesInHistory?: boolean;
         includeOtherPartsInHistory?: boolean;
         summarizeIncludePriorSummary?: boolean;
+        summarizationSafetyMargin?: number;
+        summarizationPriorTurns?: number;
       };
       if (scope === "session" && sessionId) {
         ctxConfig = await getSessionContextConfig(sessionId);
@@ -81,6 +85,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       setIncludePatches(ctxConfig.includePatchesInHistory ?? false);
       setIncludeOtherParts(ctxConfig.includeOtherPartsInHistory ?? false);
       setSummarizeIncludePriorSummary(ctxConfig.summarizeIncludePriorSummary ?? true);
+      setSummarizationSafetyMargin(ctxConfig.summarizationSafetyMargin ?? 0.2);
+      setSummarizationPriorTurns(ctxConfig.summarizationPriorTurns ?? 0);
       enabledExplicit.current = ctxConfig.enabled !== undefined;
     } catch { /* ignore */ }
     setLoading(false);
@@ -118,6 +124,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     includePatchesInHistory?: boolean;
     includeOtherPartsInHistory?: boolean;
     summarizeIncludePriorSummary?: boolean;
+    summarizationSafetyMargin?: number;
+    summarizationPriorTurns?: number;
   }) => {
     const body: Record<string, unknown> = {
       mode: partial.mode ?? mode,
@@ -137,6 +145,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     if (partial.includePatchesInHistory !== undefined) body.includePatchesInHistory = partial.includePatchesInHistory;
     if (partial.includeOtherPartsInHistory !== undefined) body.includeOtherPartsInHistory = partial.includeOtherPartsInHistory;
     if (partial.summarizeIncludePriorSummary !== undefined) body.summarizeIncludePriorSummary = partial.summarizeIncludePriorSummary;
+    if (partial.summarizationSafetyMargin !== undefined) body.summarizationSafetyMargin = partial.summarizationSafetyMargin;
+    if (partial.summarizationPriorTurns !== undefined) body.summarizationPriorTurns = partial.summarizationPriorTurns;
     try {
       if (scope === "session" && sessionId) {
         // Merge from already-loaded state — no re-GET of context-config per PUT.
@@ -146,6 +156,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
           summarizationModel: partial.summarizationModel ?? summarizationModel,
           summarizationFallbackModel: partial.summarizationFallbackModel ?? summarizationFallbackModel,
           summarizationPromptMd: partial.summarizationPromptMd ?? summarizationPromptMd,
+          summarizationSafetyMargin: partial.summarizationSafetyMargin ?? summarizationSafetyMargin,
+          summarizationPriorTurns: partial.summarizationPriorTurns ?? summarizationPriorTurns,
         });
       } else {
         await putScopedContextConfig(scope, body, { workspaceRoot });
@@ -168,6 +180,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       if (partial.includePatchesInHistory !== undefined) setIncludePatches(partial.includePatchesInHistory);
       if (partial.includeOtherPartsInHistory !== undefined) setIncludeOtherParts(partial.includeOtherPartsInHistory);
       if (partial.summarizeIncludePriorSummary !== undefined) setSummarizeIncludePriorSummary(partial.summarizeIncludePriorSummary);
+      if (partial.summarizationSafetyMargin !== undefined) setSummarizationSafetyMargin(partial.summarizationSafetyMargin);
+      if (partial.summarizationPriorTurns !== undefined) setSummarizationPriorTurns(partial.summarizationPriorTurns);
     } catch { /* ignore */ }
   };
 
@@ -296,10 +310,14 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                   fallbackModel={summarizationFallbackModel}
                   promptMd={summarizationPromptMd}
                   includePriorSummary={summarizeIncludePriorSummary}
+                  safetyMargin={summarizationSafetyMargin}
+                  priorTurns={summarizationPriorTurns}
                   onModel={(m) => save({ summarizationModel: m })}
                   onFallbackModel={(m) => save({ summarizationFallbackModel: m })}
                   onPromptMd={(p) => save({ summarizationPromptMd: p })}
                   onIncludePriorSummary={(v) => save({ summarizeIncludePriorSummary: v })}
+                  onSafetyMargin={(v) => save({ summarizationSafetyMargin: v })}
+                  onPriorTurns={(v) => save({ summarizationPriorTurns: v })}
                 />
               </div>
 

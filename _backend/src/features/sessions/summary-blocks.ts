@@ -37,6 +37,50 @@ export interface SummarizerTurn {
   content: string;
 }
 
+/** A conversation message from the chat projection (turnId + role/content). */
+export interface ChatProjectionMessage {
+  turnId: number | null;
+  isSummary?: boolean;
+  role: string;
+  content: string;
+}
+
+/**
+ * Extract the N raw conversation turns immediately preceding a summary range
+ * (turns [priorEndTurn - N + 1 .. priorEndTurn]) from the chat projection, for
+ * prepending into the summarizer input. Returns empty when N<=0 or priorEndTurn
+ * is null. Read-only — never re-summarizes or alters range boundaries.
+ */
+export function extractPriorTurns(
+  chatMessages: ChatProjectionMessage[],
+  priorEndTurn: number | null,
+  n: number,
+): { turns: SummarizerTurn[]; groups: { userContent: string; assistantContents: string[] }[] } {
+  if (n <= 0 || priorEndTurn == null) return { turns: [], groups: [] };
+  const min = priorEndTurn - n + 1;
+  const turns: SummarizerTurn[] = [];
+  const groups: { userContent: string; assistantContents: string[] }[] = [];
+  let cur: { userContent: string; assistantContents: string[] } | null = null;
+  for (const m of chatMessages) {
+    if (m.isSummary) continue;
+    const tn = m.turnId;
+    if (tn == null || tn < min || tn > priorEndTurn) continue;
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    const content = m.content ?? "";
+    if (!content) continue;
+    turns.push({ role: m.role as "user" | "assistant", content });
+    if (m.role === "user") {
+      if (cur) groups.push(cur);
+      cur = { userContent: content, assistantContents: [] };
+    } else if (m.role === "assistant") {
+      if (!cur) cur = { userContent: "", assistantContents: [] };
+      cur.assistantContents.push(content);
+    }
+  }
+  if (cur) groups.push(cur);
+  return { turns, groups };
+}
+
 /** A planned block = closed [startIndex..endIndex] into the original turn list. */
 export interface BlockBoundary {
   startIndex: number;
@@ -60,13 +104,18 @@ export function planChunks(options: {
   prioritySummary: string | null;
   prompt: string;
   budget: number;
+  /** Raw turns preceding the range, also sent to every block (fixed overhead). */
+  priorTurns?: SummarizerTurn[];
 }): BlockBoundary[] {
   const { turns, prioritySummary, prompt, budget } = options;
   if (turns.length === 0) return [];
   if (budget <= 0) throw new Error("summary planner: non-positive budget");
 
   const fixedOverhead = estimateMessagesTokens(
-    prioritySummary ? [{ role: "user", content: `Previous summary:\n${prioritySummary}` }] : [],
+    [
+      ...(options.priorTurns ?? []),
+      ...(prioritySummary ? [{ role: "user" as const, content: `Previous summary:\n${prioritySummary}` }] : []),
+    ],
   ) + countTokens(prompt);
 
   // Robust per-turn costs, computed once up front.

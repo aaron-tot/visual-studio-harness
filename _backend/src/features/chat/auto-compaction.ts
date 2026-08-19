@@ -18,31 +18,16 @@ import { join } from "node:path";
 import { and, eq, desc } from "drizzle-orm";
 import { getDbForDataDir } from "../../db/client";
 import { turns, stepParts, steps } from "../../db/schema";
-import { cloneRangeTurnsToChild } from "./summary-clone";
-import { generateId } from "./run-turn/util";
-import { createStepStreamWriter } from "./persist-stream";
-import { insertSubagentSpawn } from "../subagents/db";
 import {
-  createSession,
-  markSummaryTurnError,
   getSessionModelConfigJson,
   setSessionModelConfigJson,
   getLatestSummaryRange,
   getLatestSummaryRangeBefore,
-  insertSummaryRange,
 } from "../sessions/db";
-import {
-  getNextTurnNumber,
-  createTurn,
-  createStep,
-  finalizeStep,
-} from "./db-trace";
 import { projectSessionChat } from "./project-chat";
-import {
-  runSummarizer,
-  buildSummarizationMessages,
-  readSummarizationPrompt,
-} from "../sessions/summarizer";
+import { readSummarizationPrompt } from "../sessions/summarizer";
+import { runSummaryBlock, type BlockSummaryResult } from "../sessions/summarize-block";
+import { resolveSummarizerContextLimit, perBlockBudget, planChunks, extractPriorTurns } from "../sessions/summary-blocks";
 import { sendSessionStateToSession, sendToSession } from "../sessions/view-tracker";
 import type { ContextScopeConfig } from "./context-window";
 
@@ -108,6 +93,8 @@ interface EffectiveAutoConfig {
   summarizeIncludePriorSummary: boolean;
   /** Fraction of the summarizer's max context reserved as headroom (0..1). */
   safetyMargin: number;
+  /** How many raw turns immediately before the summary range to feed in (>=0). */
+  priorTurns: number;
 }
 
 function readScopedCtx(dataDir: string): { global: Record<string, unknown>; workspaces: Record<string, unknown> } {
@@ -148,7 +135,7 @@ function resolveEffectiveAutoConfig(
   const scopeAs = (c: ContextScopeConfig | null | undefined): Record<string, unknown> =>
   (c as Record<string, unknown>) ?? {};
 
-  const val = <T>(key: "autoCompactionEnabled" | "autoCompactionTriggerTokens" | "summarizationModel" | "summarizationFallbackModel" | "summarizationPromptMd" | "summarizeIncludePriorSummary" | "summarizationSafetyMargin"): T | undefined => {
+  const val = <T>(key: "autoCompactionEnabled" | "autoCompactionTriggerTokens" | "summarizationModel" | "summarizationFallbackModel" | "summarizationPromptMd" | "summarizeIncludePriorSummary" | "summarizationSafetyMargin" | "summarizationPriorTurns"): T | undefined => {
     if (sessionOn && scopeAs(sessionCtx)[key] !== undefined) return scopeAs(sessionCtx)[key] as T;
     if (projectOn && scopeAs(project)[key] !== undefined) return scopeAs(project)[key] as T;
     if (scopeAs(global)[key] !== undefined) return scopeAs(global)[key] as T;
@@ -163,6 +150,7 @@ function resolveEffectiveAutoConfig(
     promptMd: val<string>("summarizationPromptMd") ?? null,
     summarizeIncludePriorSummary: val<boolean>("summarizeIncludePriorSummary") ?? true,
     safetyMargin: clampMargin(val<number>("summarizationSafetyMargin") ?? DEFAULT_SAFETY_MARGIN),
+    priorTurns: Math.max(0, Math.floor(val<number>("summarizationPriorTurns") ?? 0)),
   };
 }
 
@@ -320,7 +308,6 @@ async function performAutoCompaction(
   endTurnNum: number,
 ): Promise<void> {
   const db = getDbForDataDir(dataDir);
-  const now = new Date().toISOString();
 
   // Range to compact: from after the prior summary (or turn 1) through endTurnNum.
   const prior = getLatestSummaryRangeBefore(dataDir, sessionId, endTurnNum);
@@ -328,252 +315,139 @@ async function performAutoCompaction(
   if (startTurn > endTurnNum) return;
 
   // Reconstruct the covered turns (user + assistant text, excluding summaries),
-  // both for the summarizer input and for cloning into the child session.
+  // grouped by conversation turn for both the summarizer input and child clone.
   const chatMessages = projectSessionChat(sessionId, dataDir) as unknown as {
     turnId: number | null; isSummary?: boolean; role: string; content: string;
   }[];
-  const rangeTurns: { role: "user" | "assistant"; content: string }[] = [];
-  const rangeGroups: { userContent: string; assistantContents: string[] }[] = [];
+  const groups: { turnId: number; userContent: string; assistantContents: string[] }[] = [];
   {
-    let cur: { userContent: string; assistantContents: string[] } | null = null;
+    let cur: { turnId: number; userContent: string; assistantContents: string[] } | null = null;
     for (const m of chatMessages) {
       if (m.isSummary) continue;
       const tn = m.turnId;
       if (tn == null || tn < startTurn || tn > endTurnNum) continue;
       if (m.role !== "user" && m.role !== "assistant") continue;
       if (!m.content) continue;
-      rangeTurns.push({ role: m.role as "user" | "assistant", content: m.content });
       if (m.role === "user") {
-        if (cur) rangeGroups.push(cur);
-        cur = { userContent: m.content, assistantContents: [] };
+        if (cur) groups.push(cur);
+        cur = { turnId: tn, userContent: m.content, assistantContents: [] };
       } else if (m.role === "assistant") {
-        if (!cur) cur = { userContent: "", assistantContents: [] };
+        if (!cur) cur = { turnId: tn, userContent: "", assistantContents: [] };
         cur.assistantContents.push(m.content);
       }
     }
-    if (cur) rangeGroups.push(cur);
+    if (cur) groups.push(cur);
   }
-  if (rangeTurns.length === 0) return;
+  if (groups.length === 0) return;
 
-  // Prior chain summary text (chaining).
-  let priorSummary: string | null = null;
-  if (cfg.summarizeIncludePriorSummary && prior) {
-    priorSummary = readSummaryText(dataDir, prior.summaryTurnId);
-  }
-  const messages = buildSummarizationMessages(priorSummary, rangeTurns);
-
-  const refParts = validModelRefParts(cfg.modelRef);
-  if (!refParts) {
-    throw new AutoCompactionBlockedError("auto-compaction: no valid summarization model configured");
-  }
   const promptContent = (await readSummarizationPrompt(cfg.promptMd)) ?? `Summarize conversation turns ${startTurn}–${endTurnNum}`;
-  const originalTokens = db
-    .select({ n: turns.turnNumber, t: turns.totalTokens })
-    .from(turns)
-    .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn")))
-    .all()
-    .filter((r) => r.n >= startTurn && r.n <= endTurnNum)
-    .reduce((s, r) => s + (r.t ?? 0), 0);
 
-  const initiatorLabel = "auto";
-
-  // ── Child session (same as manual summarize-range) so the user can open it
-  // and watch the summary stream live; usage lands here and is linked via the
-  // subagent spawn edge. ─────────────────────────────────────────────────────
-  const childSessionId = generateId();
-  const childLabel = `Summary: turns ${startTurn}–${endTurnNum}`;
-  createSession({
-    id: childSessionId,
-    title: childLabel,
-    kind: "subagent",
-    parentId: sessionId,
-    taskLabel: childLabel,
-    providerName: refParts.providerName ?? "",
-    modelName: refParts.modelName ?? "",
-    workspaceRoot,
-    created: now,
-    updated: now,
-  }, dataDir);
-  let priorSummaryGroup: { userContent: string; assistantContents: string[] } | null = null;
-  if (cfg.summarizeIncludePriorSummary && prior && priorSummary) {
+  // Prior chain summary text (always chained — R6: the toggle does not gate
+  // block continuity). Cloned into the first child for continuity view.
+  const priorSummary: string | null = prior ? readSummaryText(dataDir, prior.summaryTurnId) : null;
+  let priorCloneGroup: { userContent: string; assistantContents: string[] } | null = null;
+  if (prior && priorSummary) {
     const priorTurn = db
       .select({ userContent: turns.userContent })
       .from(turns)
       .where(eq(turns.id, prior.summaryTurnId))
       .get();
-    priorSummaryGroup = {
-      userContent: priorTurn?.userContent || "Previous summary:",
-      assistantContents: [priorSummary],
-    };
-  }
-  cloneRangeTurnsToChild(dataDir, childSessionId, rangeGroups, now, priorSummaryGroup);
-  const childTurnNumber = getNextTurnNumber(childSessionId, dataDir);
-  const childTurnId = createTurn(childSessionId, childTurnNumber, promptContent, now, {
-    providerName: refParts.providerName ?? "unknown",
-    modelName: refParts.modelName ?? "summarizer",
-  }, dataDir);
-  const childStepId = createStep(childTurnId, childSessionId, 0, {
-    providerName: refParts.providerName ?? "unknown",
-    modelId: refParts.modelName ?? "summarizer",
-  }, dataDir);
-  const childWriter = createStepStreamWriter(childSessionId, childTurnId, childStepId, dataDir);
-  let childPartSeq = 0;
-
-  // Placeholder main-session summary row (pending) so clients see it + the
-  // open-sub-session icon immediately while generation runs.
-  const placeholderContent = `SUMMARY BEING GENERATED AT ${now}: initiated by [${initiatorLabel}]`;
-  const summaryMeta = {
-    kind: "summary",
-    promptMd: cfg.promptMd ?? null,
-    model: cfg.modelRef,
-    provider: refParts.providerName ?? null,
-    range: { startTurn, endTurn: endTurnNum },
-    prevRangeId: prior?.id ?? null,
-    originalTokens,
-    summaryTokens: 0,
-    initiatedAt: now,
-    initiator: initiatorLabel,
-    childSessionId,
-    childTurnNumber,
-  };
-  const summaryTurnNumber = getNextTurnNumber(sessionId, dataDir);
-  const summaryTurnResult = db.insert(turns).values({
-    sessionId,
-    turnNumber: summaryTurnNumber,
-    userContent: placeholderContent,
-    userTimestamp: now,
-    status: "pending",
-    success: false,
-    providerName: refParts.providerName ?? "unknown",
-    modelName: refParts.modelName ?? "summarizer",
-    finishReason: null,
-    durationMs: 0,
-    startedAt: now,
-    completedAt: null,
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    reasoningTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    stepCount: 0,
-    kind: "summary",
-    configSnapshotJson: JSON.stringify(summaryMeta),
-  }).returning({ id: turns.id }).get();
-  const summaryTurnId = summaryTurnResult?.id;
-  if (!summaryTurnId) {
-    throw new AutoCompactionBlockedError("auto-compaction: failed to create summary turn");
-  }
-  try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
-
-  // Run the summarizer, streaming into the child session.
-  const startedMs = Date.now();
-  let lastChildPush = 0;
-  const pushChildThrottled = () => {
-    const t = Date.now();
-    if (t - lastChildPush < 250) return;
-    lastChildPush = t;
-    try { sendSessionStateToSession(childSessionId); } catch { /* ignore */ }
-  };
-  let result: { text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number; reasoningTokens?: number } | null };
-  try {
-    result = await runSummarizer(dataDir, {
-      promptMd: cfg.promptMd,
-      modelRef: cfg.modelRef,
-      fallbackModelRef: cfg.fallbackModelRef,
-      messages,
-      sessionId,
-      workspaceRoot,
-      onStream: ({ type, text }) => {
-        childWriter.writeDelta(type, text, childPartSeq++);
-        pushChildThrottled();
-      },
-    });
-  } catch (err) {
-    childWriter.closeOpen();
-    db.update(turns).set({
-      status: "error", success: false, finishReason: "error",
-      durationMs: Math.max(0, Date.now() - startedMs), completedAt: new Date().toISOString(),
-      errorMessage: err instanceof Error ? err.message : String(err),
-    }).where(eq(turns.id, childTurnId)).run();
-    db.update(steps).set({ status: "error", finishReason: "error", completedAt: new Date().toISOString() })
-      .where(eq(steps.id, childStepId)).run();
-    markSummaryTurnError(dataDir, summaryTurnId);
-    try { sendSessionStateToSession(childSessionId); } catch { /* ignore */ }
-    try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
-    throw new AutoCompactionBlockedError(`auto-compaction: summarize failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  const summaryText = (result.text ?? "").trim();
-  const usage = result.usage;
-  if (!summaryText) {
-    childWriter.closeOpen();
-    db.update(turns).set({ status: "error", success: false, finishReason: "error", completedAt: new Date().toISOString() })
-      .where(eq(turns.id, childTurnId)).run();
-    markSummaryTurnError(dataDir, summaryTurnId);
-    throw new AutoCompactionBlockedError("auto-compaction: summary produced no text");
+    priorCloneGroup = priorTurn?.userContent
+      ? { userContent: priorTurn.userContent, assistantContents: [priorSummary] }
+      : null;
   }
 
-  // Finalize the child turn + step (real usage) and mark its parts complete.
-  childWriter.closeOpen();
-  db.update(stepParts).set({ status: "completed" }).where(eq(stepParts.turnId, childTurnId)).run();
-  db.update(turns).set({
-    status: "success", success: true, finishReason: "stop",
-    durationMs: Math.max(0, Date.now() - startedMs), completedAt: new Date().toISOString(),
-    inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0,
-    totalTokens: usage?.totalTokens ?? 0,
-    reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
-    cacheReadTokens: 0, cacheWriteTokens: 0, stepCount: 1,
-  }).where(eq(turns.id, childTurnId)).run();
-  finalizeStep(childStepId, {
-    finishReason: "stop", inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0,
-    totalTokens: usage?.totalTokens ?? 0,
-    reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
-    stepTimeMs: Math.max(0, Date.now() - startedMs),
-  }, dataDir);
+  // Raw turns immediately preceding the summary range (recent history fed in
+  // addition to the prior summary). Read-only; only when a prior range exists.
+  const priorCtx = extractPriorTurns(chatMessages, prior?.endTurn ?? null, cfg.priorTurns);
 
-  // Finalize the main summary turn + a text step part (message-builder reads it).
-  db.update(turns).set({
-    userContent: promptContent, status: "success", success: true, finishReason: "stop",
-    durationMs: Math.max(0, Date.now() - startedMs), completedAt: new Date().toISOString(),
-    inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0,
-    totalTokens: usage?.totalTokens ?? 0,
-    reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
-    stepCount: 1,
-    configSnapshotJson: JSON.stringify({ ...summaryMeta, summaryTokens: usage?.totalTokens ?? 0 }),
-  }).where(eq(turns.id, summaryTurnId)).run();
-  const stepResult = db.insert(steps).values({
-    sessionId, turnId: summaryTurnId, stepIndex: 0, status: "completed",
-    providerName: refParts.providerName ?? "unknown",
-    modelId: refParts.modelName ?? "summarizer",
-    finishReason: "stop", startedAt: now, completedAt: now, stepTimeMs: 0,
-  }).returning({ id: steps.id }).get();
-  const stepId = stepResult?.id;
-  if (stepId) {
-    db.insert(stepParts).values({
-      sessionId, turnId: summaryTurnId, stepId, type: "text", seq: 0, status: "completed",
-      data: JSON.stringify({ content: summaryText }), createdAt: now,
-    }).run();
-  }
-
-  // Spawn edge: main summary turn/step → child session+turn (usage tree).
-  insertSubagentSpawn({
-    parentSessionId: sessionId, parentTurnId: summaryTurnId, parentTurnNumber: summaryTurnNumber,
-    parentStepId: stepId ?? null, parentStepIndex: 0, toolCallId: `summary-${summaryTurnId}`,
-    childSessionId, childTurnId, childTurnNumber, kind: "spawn", taskLabel: childLabel,
-  }, dataDir);
-
-  // Summary range.
-  insertSummaryRange(dataDir, {
-    sessionId, summaryTurnId, startTurn, endTurn: endTurnNum,
-    prevRangeId: prior?.id ?? null, originalTokens, summaryTokens: usage?.totalTokens ?? 0, createdAt: now,
+  // Resolve the SUMMARIZER's own max context (R1/R10). Fail loudly when unknown.
+  const maxContext = await resolveSummarizerContextLimit({
+    modelRef: cfg.modelRef ?? "",
+    fallbackModelRef: cfg.fallbackModelRef,
+    dataDir,
   });
+  if (maxContext == null) {
+    throw new AutoCompactionBlockedError(
+      `auto-compaction: cannot resolve summarizer context limit for "${cfg.modelRef}"; compaction blocked`,
+    );
+  }
+  const budget = perBlockBudget(maxContext, cfg.safetyMargin);
 
-  // Push both sessions.
-  try { sendSessionStateToSession(childSessionId); } catch { /* ignore */ }
-  try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
+  // Planner input: one unit per turn (user + assistant joined) so block
+  // boundaries never split a single turn.
+  const plannerInput = groups.map((g) => ({
+    role: "user" as const,
+    content: [g.userContent, ...g.assistantContents].filter(Boolean).join("\n"),
+  }));
+  let boundaries;
+  try {
+    boundaries = planChunks({ turns: plannerInput, prioritySummary: priorSummary, prompt: promptContent, budget, priorTurns: priorCtx.turns });
+  } catch (err) {
+    throw new AutoCompactionBlockedError(`auto-compaction: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
-  // Pin context to the new summary (summary turn itself = normal context turn).
-  const pinnedTurn = summaryTurnNumber;
+  console.error(
+    `[auto-compaction] session=${sessionId} range=${startTurn}–${endTurnNum} budget=${budget} blocks=${boundaries.length}`,
+  );
+
+  // Execute blocks oldest-first, chaining prior summaries + prevRangeId.
+  let prevRangeId: number | null = prior?.id ?? null;
+  let runningPriorSummary: string | null = priorSummary;
+  let runningPriorCloneGroup = priorCloneGroup;
+  let lastGood: BlockSummaryResult | null = null;
+
+  try {
+    for (const b of boundaries) {
+      const slice = groups.slice(b.startIndex, b.endIndex + 1);
+      if (slice.length === 0) continue;
+      const blockStartTurn = slice[0].turnId;
+      const blockEndTurn = slice[slice.length - 1].turnId;
+      const blockTurns: { role: "user" | "assistant"; content: string }[] = [];
+      for (const g of slice) {
+        blockTurns.push({ role: "user", content: g.userContent });
+        for (const a of g.assistantContents) blockTurns.push({ role: "assistant", content: a });
+      }
+
+      const result = await runSummaryBlock({
+        dataDir, sessionId, workspaceRoot,
+        startTurn: blockStartTurn, endTurn: blockEndTurn,
+        rangeTurns: blockTurns,
+        rangeGroups: slice.map((g) => ({ userContent: g.userContent, assistantContents: g.assistantContents })),
+        priorTurns: priorCtx.turns,
+        priorTurnGroups: priorCtx.groups,
+        priorSummary: runningPriorSummary,
+        priorCloneGroup: runningPriorCloneGroup,
+        prevRangeId,
+        modelRef: cfg.modelRef,
+        fallbackModelRef: cfg.fallbackModelRef,
+        promptMd: cfg.promptMd,
+        initiator: "auto",
+      });
+      lastGood = result;
+      prevRangeId = result.rangeId;
+      runningPriorSummary = result.summaryText;
+      runningPriorCloneGroup = { userContent: promptContent, assistantContents: [result.summaryText] };
+    }
+  } catch (err) {
+    // Partial success: pin to the last good block; keep the send blocked (R7/R8).
+    if (lastGood) pinContextTo(sessionId, dataDir, lastGood.summaryTurnNumber);
+    throw new AutoCompactionBlockedError(
+      `auto-compaction: summarize failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // Full success: pin to the final block's summary turn.
+  if (lastGood) {
+    pinContextTo(sessionId, dataDir, lastGood.summaryTurnNumber);
+  }
+  console.error(
+    `[auto-compaction] ok session=${sessionId} range=${startTurn}–${endTurnNum} blocks=${boundaries.length} summaryTurn=${lastGood?.summaryTurnNumber ?? null}`,
+  );
+}
+
+/** Pin the session context to a summary turn (fixed mode). */
+function pinContextTo(sessionId: string, dataDir: string, pinnedTurn: number): void {
   try {
     const raw = getSessionModelConfigJson(sessionId, dataDir);
     const parsed = raw ? JSON.parse(raw) : {};
@@ -582,8 +456,4 @@ async function performAutoCompaction(
   } catch (err) {
     console.error("[auto-compaction] could not pin context:", err);
   }
-
-  console.error(
-    `[auto-compaction] ok session=${sessionId} range=${startTurn}–${endTurnNum} summaryTurn=${summaryTurnNumber} child=${childSessionId} pinnedTurn=${pinnedTurn}`,
-  );
 }

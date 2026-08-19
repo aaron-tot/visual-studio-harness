@@ -19,9 +19,9 @@ import { turns, stepParts, steps } from "../../db/schema";
 import { generateId } from "../chat/run-turn/util";
 import { createStepStreamWriter } from "../chat/persist-stream";
 import { insertSubagentSpawn } from "../subagents/db";
-import { createSession, markSummaryTurnError, insertSummaryRange } from "./db";
+import { createSession, markSummaryTurnError, insertSummaryRange, getSummaryRangeByRange } from "./db";
 import { getNextTurnNumber, createTurn, createStep, finalizeStep } from "../chat/db-trace";
-import { runSummarizer, readSummarizationPrompt, buildSummarizationMessages } from "./summarizer";
+import { runSummarizer, readSummarizationPrompt } from "./summarizer";
 import { cloneRangeTurnsToChild } from "../chat/summary-clone";
 import { sendSessionStateToSession } from "./view-tracker";
 
@@ -39,6 +39,10 @@ export interface SummaryBlockInput {
   priorCloneGroup?: { userContent: string; assistantContents: string[] } | null;
   /** Prior range id to chain from (prevRangeId). Null for the first block. */
   prevRangeId?: number | null;
+  /** Raw turns immediately before the summary range, prepended to the input. */
+  priorTurns?: { role: "user" | "assistant"; content: string }[];
+  /** Corresponding clone groups for priorTurns (displayed in the child). */
+  priorTurnGroups?: { userContent: string; assistantContents: string[] }[];
   modelRef: string | null;
   fallbackModelRef?: string | null;
   promptMd?: string | null;
@@ -51,6 +55,7 @@ export interface BlockSummaryResult {
   summaryTurnNumber: number;
   startTurn: number;
   endTurn: number;
+  rangeId: number;
   summaryText: string;
   originalTokens: number;
   summaryTokens: number;
@@ -62,7 +67,7 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
   const {
     dataDir, sessionId, workspaceRoot, startTurn, endTurn,
     rangeTurns, rangeGroups, priorSummary, priorCloneGroup,
-    modelRef, fallbackModelRef, promptMd, initiator,
+    modelRef, fallbackModelRef, promptMd, initiator, prevRangeId, priorTurns, priorTurnGroups,
   } = input;
 
   if (!modelRef || !/^[^/]+\/[^/]+$/.test(modelRef)) {
@@ -90,7 +95,8 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
     dataDir,
   );
 
-  cloneRangeTurnsToChild(dataDir, childSessionId, rangeGroups, now, priorCloneGroup ?? null);
+  const seedGroups = [...(priorTurnGroups ?? []), ...rangeGroups];
+  cloneRangeTurnsToChild(dataDir, childSessionId, seedGroups, now, priorCloneGroup ?? null);
 
   const childTurnNumber = getNextTurnNumber(childSessionId, dataDir);
   const childTurnId = createTurn(childSessionId, childTurnNumber, promptContent, now, { providerName: modelRef.split("/")[0] ?? "unknown", modelName: modelRef.split("/")[1] ?? "summarizer" }, dataDir);
@@ -125,7 +131,14 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
   if (!summaryTurnId) throw new Error("summary block: failed to create summary turn");
   try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
 
-  const messages = buildSummarizationMessages(priorSummary, rangeTurns);
+  // Prior raw turns first, then the prior summary text, then the new range
+  // turns (spec R2). When there are no prior turns this reduces to the previous
+  // single-summary construction: [prior summary text, range turns].
+  const messages: { role: "user" | "assistant"; content: string }[] = [
+    ...(priorTurns ?? []),
+    ...(priorSummary ? [{ role: "user" as const, content: `Previous summary:\n${priorSummary}` } as const] : []),
+    ...rangeTurns,
+  ];
   const startedMs = Date.now();
   let lastChildPush = 0;
   const pushChildThrottled = () => {
@@ -179,5 +192,14 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
     childSessionId, childTurnId, childTurnNumber, kind: "spawn", taskLabel: childLabel,
   }, dataDir);
 
-  return { summaryTurnId, summaryTurnNumber, startTurn, endTurn, summaryText, originalTokens, summaryTokens: usage?.totalTokens ?? 0, childSessionId };
+  // Install the summary_ranges row (chained via prevRangeId). Idempotent:
+  // if the exact range already exists, reuse it so the chain stays acyclic.
+  const existingRange = getSummaryRangeByRange(dataDir, sessionId, startTurn, endTurn);
+  const rangeId = existingRange?.id
+    ?? insertSummaryRange(dataDir, {
+        sessionId, summaryTurnId, startTurn, endTurn,
+        prevRangeId: prevRangeId ?? null, originalTokens, summaryTokens: usage?.totalTokens ?? 0, createdAt: now,
+      });
+
+  return { summaryTurnId, summaryTurnNumber, startTurn, endTurn, rangeId, summaryText, originalTokens, summaryTokens: usage?.totalTokens ?? 0, childSessionId };
 }

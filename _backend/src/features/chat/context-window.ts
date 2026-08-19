@@ -22,6 +22,10 @@ export interface ContextScopeConfig {
   /** Fraction of the summarizer's max context to reserve as headroom (0..1).
    *  Per-block token budget = maxContext * (1 - this). Default 0.2. */
   summarizationSafetyMargin?: number;
+  /** How many raw conversation turns immediately preceding the summary range to
+   *  include in the summarizer input, in addition to the prior-summary text.
+   *  >= 0, default 0. */
+  summarizationPriorTurns?: number;
   enabled?: boolean;
   // "History Included in Context" flags — these control which part types are
   // re-sent from PREVIOUS turns. The current turn always carries everything.

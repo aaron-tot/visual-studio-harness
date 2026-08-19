@@ -1524,6 +1524,8 @@ export interface SessionContextConfig {
   summarizationFallbackModel?: string;
   summarizationPromptMd?: string;
   summarizeIncludePriorSummary?: boolean;
+  summarizationSafetyMargin?: number;
+  summarizationPriorTurns?: number;
 }
 
 export function getSessionContextConfig(sessionId: string) {

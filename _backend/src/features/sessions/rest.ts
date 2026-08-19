@@ -27,7 +27,6 @@ import {
 } from "../chat/project-chat";
 import { buildUsageTree, buildTurnStepsTree } from "../chat/usage-tree";
 import { sessionHasTurns, getTurnByNumber, getNextTurnNumber, listContextTurnIds, createTurn, createStep, finalizeStep } from "../chat/db-trace";
-import { createStepStreamWriter } from "../chat/persist-stream";
 import { cancelSession, abortAllActiveSessions } from "../chat/session-abort";
 import { compactLiveDb } from "./archive";
 import { sendSessionStateToSession } from "./view-tracker";
@@ -51,14 +50,11 @@ import {
   getSummaryRangesForSession,
   getPendingSummaryTurns,
   expireStaleSummaryPlaceholders,
-  markSummaryTurnError,
-  createSession,
 } from "./db";
-import { runSummarizer, readSummarizationPrompt, splitModelRef, buildSummarizationMessages, type SummarizerResult } from "./summarizer";
-import { insertSubagentSpawn } from "../subagents/db";
-import { generateId } from "../chat/run-turn/util";
+import { readSummarizationPrompt, buildSummarizationMessages } from "./summarizer";
+import { runSummaryBlock, type BlockSummaryResult } from "./summarize-block";
+import { resolveSummarizerContextLimit, perBlockBudget, planChunks, extractPriorTurns } from "./summary-blocks";
 
-import { cloneRangeTurnsToChild } from "../chat/summary-clone";
 import { getWorkspaceGraphManager } from "../../core/workspaceGraph/service-singleton";
 import { loadConfig } from "../../storage/config";
 
@@ -372,7 +368,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
         o["mode"] !== undefined || o["windowSize"] !== undefined || o["pinnedTurn"] !== undefined ||
         o["autoCompactionEnabled"] !== undefined || o["autoCompactionTriggerTokens"] !== undefined || o["autoCompactionShowIndicator"] !== undefined ||
         o["summarizationModel"] !== undefined || o["summarizationFallbackModel"] !== undefined || o["summarizationPromptMd"] !== undefined ||
-        o["summarizeIncludePriorSummary"] !== undefined;
+        o["summarizeIncludePriorSummary"] !== undefined || o["summarizationSafetyMargin"] !== undefined || o["summarizationPriorTurns"] !== undefined;
     const owner =
       (sessionEnabled && hasOwn(session)) ? "session"
       : (projectEnabled && hasOwn(project)) ? "project"
@@ -398,6 +394,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       summarizationFallbackModel: pick("summarizationFallbackModel") as string | undefined,
       summarizationPromptMd: pick("summarizationPromptMd") as string | undefined,
       summarizeIncludePriorSummary: (pick("summarizeIncludePriorSummary") as boolean | undefined) ?? true,
+      summarizationSafetyMargin: (pick("summarizationSafetyMargin") as number | undefined) ?? 0.2,
+      summarizationPriorTurns: Math.max(0, Math.floor((pick("summarizationPriorTurns") as number | undefined) ?? 0)),
       enabled: sessionEnabled ? true : projectEnabled ? true : false,
       owner,
     };
@@ -483,10 +481,11 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       model?: string;               // optional: "Provider/Model"
       fallbackModel?: string;       // optional: "Provider/Model"
       includePriorSummary?: boolean; // chain prior summaries into this one
-      initiator?: string;           // optional: who started it (slider/keyboard/context-menu/...)
+      priorTurns?: number;          // optional: raw turns before range to feed in
+      initiator?: string;   // optional: who started it (slider/keyboard/context-menu/...)
     };
 
-    const { sessionId, endTurnNum, startTurnNum, promptMd, model, fallbackModel, includePriorSummary, initiator } = body;
+    const { sessionId, endTurnNum, startTurnNum, promptMd, model, fallbackModel, includePriorSummary, priorTurns, initiator } = body;
     if (!sessionId || endTurnNum == null) {
       return reply.code(400).send({ error: "sessionId and endTurnNum are required" });
     }
@@ -590,71 +589,11 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     // the raw user prompts. Reuse the chat projection which reconstructs
     // role/assistant messages from step_parts.
     const { projectSessionChat } = await import("../chat/project-chat");
-    const chatMessages = projectSessionChat(sessionId, dataDir);
-
-    const rangeTurns: { role: "user" | "assistant"; content: string }[] = [];
-    const seenTurn = new Set<number>();
-for (const m of chatMessages) {
-      if (m.isSummary) continue;
-      const tn = m.turnId;
-      if (tn == null || tn < computedStartTurnNum || tn > summarizedEndTurn) continue;
-      if (m.role !== "user" && m.role !== "assistant") continue;
-      const content = m.content ?? "";
-      if (!content) continue;
-      rangeTurns.push({ role: m.role, content });
-    }
-    // Fallback: if projection yielded nothing (e.g. tool-only turns), include
-    // the user prompts at minimum so the summarizer isn't starved of context.
-    if (rangeTurns.length === 0) {
-      const turnRows = getDbForDataDir(dataDir)
-        .select({ turnNumber: turns.turnNumber, userContent: turns.userContent })
-        .from(turns)
-        .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn")))
-        .orderBy(turns.turnNumber)
-        .all();
-      for (const t of turnRows) {
-        if (t.turnNumber >= computedStartTurnNum && t.turnNumber <= summarizedEndTurn) {
-          rangeTurns.push({ role: "user", content: t.userContent });
-        }
-      }
-    }
-
-    // Group the covered messages into real turns (user + assistant text) so the
-    // child sub-session can be seeded with the ACTUAL conversation context.
-    // If the projection grouped nothing (fallback path), derive groups from the
-    // flat rangeTurns (alternating user/assistant).
-    const rangeGroups: { userContent: string; assistantContents: string[] }[] = [];
-    {
-      let cur: { userContent: string; assistantContents: string[] } | null = null;
-      for (const m of chatMessages) {
-        if (m.isSummary) continue;
-        const tn = m.turnId;
-        if (tn == null || tn < computedStartTurnNum || tn > summarizedEndTurn) continue;
-        const content = m.content ?? "";
-        if (!content) continue;
-        if (m.role === "user") {
-          if (cur) rangeGroups.push(cur);
-          cur = { userContent: content, assistantContents: [] };
-        } else if (m.role === "assistant") {
-          if (!cur) cur = { userContent: "", assistantContents: [] };
-          cur.assistantContents.push(content);
-        }
-      }
-      if (cur) rangeGroups.push(cur);
-    }
-    if (rangeGroups.length === 0 && rangeTurns.length > 0) {
-      let cur: { userContent: string; assistantContents: string[] } | null = null;
-      for (const m of rangeTurns) {
-        if (m.role === "user") {
-          if (cur) rangeGroups.push(cur);
-          cur = { userContent: m.content, assistantContents: [] };
-        } else {
-          if (!cur) cur = { userContent: "", assistantContents: [] };
-          cur.assistantContents.push(m.content);
-        }
-      }
-      if (cur) rangeGroups.push(cur);
-    }
+    const chatMessages = projectSessionChat(sessionId, dataDir) as unknown as {
+      turnId: number | null; isSummary?: boolean; role: string; content: string;
+    }[];
+    const priorTurnsN = Math.max(0, Math.floor(priorTurns ?? eff.summarizationPriorTurns ?? 0));
+    const priorCtx = extractPriorTurns(chatMessages, latestRange?.endTurn ?? null, priorTurnsN);
 
     // Get prior summary text if chain has a previous range. The summary text
     // lives as a `text` step_part whose `data` is `JSON.stringify({ content })`;
@@ -680,26 +619,14 @@ for (const m of chatMessages) {
         })()
       : null;
 
-    // Build messages for summarizer: prior summary + turns in range
-    const messages = buildSummarizationMessages(priorSummary, rangeTurns);
-
     // Read the actual summarization prompt content (used as the user-side
     // message of the completed summary turn, so a human can see what
-    // instructed it).
+    // instructed it). originalTokens + summarizer messages are derived inside
+    // runSummaryBlock per block, so they are not computed here.
     let promptContent = promptRef ? await readSummarizationPrompt(promptRef) : null;
     if (!promptContent) {
       promptContent = `Summarize conversation turns ${computedStartTurnNum}–${summarizedEndTurn}`;
     }
-
-    // Compute original tokens (sum of covered turns' totalTokens)
-    const coveredTurnRows = getDbForDataDir(dataDir)
-      .select({ turnNumber: turns.turnNumber, totalTokens: turns.totalTokens })
-      .from(turns)
-      .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn")))
-      .all();
-    const originalTokens = coveredTurnRows
-      .filter((t) => t.turnNumber >= computedStartTurnNum && t.turnNumber <= summarizedEndTurn)
-      .reduce((sum, t) => sum + (t.totalTokens ?? 0), 0);
 
     // Recover stale in-progress summaries (crashed runs), then reject
     // concurrent generation for the same range so only one placeholder and
@@ -721,311 +648,99 @@ for (const m of chatMessages) {
     // streaming turn whose parts are written as deltas arrive. ──────────────
     const now = new Date().toISOString();
     const initiatorLabel = typeof initiator === "string" && initiator.trim() ? initiator.trim() : "manual";
-    const childSessionId = generateId();
-    const childLabel = `Summary: turns ${computedStartTurnNum}–${summarizedEndTurn}`;
-    createSession({
-      id: childSessionId,
-      title: childLabel,
-      kind: "subagent",
-      parentId: sessionId,
-      taskLabel: childLabel,
-      providerName: modelRef?.split("/")[0] ?? "",
-      modelName: modelRef?.split("/")[1] ?? "",
-      workspaceRoot: body.workspaceRoot,
-      created: now,
-      updated: now,
-    }, dataDir);
-    // Clone the actual covered turns so opening the child shows the real
-    // context the summarizer consumed (marked provider "clone" = not real).
-    // When the prior summary is included, clone it as a NORMAL turn using its
-    // real user message (the prior summarization prompt) + agent message (the
-    // summary text), exactly like the covered turns.
-    let priorSummaryGroup: { userContent: string; assistantContents: string[] } | null = null;
-    if (includePrior && latestRange && priorSummary) {
-      const priorTurn = getDbForDataDir(dataDir)
-        .select({ userContent: turns.userContent })
-        .from(turns)
-        .where(eq(turns.id, latestRange.summaryTurnId))
-        .get();
-      priorSummaryGroup = {
-        userContent: priorTurn?.userContent || "Previous summary:",
-        assistantContents: [priorSummary],
-      };
+
+    // Resolve the summarizer's own max context (R1/R10). Fail loudly when unknown.
+    const maxContext = await resolveSummarizerContextLimit({
+      modelRef: modelRef ?? "",
+      fallbackModelRef,
+      dataDir,
+    });
+    if (maxContext == null) {
+      return reply.code(500).send({ error: `Cannot resolve summarizer context limit for "${modelRef}"` });
     }
-    cloneRangeTurnsToChild(dataDir, childSessionId, rangeGroups, now, priorSummaryGroup);
-    // Real streaming turn in the child (status "streaming" — a live turn).
-    const childTurnNumber = getNextTurnNumber(childSessionId, dataDir);
-    const childTurnId = createTurn(childSessionId, childTurnNumber, promptContent, now, {
-      providerName: modelRef?.split("/")[0] ?? "unknown",
-      modelName: modelRef?.split("/")[1] ?? "summarizer",
-    }, dataDir);
-    const childStepId = createStep(childTurnId, childSessionId, 0, {
-      providerName: modelRef?.split("/")[0] ?? "unknown",
-      modelId: modelRef?.split("/")[1] ?? "summarizer",
-    }, dataDir);
-    const childWriter = createStepStreamWriter(childSessionId, childTurnId, childStepId, dataDir);
-    let childPartSeq = 0;
+    const budget = perBlockBudget(maxContext, eff.summarizationSafetyMargin ?? 0.2);
 
-    // Create the main-session summary row in a PENDING state, so every client
-    // sees the system placeholder at the summary position immediately (via the
-    // session_state push below) while the LLM runs. The status is deliberately
-    // NOT 'streaming' — the placeholder is a display marker, not a live turn,
-    // so session_state streaming detection (getActiveTraceTurn) ignores it.
-    // userContent is the placeholder while pending; it is replaced by the
-    // prompt content on completion. The snapshot carries the child refs so the
-    // open-sub-session icon appears immediately.
-    const placeholderContent = `SUMMARY BEING GENERATED AT ${now}: initiated by [${initiatorLabel}]`;
-    const summaryMeta = {
-      kind: "summary",
-      promptMd: promptRef ?? null,
-      model: modelRef,
-      provider: modelRef?.split("/")[0] ?? null,
-      range: { startTurn: computedStartTurnNum, endTurn: summarizedEndTurn },
-      prevRangeId: latestRange?.id ?? null,
-      originalTokens,
-      summaryTokens: 0,
-      initiatedAt: now,
-      initiator: initiatorLabel,
-      childSessionId,
-      childTurnNumber,
-    };
-    const summaryTurnNumber = getNextTurnNumber(sessionId, dataDir);
-    const summaryTurnResult = getDbForDataDir(dataDir)
-      .insert(turns)
-      .values({
-        sessionId,
-        turnNumber: summaryTurnNumber,
-        userContent: placeholderContent,
-        userTimestamp: now,
-        status: "pending",
-        success: false,
-        modelName: modelRef?.split("/")[1] ?? "summarizer",
-        providerName: modelRef?.split("/")[0] ?? "unknown",
-        finishReason: null,
-        durationMs: 0,
-        startedAt: now,
-        completedAt: null,
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        reasoningTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        stepCount: 0,
-        kind: "summary",
-        configSnapshotJson: JSON.stringify(summaryMeta),
-      })
-      .returning({ id: turns.id })
-      .get();
-
-    const summaryTurnId = summaryTurnResult?.id;
-    if (!summaryTurnId) {
-      return reply.code(500).send({ error: "Failed to create summary turn" });
+    // Rebuild turn groups carrying turn numbers so block boundaries map to
+    // actual turn ids for chained summaryRanges rows.
+    const turnGroups: { turnNumber: number; userContent: string; assistantContents: string[] }[] = [];
+    {
+      let curI: { turnNumber: number; userContent: string; assistantContents: string[] } | null = null;
+      for (const m of chatMessages) {
+        if (m.isSummary) continue;
+        const tn = m.turnId;
+        if (tn == null || tn < computedStartTurnNum || tn > summarizedEndTurn) continue;
+        const content = m.content ?? "";
+        if (!content) continue;
+        if (m.role === "user") {
+          if (curI) turnGroups.push(curI);
+          curI = { turnNumber: tn, userContent: content, assistantContents: [] };
+        } else if (m.role === "assistant") {
+          if (!curI) curI = { turnNumber: tn, userContent: "", assistantContents: [] };
+          curI.assistantContents.push(content);
+        }
+      }
+      if (curI) turnGroups.push(curI);
+    }
+    if (turnGroups.length === 0) {
+      return reply.code(400).send({ error: "Nothing to summarize in range" });
     }
 
-    // Push immediately so the placeholder (with the open icon) renders in every
-    // connected client at the summary position while generation is in flight.
+    const plannerInput = turnGroups.map((g) => ({
+      role: "user" as const,
+      content: [g.userContent, ...g.assistantContents].filter(Boolean).join("\n"),
+    }));
+    let boundaries;
     try {
-      sendSessionStateToSession(sessionId);
+      boundaries = planChunks({ turns: plannerInput, prioritySummary: priorSummary, prompt: promptContent, budget, priorTurns: priorCtx.turns });
     } catch (err) {
-      console.warn("[summarize-range] could not push placeholder state:", err);
-    }
-
-    // Run the summarizer. Deltas stream LIVE into the child session's turn
-    // (stepParts via the writer) and are pushed (throttled) to any client
-    // viewing the child session, so the user can watch the summary being
-    // generated. The child session (kind 'subagent', parent = this session)
-    // is where the real usage lands; the subagentSpawns edge below links the
-    // main summary turn to it for the usage tree.
-    const startedMs = Date.now();
-    let lastChildPush = 0;
-    const pushChildThrottled = () => {
-      const t = Date.now();
-      if (t - lastChildPush < 250) return;
-      lastChildPush = t;
-      try { sendSessionStateToSession(childSessionId); } catch { /* ignore */ }
-    };
-    let result: { text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number; reasoningTokens?: number } | null; reasoning: string[] };
-    try {
-      const { runSummarizer } = await import("./summarizer");
-      result = await runSummarizer(dataDir, {
-        promptMd: promptRef,
-        modelRef,
-        fallbackModelRef,
-        messages,
-        sessionId,
-        workspaceRoot: body.workspaceRoot,
-        onStream: ({ type, text }) => {
-          childWriter.writeDelta(type, text, childPartSeq++);
-          pushChildThrottled();
-        },
-      });
-    } catch (err) {
-      // Never leave a permanent "streaming"/"pending" turn behind: mark the
-      // child turn + step and the main placeholder as errors.
-      childWriter.closeOpen();
-      getDbForDataDir(dataDir)
-        .update(turns)
-        .set({
-          status: "error",
-          success: false,
-          finishReason: "error",
-          durationMs: Math.max(0, Date.now() - startedMs),
-          completedAt: new Date().toISOString(),
-          errorMessage: err instanceof Error ? err.message : String(err),
-        })
-        .where(eq(turns.id, childTurnId))
-        .run();
-      getDbForDataDir(dataDir)
-        .update(steps)
-        .set({ status: "error", finishReason: "error", completedAt: new Date().toISOString() })
-        .where(eq(steps.id, childStepId))
-        .run();
-      markSummaryTurnError(dataDir, summaryTurnId);
-      try { sendSessionStateToSession(childSessionId); } catch { /* ignore */ }
-      try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
       return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
     }
 
-    const summaryText = result.text.trim();
-    const usage = result.usage;
-
-    // Finalize the child turn + step (real usage) and mark its parts complete.
-    childWriter.closeOpen();
-    getDbForDataDir(dataDir)
-      .update(stepParts)
-      .set({ status: "completed" })
-      .where(eq(stepParts.turnId, childTurnId))
-      .run();
-    getDbForDataDir(dataDir)
-      .update(turns)
-      .set({
-        status: "success",
-        success: true,
-        finishReason: "stop",
-        durationMs: Math.max(0, Date.now() - startedMs),
-        completedAt: new Date().toISOString(),
-        inputTokens: usage?.inputTokens ?? 0,
-        outputTokens: usage?.outputTokens ?? 0,
-        totalTokens: usage?.totalTokens ?? 0,
-        reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        stepCount: 1,
-      })
-      .where(eq(turns.id, childTurnId))
-      .run();
-    finalizeStep(childStepId, {
-      finishReason: "stop",
-      inputTokens: usage?.inputTokens ?? 0,
-      outputTokens: usage?.outputTokens ?? 0,
-      totalTokens: usage?.totalTokens ?? 0,
-      reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
-      stepTimeMs: Math.max(0, Date.now() - startedMs),
-    }, dataDir);
-
-    // Finalize the main summary turn (display row): success + prompt content +
-    // usage + snapshot. Child-session refs are appended after the child exists.
-    getDbForDataDir(dataDir)
-      .update(turns)
-      .set({
-        userContent: promptContent,
-        status: "success",
-        success: true,
-        finishReason: "stop",
-        durationMs: Math.max(0, Date.now() - startedMs),
-        completedAt: new Date().toISOString(),
-        inputTokens: usage?.inputTokens ?? 0,
-        outputTokens: usage?.outputTokens ?? 0,
-        totalTokens: usage?.totalTokens ?? 0,
-        reasoningTokens: (usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0,
-        stepCount: 1,
-        configSnapshotJson: JSON.stringify({ ...summaryMeta, summaryTokens: usage?.totalTokens ?? 0 }),
-      })
-      .where(eq(turns.id, summaryTurnId))
-      .run();
-
-    // Create a step with the summary as assistant text part
-    const stepResult = getDbForDataDir(dataDir)
-      .insert(steps)
-      .values({
-        sessionId,
-        turnId: summaryTurnId,
-        stepIndex: 0,
-        status: "completed",
-        providerName: modelRef?.split("/")[0] ?? "unknown",
-        modelId: modelRef?.split("/")[1] ?? "summarizer",
-        finishReason: "stop",
-        startedAt: now,
-        completedAt: now,
-        stepTimeMs: 0,
-      })
-      .returning({ id: steps.id })
-      .get();
-
-    const stepId = stepResult?.id;
-    if (stepId) {
-      getDbForDataDir(dataDir)
-        .insert(stepParts)
-        .values({
-          sessionId,
-          turnId: summaryTurnId,
-          stepId,
-          type: "text",
-          seq: 0,
-          status: "completed",
-          data: JSON.stringify({ content: summaryText }),
-          createdAt: now,
-        })
-        .run();
-    }
-
-    // Spawn edge: main summary turn/step → child session+turn (usage tree).
-    insertSubagentSpawn({
-      parentSessionId: sessionId,
-      parentTurnId: summaryTurnId,
-      parentTurnNumber: summaryTurnNumber,
-      parentStepId: stepId,
-      parentStepIndex: 0,
-      toolCallId: `summary-${summaryTurnId}`,
-      childSessionId,
-      childTurnId,
-      childTurnNumber,
-      kind: "spawn",
-      taskLabel: childLabel,
-    }, dataDir);
-
-    // Create summary range
-    const rangeId = insertSummaryRange(dataDir, {
-      sessionId,
-      summaryTurnId,
-      startTurn: computedStartTurnNum,
-      endTurn: summarizedEndTurn,
-      prevRangeId: latestRange?.id ?? null,
-      originalTokens,
-      summaryTokens: usage?.totalTokens ?? 0,
-      createdAt: now,
-    });
-
-    // Push the updated session state to connected clients so the new summary
-    // appears immediately in the UI without a manual refresh (both the child
-    // sub-session and the main session).
+    let result: BlockSummaryResult | null = null;
+    let prevRangeId: number | null = latestRange?.id ?? null;
+    let runningPrior: string | null = priorSummary;
     try {
-      sendSessionStateToSession(childSessionId);
+      for (const b of boundaries) {
+        const slice = turnGroups.slice(b.startIndex, b.endIndex + 1);
+        if (slice.length === 0) continue;
+        const blockStartTurn = slice[0].turnNumber;
+        const blockEndTurn = slice[slice.length - 1].turnNumber;
+        const blockTurns: { role: "user" | "assistant"; content: string }[] = [];
+        for (const g of slice) {
+          blockTurns.push({ role: "user", content: g.userContent });
+          for (const m of g.assistantContents) blockTurns.push({ role: "assistant", content: m });
+        }
+        const blockGroups = slice.map((g) => ({ userContent: g.userContent, assistantContents: g.assistantContents }));
+        result = await runSummaryBlock({
+          dataDir, sessionId, workspaceRoot: body.workspaceRoot,
+          startTurn: blockStartTurn, endTurn: blockEndTurn,
+          rangeTurns: blockTurns,
+          rangeGroups: blockGroups,
+          priorTurns: priorCtx.turns,
+          priorTurnGroups: priorCtx.groups,
+          priorSummary: runningPrior,
+          priorCloneGroup: runningPrior ? { userContent: "Previous summary:", assistantContents: [runningPrior] } : null,
+          prevRangeId,
+          modelRef,
+          fallbackModelRef,
+          promptMd: promptRef,
+          initiator: initiatorLabel,
+        });
+        prevRangeId = result.rangeId;
+        runningPrior = result.summaryText;
+      }
     } catch (err) {
-      console.warn("[summarize-range] could not push child session state:", err);
+      return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
     }
-    try {
-      sendSessionStateToSession(sessionId);
-    } catch (err) {
-      console.warn("[summarize-range] could not push session state:", err);
-    }
+
+    try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
+    if (result) { try { sendSessionStateToSession(result.childSessionId); } catch { /* ignore */ } }
 
     return reply.code(201).send({
-      summaryTurnId,
-      rangeId,
-      summary: summaryText,
-      tokens: usage?.totalTokens ?? 0,
+      summaryTurnId: result?.summaryTurnId ?? null,
+      rangeId: result?.rangeId ?? null,
+      summary: result?.summaryText ?? "",
+      tokens: result?.summaryTokens ?? 0,
       created: true,
       startTurn: computedStartTurnNum,
       endTurn: summarizedEndTurn,

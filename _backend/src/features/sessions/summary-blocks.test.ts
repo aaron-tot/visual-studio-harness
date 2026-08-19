@@ -1,5 +1,5 @@
 import { test, describe, expect } from "bun:test";
-import { planChunks, perBlockBudget, clampSafetyMargin, DEFAULT_SAFETY_MARGIN } from "./summary-blocks";
+import { planChunks, perBlockBudget, clampSafetyMargin, DEFAULT_SAFETY_MARGIN, extractPriorTurns } from "./summary-blocks";
 
 const turn = (content: string) => ({ role: "user" as const, content });
 
@@ -86,5 +86,53 @@ describe("planChunks", () => {
         budget: 50,
       }),
     ).toThrow();
+  });
+
+  test("priorTurns count toward the per-block budget (fixed overhead)", () => {
+    const mk = (content: string) => ({ role: "user" as const, content });
+    const turns = Array.from({ length: 12 }, (_, i) => mk(`turn ${i}`));
+    // Without prior turns, X tokens fit per block; with a large prior turn the
+    // same budget yields the same or more blocks (overhead reduces capacity).
+    const noPrior = planChunks({ turns, prioritySummary: null, prompt: "p", budget: 300 });
+    const withPrior = planChunks({
+      turns, prioritySummary: null, prompt: "p", budget: 300,
+      priorTurns: [mk("x".repeat(400))],
+    });
+    expect(withPrior.length).toBeGreaterThanOrEqual(noPrior.length);
+  });
+});
+
+describe("extractPriorTurns", () => {
+  const msg = (turnId: number, role: "user" | "assistant", content: string) =>
+    ({ turnId, role, content, isSummary: false });
+
+  test("returns empty when n<=0 or priorEndTurn is null", () => {
+    const chat = [msg(1, "user", "a")];
+    expect(extractPriorTurns(chat, null, 2)).toEqual({ turns: [], groups: [] });
+    expect(extractPriorTurns(chat, 10, 0)).toEqual({ turns: [], groups: [] });
+  });
+
+  test("extracts the last N turns before the summary boundary", () => {
+    const chat = [
+      msg(1, "user", "one"), msg(1, "assistant", "reply1"),
+      msg(2, "user", "two"), msg(2, "assistant", "reply2"),
+      msg(3, "user", "three"),
+    ];
+    const { turns, groups } = extractPriorTurns(chat, 2, 2);
+    expect(turns.map((t) => t.content)).toEqual(["one", "reply1", "two", "reply2"]);
+    expect(groups).toEqual([
+      { userContent: "one", assistantContents: ["reply1"] },
+      { userContent: "two", assistantContents: ["reply2"] },
+    ]);
+  });
+
+  test("skips summary messages and empty content", () => {
+    const chat = [
+      { turnId: 1, role: "system" as const, content: "SUMMARY", isSummary: true },
+      msg(1, "user", ""),
+      msg(1, "assistant", "real"),
+    ];
+    const { turns } = extractPriorTurns(chat, 1, 2);
+    expect(turns.map((t) => t.content)).toEqual(["real"]);
   });
 });

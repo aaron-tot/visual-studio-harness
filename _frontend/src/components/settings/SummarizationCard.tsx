@@ -13,10 +13,14 @@ interface SummarizationCardProps {
   fallbackModel?: string;
   promptMd?: string;
   includePriorSummary?: boolean;
+  safetyMargin?: number;
+  priorTurns?: number;
   onModel: (model: string | null) => void;
   onFallbackModel: (model: string | null) => void;
   onPromptMd: (path: string | null) => void;
   onIncludePriorSummary: (value: boolean) => void;
+  onSafetyMargin: (value: number) => void;
+  onPriorTurns: (value: number) => void;
 }
 
 export function SummarizationCard({
@@ -26,10 +30,14 @@ export function SummarizationCard({
   fallbackModel,
   promptMd,
   includePriorSummary,
+  safetyMargin,
+  priorTurns,
   onModel,
   onFallbackModel,
   onPromptMd,
   onIncludePriorSummary,
+  onSafetyMargin,
+  onPriorTurns,
 }: SummarizationCardProps) {
   const [showPromptPicker, setShowPromptPicker] = useState(false);
   const [promptSearch, setPromptSearch] = useState("");
@@ -358,6 +366,51 @@ export function SummarizationCard({
               When generating a new summary, feed in the most recent earlier summary
               so the new summary is written in context of what came before.
             </div>
+          </div>
+        </label>
+
+        {/* Context headroom (safety margin) for chunked summaries */}
+        <label className="flex items-center gap-3">
+          <span className="text-xs text-zinc-400 w-24 shrink-0">Headroom</span>
+          <div className="flex items-center gap-2 flex-1">
+            <input
+              type="number"
+              min={0}
+              max={0.9}
+              step={0.05}
+              value={safetyMargin ?? 0.2}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v)) onSafetyMargin(Math.min(0.9, Math.max(0, v)));
+              }}
+              className="w-20 px-2 py-1 rounded bg-zinc-800 border border-zinc-600 text-xs text-zinc-200"
+            />
+            <span className="text-[11px] text-zinc-500">
+              Fraction of the summarizer&apos;s context reserved as headroom. The summarizer input per chunk is kept under
+              maxContext × (1 − this). Default 20%.
+            </span>
+          </div>
+        </label>
+
+        {/* Preceding raw turns fed in addition to the prior summary */}
+        <label className="flex items-center gap-3">
+          <span className="text-xs text-zinc-400 w-24 shrink-0">Prior turns</span>
+          <div className="flex items-center gap-2 flex-1">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={priorTurns ?? 0}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!isNaN(v)) onPriorTurns(Math.max(0, v));
+              }}
+              className="w-20 px-2 py-1 rounded bg-zinc-800 border border-zinc-600 text-xs text-zinc-200"
+            />
+            <span className="text-[11px] text-zinc-500">
+              How many raw, unsummarized turns immediately before the summary range to feed in, in addition to the
+              previous summary text (0 = only the prior summary). Keeps recent history alongside older context.
+            </span>
           </div>
         </label>
       </div>

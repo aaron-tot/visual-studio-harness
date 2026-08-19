@@ -2,7 +2,7 @@ import { logMemory } from "../../utils/memory";
 import type { WorkspaceGraphServiceInput } from "./types";
 import type { WorkspaceGraphService } from "./api/types";
 import { NotInitializedError } from "./errors";
-import { getWorkspaceGraphDbPath } from "./config";
+import { getWorkspaceGraphDbPath, getWorkspaceGraphConfig } from "./config";
 import { openWorkspaceGraphDb, closeWorkspaceGraphDb, type WorkspaceGraphDb } from "./storage/db";
 import { createWorkspaceGraphRepository } from "./storage/repository";
 import { reindexWorkspace } from "./indexer/reindex";

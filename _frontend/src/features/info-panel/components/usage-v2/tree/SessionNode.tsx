@@ -15,7 +15,7 @@ function collectSessionModels(session: UsageTreeSession): string[] {
   const set = new Set<string>();
   for (const t of session.turns) {
     if (t.modelName) set.add(t.modelName);
-    for (const s of t.steps) {
+    for (const s of t.steps ?? []) {
       if (s.modelId) set.add(s.modelId);
       for (const sa of s.subagents ?? []) {
         if (sa.child) {
@@ -31,7 +31,7 @@ function collectSessionProviders(session: UsageTreeSession): string[] {
   const set = new Set<string>();
   for (const t of session.turns) {
     if (t.providerName) set.add(t.providerName);
-    for (const s of t.steps) {
+    for (const s of t.steps ?? []) {
       if (s.providerName) set.add(s.providerName);
       for (const sa of s.subagents ?? []) {
         if (sa.child) {

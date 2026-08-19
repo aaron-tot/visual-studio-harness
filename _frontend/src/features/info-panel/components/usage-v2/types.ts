@@ -40,7 +40,8 @@ export interface UsageTreeTurn {
   stepCount?: number;
   inclusiveStepCount?: number;
   status?: string;
-  steps: UsageTreeStep[];
+  /** Lazy: omitted / [] in the shallow payload; loaded on turn expand. */
+  steps?: UsageTreeStep[];
 }
 
 export interface UsageTreeSubagent {
@@ -50,6 +51,7 @@ export interface UsageTreeSubagent {
   childTurnNumber?: number;
   own: UsageTokenBlock;
   inclusive: UsageTokenBlock;
+  /** Lazy: unset in the shallow payload / stubs; loaded on subagent expand. */
   child?: UsageTreeSession;
 }
 

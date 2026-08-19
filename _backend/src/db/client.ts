@@ -303,6 +303,9 @@ function ensureSchema(sqlite: Database): void {
       /* already present */
     }
   }
+
+  // Session-list query plan: WHERE archived = 0 AND (kind IS NULL OR kind != 'subagent') ORDER BY updated DESC
+  sqlite.run(`CREATE INDEX IF NOT EXISTS idx_sessions_archived_kind_updated ON sessions(archived, kind, updated)`);
 }
 
 /**
@@ -379,4 +382,32 @@ export function getDb(dbPath?: string): DrizzleDb {
 /** DB for a given data directory (tests + multi-root). Falls back to the default DB when omitted. */
 export function getDbForDataDir(dataDir?: string): DrizzleDb {
   return dataDir ? getDb(join(dataDir, "visual-studio-harness.db")) : getDb();
+}
+
+/** Absolute path to the live session DB for a data dir (or the process default). */
+export function liveDbPath(dataDir?: string): string {
+  return dataDir
+    ? join(dataDir, "visual-studio-harness.db")
+    : join(resolveDataDir(), "visual-studio-harness.db");
+}
+
+/**
+ * Absolute path to the sibling archive DB.
+ * Lives next to the live DB: {dir}/visual-studio-harness.archive.db.
+ */
+export function archiveDbPath(dataDir?: string): string {
+  return dataDir
+    ? join(dataDir, "visual-studio-harness.archive.db")
+    : join(resolveDataDir(), "visual-studio-harness.archive.db");
+}
+
+/**
+ * Open a raw `bun:sqlite` Database with the schema ensured.
+ * Used exclusively by the archive/migrate path (not the shared getDb() singleton).
+ */
+export function openRawDb(path: string): Database {
+  mkdirSync(join(path, ".."), { recursive: true });
+  const sqlite = new Database(path);
+  ensureSchema(sqlite);
+  return sqlite;
 }

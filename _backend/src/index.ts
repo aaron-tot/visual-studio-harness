@@ -44,6 +44,7 @@ import { seedBuiltinToolFolders } from "./features/tools/folder-seed";
 import { migrateLegacyCustomTools } from "./features/custom-tools/store";
 import { migrateToSqlite } from "./storage/migrate";
 import { abortOrphanedStreamingTurns } from "./features/chat/db-trace";
+import { migrateArchivedSessions } from "./features/sessions/archive";
 
 import { ensureGlobalSystemPromptFile } from "./agent/system-prompt";
 import { KnowledgeBaseService } from "./features/knowledge-base/knowledge-base-service";
@@ -444,6 +445,21 @@ async function main() {
   // This ensures session_state rehydration does not restore orphaned streaming
   // state on the frontend (which would cause a stuck stop button).
   abortOrphanedStreamingTurns(DATA_DIR);
+
+  // One-shot migration: move pre-existing archived=1 live sessions into the
+  // sibling archive DB so the live DB every navigation path hits only holds
+  // live (non-archived) data. Idempotent — no-ops when nothing is archived.
+  try {
+    const archivedResult = migrateArchivedSessions(DATA_DIR);
+    if (archivedResult.moved > 0 || archivedResult.failed.length > 0) {
+      console.log(
+        `[archive] migration: moved ${archivedResult.moved} session(s), failed ${archivedResult.failed.length}`,
+        archivedResult.failed.length > 0 ? archivedResult.failed : ""
+      );
+    }
+  } catch (err) {
+    console.error("[archive] migration failed:", err);
+  }
 
   try {
     await app.listen({ port: PORT, host: "0.0.0.0" });

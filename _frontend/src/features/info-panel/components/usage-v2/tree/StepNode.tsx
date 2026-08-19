@@ -34,7 +34,7 @@ export function StepNode({
       if (sa.child) {
         for (const t of sa.child.turns) {
           if (t.modelName) set.add(t.modelName);
-          for (const st of t.steps) if (st.modelId) set.add(st.modelId);
+          for (const st of t.steps ?? []) if (st.modelId) set.add(st.modelId);
         }
       }
     }
@@ -48,7 +48,7 @@ export function StepNode({
       if (sa.child) {
         for (const t of sa.child.turns) {
           if (t.providerName) set.add(t.providerName);
-          for (const st of t.steps) if (st.providerName) set.add(st.providerName);
+          for (const st of t.steps ?? []) if (st.providerName) set.add(st.providerName);
         }
       }
     }

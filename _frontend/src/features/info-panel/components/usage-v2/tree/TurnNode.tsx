@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { Loader2 } from "lucide-react";
 import { CollapsibleNode } from "../collapsible";
 import { StepNode } from "./StepNode";
 import {
@@ -10,18 +11,19 @@ import {
   CountOwnIncl,
 } from "./detail/DetailFields";
 import { formatOwnIncl, formatStringOwnIncl, formatDuration, formatTokens } from "../format/format";
-import type { UsageTreeTurn } from "../types";
+import { getUsageTreeTurnSteps } from "../../../../../lib/api";
+import type { UsageTreeTurn, UsageTreeStep } from "../types";
 
-function collectTurnModels(turn: UsageTreeTurn): string[] {
+function collectTurnModels(turn: UsageTreeTurn, steps: UsageTreeStep[]): string[] {
   const set = new Set<string>();
   if (turn.modelName) set.add(turn.modelName);
-  for (const s of turn.steps) {
+  for (const s of steps) {
     if (s.modelId) set.add(s.modelId);
     for (const sa of s.subagents ?? []) {
       if (sa.child) {
         for (const t of sa.child.turns) {
           if (t.modelName) set.add(t.modelName);
-          for (const st of t.steps) if (st.modelId) set.add(st.modelId);
+          for (const st of t.steps ?? []) if (st.modelId) set.add(st.modelId);
         }
       }
     }
@@ -29,16 +31,16 @@ function collectTurnModels(turn: UsageTreeTurn): string[] {
   return [...set];
 }
 
-function collectTurnProviders(turn: UsageTreeTurn): string[] {
+function collectTurnProviders(turn: UsageTreeTurn, steps: UsageTreeStep[]): string[] {
   const set = new Set<string>();
   if (turn.providerName) set.add(turn.providerName);
-  for (const s of turn.steps) {
+  for (const s of steps) {
     if (s.providerName) set.add(s.providerName);
     for (const sa of s.subagents ?? []) {
       if (sa.child) {
         for (const t of sa.child.turns) {
           if (t.providerName) set.add(t.providerName);
-          for (const st of t.steps) if (st.providerName) set.add(st.providerName);
+          for (const st of t.steps ?? []) if (st.providerName) set.add(st.providerName);
         }
       }
     }
@@ -56,17 +58,66 @@ export function TurnNode({
   sessionId: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const toggle = useCallback(() => setExpanded((e) => !e), []);
+  const [steps, setSteps] = useState<UsageTreeStep[] | undefined>(
+    turn.steps && turn.steps.length > 0 ? turn.steps : undefined
+  );
+  const [loadingSteps, setLoadingSteps] = useState(false);
+  const stepsLoadedFor = useRef<number | undefined>(turn.stepCount);
+  const reqRef = useRef(0);
 
-  const models = useMemo(() => collectTurnModels(turn), [turn]);
-  const providers = useMemo(() => collectTurnProviders(turn), [turn]);
+  const loadSteps = useCallback(
+    async (turnRef: UsageTreeTurn) => {
+      const reqId = ++reqRef.current;
+      setLoadingSteps(true);
+      try {
+        const res = await getUsageTreeTurnSteps(sessionId, turnRef.turnNumber);
+        if (reqId !== reqRef.current) return;
+        const s = res.turn?.steps ?? [];
+        setSteps(s);
+        stepsLoadedFor.current = turnRef.stepCount;
+      } catch {
+        if (reqId !== reqRef.current) return;
+        setSteps([]);
+        stepsLoadedFor.current = turnRef.stepCount;
+      } finally {
+        if (reqId === reqRef.current) setLoadingSteps(false);
+      }
+    },
+    [sessionId]
+  );
+
+  const toggle = useCallback(() => {
+    setExpanded((e) => {
+      const next = !e;
+      if (next && steps == null) {
+        stepsLoadedFor.current = turn.stepCount;
+        loadSteps(turn);
+      }
+      return next;
+    });
+  }, [steps, loadSteps, turn]);
+
+  // Refresh: if this turn is expanded and its visible stepCount changed since we
+  // loaded steps (a step finished), invalidate and lazily refetch. Do not refetch
+  // every open turn on every refresh — only when that turn's own count changed.
+  useEffect(() => {
+    if (!expanded || steps == null) return;
+    if (turn.stepCount != null && stepsLoadedFor.current != null && stepsLoadedFor.current !== turn.stepCount) {
+      loadSteps(turn);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, turn.stepCount]);
+
+  const effectiveSteps = steps ?? [];
+  const models = useMemo(() => collectTurnModels(turn, effectiveSteps), [turn, effectiveSteps]);
+  const providers = useMemo(() => collectTurnProviders(turn, effectiveSteps), [turn, effectiveSteps]);
   const modelFmt = formatStringOwnIncl(turn.modelName, models);
   const provFmt = formatStringOwnIncl(turn.providerName, providers);
 
   const hasSubagents = turn.inclusive.totalTokens !== turn.own.totalTokens;
   const stepStr = formatOwnIncl(
-    turn.stepCount ?? turn.steps.length,
-    turn.inclusiveStepCount ?? turn.stepCount ?? turn.steps.length
+    turn.stepCount ?? effectiveSteps.length,
+    turn.inclusiveStepCount ?? turn.stepCount ?? effectiveSteps.length
   );
   const inStr = hasSubagents
     ? `${formatTokens(turn.own.inputTokens)} (${formatTokens(turn.inclusive.inputTokens)}) tok in`
@@ -126,7 +177,7 @@ export function TurnNode({
             label: "Steps",
             value: (
               <CountOwnIncl
-                own={turn.stepCount ?? turn.steps.length}
+                own={turn.stepCount ?? effectiveSteps.length}
                 inclusive={turn.inclusiveStepCount}
               />
             ),
@@ -172,9 +223,16 @@ export function TurnNode({
       headline={headline}
       detail={detail}
     >
-      {turn.steps.map((step) => (
-        <StepNode key={step.stepIndex} step={step} depth={depth + 1} sessionId={sessionId} turnNumber={Number(turn.turnNumber)} />
-      ))}
+      {loadingSteps ? (
+        <div className="flex items-center gap-1.5 px-3 py-2 text-[10px] text-zinc-500">
+          <Loader2 size={12} className="animate-spin" />
+          Loading steps…
+        </div>
+      ) : (
+        effectiveSteps.map((step) => (
+          <StepNode key={step.stepIndex} step={step} depth={depth + 1} sessionId={sessionId} turnNumber={Number(turn.turnNumber)} />
+        ))
+      )}
     </CollapsibleNode>
   );
 }

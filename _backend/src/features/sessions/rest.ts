@@ -25,7 +25,7 @@ import {
   getSessionUsage,
   getTurnStepRawCapture,
 } from "../chat/project-chat";
-import { buildUsageTree } from "../chat/usage-tree";
+import { buildUsageTree, buildTurnStepsTree } from "../chat/usage-tree";
 import { sessionHasTurns, getTurnByNumber, getNextTurnNumber, listContextTurnIds, createTurn, createStep, finalizeStep } from "../chat/db-trace";
 import { createStepStreamWriter } from "../chat/persist-stream";
 import { cancelSession } from "../chat/session-abort";
@@ -88,12 +88,22 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     return listChildSessions(dataDir, id);
   });
 
-  /** Usage tree: session → turns → steps → subagents (own + inclusive). */
+  /** Usage tree: session → turns → steps → subagents (own + inclusive). Shallow (steps: []). */
   app.get("/api/sessions/:id/usage-tree", async (request, reply) => {
     const { id } = request.params as { id: string };
     const tree = buildUsageTree(id, dataDir);
     if (!tree) return reply.code(404).send({ error: "session not found" });
     return tree;
+  });
+
+  /** Steps for a single turn (usage/timing/model only — never raw_*). Lazy-load on expand. */
+  app.get("/api/sessions/:id/usage-tree/turns/:turnNumber", async (request, reply) => {
+    const { id, turnNumber } = request.params as { id: string; turnNumber: string };
+    const n = Number(turnNumber);
+    if (!Number.isInteger(n)) return reply.code(400).send({ error: "invalid turn number" });
+    const turn = buildTurnStepsTree(id, n, dataDir);
+    if (!turn) return reply.code(404).send({ error: "session or turn not found" });
+    return { turn };
   });
 
   /** Session todos — stored on sessions.todos_json in SQLite. */

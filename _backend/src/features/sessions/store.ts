@@ -9,8 +9,8 @@ import {
   createSession as dbCreateSession,
   getSession as dbGetSession,
   listSessions as dbListSessions,
+  listChildSessions as dbListChildSessions,
   updateSessionFields,
-  archiveSession as dbArchiveSession,
   setSessionSystemPrompt,
   getSessionSystemPrompt,
   getSessionLayout as dbGetSessionLayout,
@@ -22,6 +22,7 @@ import {
   getTurnDetail,
 } from "../chat/project-chat";
 import { sessionHasTurns } from "../chat/db-trace";
+import { moveSessionToArchive } from "./archive";
 
 export interface ListSessionsOptions {
   /** When true, include subagent child sessions. Default false. */
@@ -45,8 +46,7 @@ export async function listChildSessions(
   dataDir: string,
   parentId: string
 ): Promise<SessionMeta[]> {
-  const all = await listSessions(dataDir, { includeSubagents: true });
-  return all.filter((s) => s.kind === "subagent" && s.parentId === parentId);
+  return dbListChildSessions(parentId, dataDir);
 }
 
 export async function getSession(
@@ -70,7 +70,9 @@ export async function createSession(
 }
 
 export async function deleteSession(dataDir: string, id: string): Promise<void> {
-  dbArchiveSession(id, dataDir);
+  // Copy into the archive DB, then remove from live (soft archive rows in the
+  // live DB become truly absent — live is the only DB every navigation path reads).
+  moveSessionToArchive(dataDir, id);
 }
 
 export async function renameSession(

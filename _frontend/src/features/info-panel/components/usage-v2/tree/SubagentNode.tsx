@@ -1,11 +1,12 @@
-import { useState, useCallback } from "react";
-import { ExternalLink } from "lucide-react";
+import { useState, useCallback, useRef } from "react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { CollapsibleNode } from "../collapsible";
 import { SessionNode } from "./SessionNode";
 import { DetailFields, TokenBlock, Divider } from "./detail/DetailFields";
 import { formatOwnIncl } from "../format/format";
 import { useSessionStore } from "../../../../sessions/store";
-import type { UsageTreeSubagent } from "../types";
+import { getUsageTree } from "../../../../../lib/api";
+import type { UsageTreeSubagent, UsageTreeSession } from "../types";
 
 export function SubagentNode({
   subagent,
@@ -15,7 +16,30 @@ export function SubagentNode({
   depth: number;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const toggle = useCallback(() => setExpanded((e) => !e), []);
+  const [child, setChild] = useState<UsageTreeSession | undefined>(subagent.child);
+  const [loading, setLoading] = useState(false);
+  const reqRef = useRef(0);
+  const toggle = useCallback(() => {
+    setExpanded((e) => {
+      const next = !e;
+      if (next && !child) {
+        const reqId = ++reqRef.current;
+        setLoading(true);
+        getUsageTree(subagent.childSessionId)
+          .then((tree) => {
+            if (reqId !== reqRef.current) return;
+            setChild(tree ?? undefined);
+          })
+          .catch(() => {
+            if (reqId === reqRef.current) setChild(undefined);
+          })
+          .finally(() => {
+            if (reqId === reqRef.current) setLoading(false);
+          });
+      }
+      return next;
+    });
+  }, [child, subagent.childSessionId]);
   const setActive = useSessionStore((s) => s.setActive);
 
   const openChild = useCallback(
@@ -79,8 +103,15 @@ export function SubagentNode({
       headline={headline}
       detail={detail}
     >
-      {subagent.child && (
-        <SessionNode session={subagent.child} depth={depth + 1} />
+      {loading ? (
+        <div className="flex items-center gap-1.5 px-3 py-2 text-[10px] text-zinc-500">
+          <Loader2 size={12} className="animate-spin" />
+          Loading session…
+        </div>
+      ) : child ? (
+        <SessionNode session={child} depth={depth + 1} />
+      ) : (
+        <div className="px-3 py-2 text-[10px] text-zinc-600">No session data</div>
       )}
     </CollapsibleNode>
   );

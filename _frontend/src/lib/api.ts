@@ -320,6 +320,15 @@ export function getUsageTree(sessionId: string) {
   );
 }
 
+/** Steps for a single turn (lazy-load on expand). */
+export function getUsageTreeTurnSteps(sessionId: string, turnNumber: number | string) {
+  return fetchJson<{
+    turn: import("../features/info-panel/components/usage-v2/types").UsageTreeTurn;
+  }>(
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}/usage-tree/turns/${encodeURIComponent(String(turnNumber))}`
+  );
+}
+
 export async function readMd(sessionId: string, path: string) {
   return fetchJson<{ content: string }>(
     `${BASE}/mds/read?sessionId=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(path)}`

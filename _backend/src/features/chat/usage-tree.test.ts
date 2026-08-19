@@ -15,7 +15,7 @@ import {
   insertTurnContext,
 } from "./db-trace";
 import { insertSubagentSpawn } from "../subagents/db";
-import { buildUsageTree, getSessionOwnTokens } from "./usage-tree";
+import { buildUsageTree, buildTurnStepsTree, getSessionOwnTokens } from "./usage-tree";
 
 let dataDir: string;
 
@@ -70,7 +70,7 @@ describe("buildUsageTree", () => {
     expect(tree!.stepCount).toBe(0);
   });
 
-  test("own tokens from turns when cache empty; contextTurnNumbers; inclusive with spawn", () => {
+  test("own tokens from turns when cache empty; contextTurnNumbers; inclusive with spawn; shallow steps", () => {
     seedSession("p1", { title: "Parent One" });
     seedSession("c1", { kind: "subagent", parentId: "p1", title: "Child One" });
 
@@ -150,15 +150,75 @@ describe("buildUsageTree", () => {
     expect(turn1.contextTurnNumbers).toEqual([]);
     expect(turn1.own.totalTokens).toBe(15);
     expect(turn1.inclusive.totalTokens).toBe(165); // 15 + child turn 150
-    expect(turn1.steps[0].subagents).toHaveLength(1);
-    expect(turn1.steps[0].subagents![0].childSessionId).toBe("c1");
-    expect(turn1.steps[0].subagents![0].child?.sessionId).toBe("c1");
-    expect(turn1.steps[0].inclusive.totalTokens).toBe(165);
+    expect(turn1.stepCount).toBe(1);
+    expect(turn1.steps).toEqual([]); // shallow: steps omitted
 
     const turn2 = tree.turns[1];
     expect(turn2.contextTurnNumbers).toEqual([1]);
     expect(turn2.own.totalTokens).toBe(30);
     expect(turn2.inclusive.totalTokens).toBe(30);
+    expect(turn2.steps).toEqual([]);
+  });
+
+  test("buildTurnStepsTree returns step-level spawn stubs (child unset) with usage columns only", () => {
+    seedSession("ts-p", { title: "Parent" });
+    seedSession("ts-c", { kind: "subagent", parentId: "ts-p", title: "Child" });
+
+    const now = new Date().toISOString();
+    const t1 = createTurn("ts-p", 1, "turn one", now, { modelName: "m-p" }, dataDir);
+    const s0 = createStep(t1, "ts-p", 0, { modelId: "m-p", providerName: "prov" }, dataDir);
+    finalizeStep(
+      s0,
+      { inputTokens: 10, outputTokens: 5, totalTokens: 15, stepTimeMs: 100 },
+      dataDir,
+    );
+    finalizeTurnTrace(t1, { success: true }, dataDir);
+
+    const ct = createTurn("ts-c", 1, "child", now, { modelName: "m-c" }, dataDir);
+    const cs = createStep(ct, "ts-c", 0, { modelId: "m-c" }, dataDir);
+    finalizeStep(
+      cs,
+      { inputTokens: 100, outputTokens: 50, totalTokens: 150, stepTimeMs: 500 },
+      dataDir,
+    );
+    finalizeTurnTrace(ct, { success: true }, dataDir);
+
+    insertSubagentSpawn(
+      {
+        parentSessionId: "ts-p",
+        parentTurnId: t1,
+        parentTurnNumber: 1,
+        parentStepId: s0,
+        parentStepIndex: 0,
+        toolCallId: "tc-ts",
+        childSessionId: "ts-c",
+        childTurnId: ct,
+        childTurnNumber: 1,
+        kind: "spawn",
+        taskLabel: "child-task",
+      },
+      dataDir,
+    );
+
+    const tree = buildTurnStepsTree("ts-p", 1, dataDir)!;
+    expect(tree.turnId).toBe(t1);
+    expect(tree.turnNumber).toBe(1);
+    expect(tree.own.totalTokens).toBe(15);
+    expect(tree.inclusive.totalTokens).toBe(165); // 15 + child turn 150
+    expect(tree.steps).toHaveLength(1);
+    const step = tree.steps![0];
+    expect(step.stepIndex).toBe(0);
+    expect(step.modelId).toBe("m-p");
+    expect(step.own.totalTokens).toBe(15);
+    expect(step.inclusive.totalTokens).toBe(165);
+    expect(step.subagents).toHaveLength(1);
+    const sa = step.subagents![0];
+    expect(sa.childSessionId).toBe("ts-c");
+    expect(sa.taskLabel).toBe("child-task");
+    expect(sa.kind).toBe("spawn");
+    expect(sa.own.totalTokens).toBe(150);
+    expect(sa.inclusive.totalTokens).toBe(150);
+    expect(sa.child).toBeUndefined(); // stubs carry no nested child tree
   });
 
   test("getSessionOwnTokens falls back to turn SUM when cache is zero", () => {

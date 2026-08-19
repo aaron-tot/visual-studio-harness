@@ -1,4 +1,4 @@
-import { eq, desc, and, lte, lt } from "drizzle-orm";
+import { eq, ne, or, isNull, desc, and, lte, lt } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
 import { sessions, sessionLayouts, summaryRanges, turns } from "../../db/schema";
 import type { SessionMeta, LayoutNode } from "../../../../_shared/types";
@@ -7,7 +7,14 @@ export function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
 }
 
-function rowToSessionMeta(row: typeof sessions.$inferSelect): SessionMeta {
+function rowToSessionMeta(
+  row: Pick<
+    typeof sessions.$inferSelect,
+    | "id" | "title" | "providerName" | "modelName" | "workspaceRoot" | "kind"
+    | "parentId" | "taskLabel" | "agentName" | "thinkingEffort"
+    | "created" | "updated" | "archived" | "starred"
+  >,
+): SessionMeta {
   return {
     id: row.id,
     title: row.title,
@@ -62,13 +69,51 @@ export function listSessions(opts?: {
   dataDir?: string;
 }): SessionMeta[] {
   const db = dbFor(opts?.dataDir);
-  let rows = db.select().from(sessions).orderBy(desc(sessions.updated)).all();
-  if (!opts?.includeArchived) {
-    rows = rows.filter((r) => !r.archived);
-  }
+  // Trim to list-only columns (never read system_prompt / todos / model config
+  // blobs) and enforce `archived = 0` in SQL, not JS. After the archive
+  // migration most of these rows are gone from live entirely; this keeps the
+  // query plan from touching blob columns.
+  const cols = {
+    id: sessions.id,
+    title: sessions.title,
+    providerName: sessions.providerName,
+    modelName: sessions.modelName,
+    workspaceRoot: sessions.workspaceRoot,
+    kind: sessions.kind,
+    parentId: sessions.parentId,
+    taskLabel: sessions.taskLabel,
+    agentName: sessions.agentName,
+    thinkingEffort: sessions.thinkingEffort,
+    created: sessions.created,
+    updated: sessions.updated,
+    archived: sessions.archived,
+    starred: sessions.starred,
+  };
+  const conditions = [eq(sessions.archived, false)];
   if (!opts?.includeSubagents) {
-    rows = rows.filter((r) => (r.kind || "primary") !== "subagent");
+    conditions.push(or(isNull(sessions.kind), ne(sessions.kind, "subagent"))!);
   }
+  const rows = db
+    .select(cols)
+    .from(sessions)
+    .where(and(...conditions)!)
+    .orderBy(desc(sessions.updated))
+    .all();
+  return rows.map(rowToSessionMeta);
+}
+
+/** Direct children of a parent (kind=subagent, not archived) without scanning every session. */
+export function listChildSessions(
+  parentId: string,
+  dataDir?: string
+): SessionMeta[] {
+  const db = dbFor(dataDir);
+  const rows = db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.parentId, parentId), eq(sessions.archived, false)))
+    .orderBy(desc(sessions.updated))
+    .all();
   return rows.map(rowToSessionMeta);
 }
 
@@ -225,14 +270,6 @@ export function setSessionDraftInput(
   dataDir?: string
 ): void {
   updateSessionFields(id, { draftInput }, dataDir);
-}
-
-export function archiveSession(id: string, dataDir?: string): SessionMeta | null {
-  return updateSessionFields(
-    id,
-    { archived: true, updated: new Date().toISOString() },
-    dataDir
-  );
 }
 
 export function getSessionLayout(

@@ -1,7 +1,7 @@
 import { join, extname } from "node:path";
 import { mkdir, readFile, readdir, writeFile, copyFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { getSession } from "../../storage/session";
+import { getSessionMetaPublic } from "../../storage/session";
 import { resolveDataDirInfo } from "../../paths";
 import { seedsDir, seedSubdirForMode } from "./paths";
 
@@ -339,8 +339,8 @@ export async function resolveMdsContext(q: { sessionId?: string; workspaceRoot?:
   const { dataDir: resolvedDataDir } = resolveDataDirInfo();
   let wsRoot = (q.workspaceRoot || "").trim();
   if (q.sessionId) {
-    const session = await getSession(resolvedDataDir, q.sessionId);
-    if (session?.meta?.workspaceRoot) wsRoot = session.meta.workspaceRoot;
+    const session = await getSessionMetaPublic(resolvedDataDir, q.sessionId);
+    if (session?.workspaceRoot) wsRoot = session.workspaceRoot;
   }
   return { resolvedDataDir, wsRoot };
 }

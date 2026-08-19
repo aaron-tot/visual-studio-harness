@@ -6,6 +6,7 @@ import {
   listSessions,
   listChildSessions,
   getSession,
+  getSessionMetaPublic,
   deleteSession,
   renameSession,
   updateSessionMeta,
@@ -28,7 +29,8 @@ import {
 import { buildUsageTree, buildTurnStepsTree } from "../chat/usage-tree";
 import { sessionHasTurns, getTurnByNumber, getNextTurnNumber, listContextTurnIds, createTurn, createStep, finalizeStep } from "../chat/db-trace";
 import { createStepStreamWriter } from "../chat/persist-stream";
-import { cancelSession } from "../chat/session-abort";
+import { cancelSession, abortAllActiveSessions } from "../chat/session-abort";
+import { compactLiveDb } from "./archive";
 import { sendSessionStateToSession } from "./view-tracker";
 import { buildModelMessages } from "../chat/message-builder";
 import type { ModelMessage as CoreMessage } from "ai";
@@ -74,6 +76,27 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     return { sessionIds: getActiveSessions() };
   });
 
+  /**
+   * Manual DB compaction: abort all in-flight sessions so nothing is writing,
+   * then VACUUM the main DB so archived/deleted rows actually free disk.
+   */
+  app.post("/api/db/compact", async (_request, reply) => {
+    const aborted = abortAllActiveSessions(dataDir);
+    // Give aborted turns a brief moment to unwind current writes.
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      const compacted = compactLiveDb(dataDir);
+      return { ok: true, abortedSessions: aborted.length, ...compacted };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(500).send({
+        ok: false,
+        error: message,
+        abortedSessions: aborted.length,
+      });
+    }
+  });
+
   app.get("/api/sessions/:id", async (request) => {
     const { id } = request.params as { id: string };
     const session = await getSession(dataDir, id);
@@ -81,9 +104,17 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     return session;
   });
 
+  /** Lightweight meta only (sticky note) — NO full transcript hydrate. Used by shared panels. */
+  app.get("/api/sessions/:id/meta", async (request) => {
+    const { id } = request.params as { id: string };
+    const meta = await getSessionMetaPublic(dataDir, id);
+    if (!meta) return { error: "not found" };
+    return meta;
+  });
+
   app.get("/api/sessions/:id/children", async (request) => {
     const { id } = request.params as { id: string };
-    const parent = await getSession(dataDir, id);
+    const parent = await getSessionMetaPublic(dataDir, id);
     if (!parent) return { error: "not found" };
     return listChildSessions(dataDir, id);
   });
@@ -109,7 +140,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
   /** Session todos — stored on sessions.todos_json in SQLite. */
   app.get("/api/sessions/:id/todos", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found", todos: [] });
     try {
       const raw = getSessionTodosJson(id, dataDir);
@@ -128,7 +159,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
 
   app.put("/api/sessions/:id/todos", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const body = (request.body || {}) as { todos?: unknown };
     const todos = Array.isArray(body.todos) ? body.todos : [];
@@ -139,7 +170,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
   /** Session draft input — stored on sessions.draft_input in SQLite. */
   app.get("/api/sessions/:id/draft", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const draft = getSessionDraftInput(id, dataDir);
     return { draft: draft ?? "" };
@@ -147,7 +178,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
 
   app.put("/api/sessions/:id/draft", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const body = (request.body || {}) as { draft?: string };
     const draft = typeof body.draft === "string" ? body.draft : "";
@@ -159,7 +190,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
    *  Also stores a `context` key for context-range controls. */
   app.get("/api/sessions/:id/model-config", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     try {
       const raw = getSessionModelConfigJson(id, dataDir);
@@ -172,7 +203,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
 
   app.put("/api/sessions/:id/model-config", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const body = (request.body || {}) as Record<string, unknown>;
 
@@ -202,7 +233,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
   /** Per-session context config — stored inside model_config_json.context. */
   app.get("/api/sessions/:id/context-config", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     try {
       const raw = getSessionModelConfigJson(id, dataDir);
@@ -216,7 +247,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
 
   app.put("/api/sessions/:id/context-config", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const body = (request.body || {}) as {
       mode?: "sliding" | "fixed";
@@ -317,7 +348,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
     // Session scope lives in the session's modelConfigJson .context
     let session: Record<string, unknown> = {};
     if (opts.sessionId) {
-      const s = await getSession(dataDir, opts.sessionId);
+      const s = await getSessionMetaPublic(dataDir, opts.sessionId);
       if (s) {
         const raw = getSessionModelConfigJson(opts.sessionId, dataDir);
         if (raw) {
@@ -469,7 +500,7 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       return reply.code(400).send({ error: "sessionId and endTurnNum are required" });
     }
 
-    const session = await getSession(dataDir, sessionId);
+    const session = await getSessionMetaPublic(dataDir, sessionId);
     if (!session) return reply.code(404).send({ error: "session not found" });
 
     // Resolve effective context config for the session
@@ -1014,7 +1045,7 @@ for (const m of chatMessages) {
 
   app.get("/api/sessions/:id/summary-ranges", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
 
     const ranges = getSummaryRangesForSession(dataDir, id);
@@ -1023,8 +1054,8 @@ for (const m of chatMessages) {
 
   app.delete("/api/sessions/:id", async (request) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
-    const workspaceRoot = session?.meta?.workspaceRoot;
+    const session = await getSessionMetaPublic(dataDir, id);
+    const workspaceRoot = session?.workspaceRoot;
     cancelSession(id, dataDir);
     await deleteSession(dataDir, id);
 
@@ -1052,12 +1083,12 @@ for (const m of chatMessages) {
     const body = request.body as { title?: string; workspaceRoot?: string; starred?: boolean };
     // Workspace is set once at session start. Only allow pinning if still unset (legacy).
     if (body.workspaceRoot !== undefined) {
-      const session = await getSession(dataDir, id);
+      const session = await getSessionMetaPublic(dataDir, id);
       if (!session) return { error: "not found" };
-      if (session.meta.workspaceRoot?.trim()) {
+      if (session.workspaceRoot?.trim()) {
         return {
           error: "workspace is fixed for this session (set only at start)",
-          session: session.meta,
+          session,
         };
       }
       const root = normalizeWorkspace(body.workspaceRoot);
@@ -1078,7 +1109,7 @@ for (const m of chatMessages) {
 
   app.get("/api/sessions/:id/turns", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const summaries = listTurnSummaries(id, dataDir);
     return { turns: summaries };
@@ -1086,7 +1117,7 @@ for (const m of chatMessages) {
 
   app.get("/api/sessions/:id/turns/:turnId", async (request, reply) => {
     const { id, turnId } = request.params as { id: string; turnId: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const numTurnId = parseInt(turnId, 10);
     if (isNaN(numTurnId)) return reply.code(400).send({ error: "invalid turn id" });
@@ -1097,7 +1128,7 @@ for (const m of chatMessages) {
 
   app.get("/api/sessions/:id/turns/:turnId/raw", async (request, reply) => {
     const { id, turnId } = request.params as { id: string; turnId: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const numTurnId = parseInt(turnId, 10);
     if (isNaN(numTurnId)) return reply.code(400).send({ error: "invalid turn id" });
@@ -1108,7 +1139,7 @@ for (const m of chatMessages) {
 
   app.get("/api/sessions/:id/turns/:turnId/reconstructed-requests", async (request, reply) => {
     const { id, turnId } = request.params as { id: string; turnId: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const numTurnId = parseInt(turnId, 10);
     if (isNaN(numTurnId)) return reply.code(400).send({ error: "invalid turn id" });
@@ -1282,7 +1313,7 @@ for (const m of chatMessages) {
 
   app.get("/api/sessions/:id/turns/:turnId/full", async (request, reply) => {
     const { id, turnId } = request.params as { id: string; turnId: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const numTurnId = parseInt(turnId, 10);
     if (isNaN(numTurnId)) return reply.code(400).send({ error: "invalid turn id" });
@@ -1295,7 +1326,7 @@ for (const m of chatMessages) {
 
   app.get("/api/sessions/:id/turns/:turnId/steps", async (request, reply) => {
     const { id, turnId } = request.params as { id: string; turnId: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const numTurnId = parseInt(turnId, 10);
     if (isNaN(numTurnId)) return reply.code(400).send({ error: "invalid turn id" });
@@ -1306,7 +1337,7 @@ for (const m of chatMessages) {
 
   app.get("/api/sessions/:id/turns/:turnId/steps/:stepIndex", async (request, reply) => {
     const { id, turnId, stepIndex } = request.params as { id: string; turnId: string; stepIndex: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     const numTurnId = parseInt(turnId, 10);
     if (isNaN(numTurnId)) return reply.code(400).send({ error: "invalid turn id" });
@@ -1319,7 +1350,7 @@ for (const m of chatMessages) {
 
   app.get("/api/sessions/:id/usage", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const session = await getSession(dataDir, id);
+    const session = await getSessionMetaPublic(dataDir, id);
     if (!session) return reply.code(404).send({ error: "session not found" });
     return getSessionUsage(id, dataDir);
   });

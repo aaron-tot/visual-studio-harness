@@ -22,9 +22,34 @@
  * sessions.id). We never delete live before the archive copy succeeds.
  */
 import { Database } from "bun:sqlite";
-import { openRawDb, liveDbPath, archiveDbPath } from "../../db/client";
+import { statSync } from "node:fs";
+import { openRawDb, liveDbPath, archiveDbPath, evictDbForDataDir } from "../../db/client";
 
 type Row = Record<string, unknown>;
+
+/** Compact the live DB on boot when the freelist exceeds this many bytes. */
+const FREELIST_COMPACT_THRESHOLD_BYTES = 512 * 1024 * 1024; // 512 MB
+
+function hasLargeFreelist(dataDir?: string): boolean {
+  try {
+    const db = new Database(liveDbPath(dataDir), { readonly: true });
+    try {
+      const pageSize = (db.query("PRAGMA page_size").get() as { page_size: number }).page_size;
+      const freelist = (db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count;
+      if (freelist * pageSize >= FREELIST_COMPACT_THRESHOLD_BYTES) {
+        console.log(
+          `[archive] large freelist detected (${((freelist * pageSize) / 1e6).toFixed(1)} MB) — will compact on boot`
+        );
+        return true;
+      }
+    } finally {
+      db.close();
+    }
+  } catch (err) {
+    console.warn("[archive] freelist check failed:", err);
+  }
+  return false;
+}
 
 function placeholders(n: number): string {
   if (n === 0) return "NULL";
@@ -304,13 +329,74 @@ export function moveSessionToArchive(
 }
 
 /**
+ * Compact the live DB so the file actually shrinks on disk, returning the
+ * number of bytes freed. Runs a full VACUUM after checkpointing the WAL.
+ *
+ * Callers must not have any in-flight writes to the live DB when this runs
+ * (the compaction endpoint aborts sessions first; the boot migration runs it
+ * before the server binds). The shared singleton connection is evicted first
+ * because SQLite defers the file truncate until the last connection closes —
+ * so "after" is measured after this function's own connection closes too.
+ */
+export function compactLiveDb(
+  dataDir?: string
+): { beforeBytes: number; afterBytes: number; freedBytes: number } {
+  const livePath = liveDbPath(dataDir);
+  const sizeOf = (): number => {
+    try {
+      return statSync(livePath).size;
+    } catch {
+      return 0;
+    }
+  };
+
+  // Free the shared connection so VACUUM can truncate the file right away.
+  evictDbForDataDir(dataDir);
+
+  const vacuum = new Database(livePath);
+  let beforeBytes: number;
+  try {
+    vacuum.run("PRAGMA busy_timeout = 10000");
+    // Fold any WAL pages into the main file so the bytes we measure are real,
+    // and so the subsequent VACUUM can actually shrink the file.
+    vacuum.query("PRAGMA wal_checkpoint(TRUNCATE)").get();
+    beforeBytes = sizeOf();
+    vacuum.run("VACUUM");
+  } finally {
+    vacuum.close();
+  }
+  // SQLite defers the file truncation until the last open connection closes
+  // AND a new connection re-opens the file. Reopen once so the shrink lands,
+  // then measure "after".
+  const force = new Database(livePath);
+  try {
+    force.query("PRAGMA wal_checkpoint(TRUNCATE)").get();
+  } finally {
+    force.close();
+  }
+  const afterBytes = sizeOf();
+  const freedBytes = Math.max(0, beforeBytes - afterBytes);
+  console.log(
+    `[archive] compact live DB: ${(beforeBytes / 1e6).toFixed(1)} MB -> ${(afterBytes / 1e6).toFixed(1)} MB (freed ${(freedBytes / 1e6).toFixed(1)} MB)`
+  );
+  return {
+    beforeBytes,
+    afterBytes,
+    freedBytes,
+  };
+}
+
+/**
  * One-shot boot migration: move every live `archived = 1` session (and any
  * subagent descendants, even if not flagged) into the archive DB.
  * Idempotent — safe to run every boot; no-ops when nothing is archived.
+ * When sessions were moved, the live DB is compacted so the freed disk is
+ * actually reclaimed.
  */
 export function migrateArchivedSessions(dataDir?: string): {
   moved: number;
   failed: string[];
+  compacted?: { beforeBytes: number; afterBytes: number; freedBytes: number };
 } {
   const live = new Database(liveDbPath(dataDir));
   const archived = live
@@ -318,12 +404,19 @@ export function migrateArchivedSessions(dataDir?: string): {
     .all() as Row[];
   live.close();
 
+  console.log(
+    `[archive] migration: found ${archived.length} archived session(s) in live DB`
+  );
+
   const failed: string[] = [];
   let moved = 0;
   for (const row of archived) {
     const id = String(row.id);
     try {
-      if (moveSessionToArchive(dataDir, id)) moved++;
+      if (moveSessionToArchive(dataDir, id)) {
+        moved++;
+        console.log(`[archive] moved session ${id} -> archive.db`);
+      }
     } catch (err) {
       failed.push(id);
       console.error(
@@ -332,5 +425,25 @@ export function migrateArchivedSessions(dataDir?: string): {
       );
     }
   }
+
+  // Reclaim the space freed by the move. Also reclaims leftover freelist
+  // bloat (e.g. from an extract that already deleted its live rows on a prior
+  // build that didn't vacuum) even when nothing moved this boot.
+  if (moved > 0 || hasLargeFreelist(dataDir)) {
+    try {
+      const compacted = compactLiveDb(dataDir);
+      if (compacted.freedBytes > 0) {
+        console.log(
+          `[archive] compacted live DB after migration: freed ${(compacted.freedBytes / 1e6).toFixed(1)} MB`
+        );
+      }
+      return { moved, failed, compacted };
+    } catch (err) {
+      console.error("[archive] post-migration compaction failed:", err);
+    }
+  } else if (archived.length === 0) {
+    console.log("[archive] migration: nothing to do — no archived sessions in live DB");
+  }
+
   return { moved, failed };
 }

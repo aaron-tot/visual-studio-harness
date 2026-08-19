@@ -384,6 +384,26 @@ export function getDbForDataDir(dataDir?: string): DrizzleDb {
   return dataDir ? getDb(join(dataDir, "visual-studio-harness.db")) : getDb();
 }
 
+/**
+ * Close and evict the cached live-DB connection so a later VACUUM can shrink
+ * the file (SQLite defers the truncate until the last open connection closes)
+ * and so the next getDb/getDbForDataDir call opens a fresh connection.
+ * Safe to call when nothing is mid-write (callers abort active sessions first).
+ */
+export function evictDbForDataDir(dataDir?: string): void {
+  const path = dataDir
+    ? join(dataDir, "visual-studio-harness.db")
+    : join(resolveDataDir(), "visual-studio-harness.db");
+  const db = dbs.get(path);
+  if (!db) return;
+  try {
+    (db.$client as Database).close();
+  } catch {
+    /* already closed */
+  }
+  dbs.delete(path);
+}
+
 /** Absolute path to the live session DB for a data dir (or the process default). */
 export function liveDbPath(dataDir?: string): string {
   return dataDir

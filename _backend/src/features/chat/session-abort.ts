@@ -66,3 +66,23 @@ export function cancelSession(sessionId: string, dataDir?: string): boolean {
   emitSessionAbort(sessionId, "user_cancel", dataDir);
   return hadAc;
 }
+
+/**
+ * Abort every in-flight session (used before a destructive maintenance
+ * operation such as DB compaction). Returns the ids that were running.
+ */
+export function abortAllActiveSessions(dataDir?: string): string[] {
+  const ids = Array.from(sessionAborts.keys());
+  for (const id of ids) {
+    try {
+      cancelSession(id, dataDir);
+    } catch (err) {
+      console.warn(
+        "[abortAllActiveSessions] cancel failed for",
+        id,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+  return ids;
+}

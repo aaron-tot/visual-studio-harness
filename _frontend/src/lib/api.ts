@@ -78,10 +78,28 @@ export function getSession(id: string) {
   return fetchJson<Session>(`${BASE}/sessions/${id}`);
 }
 
+/** Lightweight meta only — NO full transcript hydrate. */
+export function getSessionMeta(id: string) {
+  return fetchJson<SessionMeta>(`${BASE}/sessions/${encodeURIComponent(id)}/meta`);
+}
+
 export function deleteSession(id: string) {
   return fetchJson<{ ok: boolean }>(`${BASE}/sessions/${id}`, {
     method: "DELETE",
   });
+}
+
+/** Compact the main DB (aborts in-flight sessions first) so freed disk is reclaimed. */
+export interface CompactDbResult {
+  ok: boolean;
+  abortedSessions: number;
+  beforeBytes: number;
+  afterBytes: number;
+  freedBytes: number;
+}
+
+export function compactDb() {
+  return fetchJson<CompactDbResult>(`${BASE}/db/compact`, { method: "POST" });
 }
 
 export function renameSession(id: string, title: string) {

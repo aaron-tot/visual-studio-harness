@@ -12,6 +12,91 @@ function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
 }
 
+// ── Narrow column projections (NEVER drag raw_request_json / raw_response_json) ──
+// tune shapes what projectSessionChat (WS chat history) paints — nothing else.
+const turnChatCols = {
+  id: turns.id,
+  turnNumber: turns.turnNumber,
+  kind: turns.kind,
+  status: turns.status,
+  success: turns.success,
+  userContent: turns.userContent,
+  userTimestamp: turns.userTimestamp,
+  agentName: turns.agentName,
+  modelName: turns.modelName,
+  providerName: turns.providerName,
+  durationMs: turns.durationMs,
+  completedAt: turns.completedAt,
+  startedAt: turns.startedAt,
+  errorMessage: turns.errorMessage,
+  errorRaw: turns.errorRaw,
+  errorIsCustom: turns.errorIsCustom,
+  configSnapshotJson: turns.configSnapshotJson,
+};
+
+/** Previews + token chips (listTurnSummaries). */
+const turnSummaryCols = {
+  id: turns.id,
+  turnNumber: turns.turnNumber,
+  status: turns.status,
+  userContent: turns.userContent,
+  modelName: turns.modelName,
+  providerName: turns.providerName,
+  durationMs: turns.durationMs,
+  inputTokens: turns.inputTokens,
+  outputTokens: turns.outputTokens,
+  totalTokens: turns.totalTokens,
+  stepCount: turns.stepCount,
+  success: turns.success,
+};
+
+/** TurnDetail (inspector, not Raw). */
+const turnDetailCols = {
+  id: turns.id,
+  turnNumber: turns.turnNumber,
+  status: turns.status,
+  userContent: turns.userContent,
+  userTimestamp: turns.userTimestamp,
+  agentName: turns.agentName,
+  modelName: turns.modelName,
+  providerName: turns.providerName,
+  durationMs: turns.durationMs,
+  inputTokens: turns.inputTokens,
+  outputTokens: turns.outputTokens,
+  totalTokens: turns.totalTokens,
+  stepCount: turns.stepCount,
+  success: turns.success,
+  systemPromptSnapshotId: turns.systemPromptSnapshotId,
+  toolsSnapshotId: turns.toolsSnapshotId,
+  errorMessage: turns.errorMessage,
+};
+
+/** Step usage/timing/model only — never raw_request_json / raw_response_json. */
+const stepDetailCols = {
+  id: steps.id,
+  stepIndex: steps.stepIndex,
+  status: steps.status,
+  finishReason: steps.finishReason,
+  rawFinishReason: steps.rawFinishReason,
+  inputTokens: steps.inputTokens,
+  outputTokens: steps.outputTokens,
+  totalTokens: steps.totalTokens,
+  reasoningTokens: steps.reasoningTokens,
+  cacheReadTokens: steps.cacheReadTokens,
+  cacheWriteTokens: steps.cacheWriteTokens,
+  noCacheInputTokens: steps.noCacheInputTokens,
+  stepTimeMs: steps.stepTimeMs,
+  responseTimeMs: steps.responseTimeMs,
+  timeToFirstOutputMs: steps.timeToFirstOutputMs,
+  effectiveOutputTps: steps.effectiveOutputTps,
+  outputTps: steps.outputTps,
+  inputTps: steps.inputTps,
+  modelId: steps.modelId,
+  responseModelId: steps.responseModelId,
+  providerName: steps.providerName,
+  responseId: steps.responseId,
+};
+
 /**
  * Reads generation metadata (initiatedAt, initiator, requested range) from a
  * summary turn's configSnapshotJson. The range fallback matters while a
@@ -55,7 +140,7 @@ function parseSummaryMeta(configSnapshotJson: string | null): {
 export function projectSessionChat(sessionId: string, dataDir?: string): Message[] {
   const db = dbFor(dataDir);
   const turnRows = db
-    .select()
+    .select(turnChatCols)
     .from(turns)
     .where(eq(turns.sessionId, sessionId))
     .orderBy(turns.turnNumber)
@@ -345,7 +430,7 @@ export function resolveContextTurnIds(
 export function listTurnSummaries(sessionId: string, dataDir?: string): TurnSummary[] {
   const db = dbFor(dataDir);
   const rows = db
-    .select()
+    .select(turnSummaryCols)
     .from(turns)
     .where(eq(turns.sessionId, sessionId))
     .orderBy(turns.turnNumber)
@@ -382,7 +467,7 @@ export function getTurnDetail(
 ): TurnDetail | null {
   const db = dbFor(dataDir);
   const t = db
-    .select()
+    .select(turnDetailCols)
     .from(turns)
     .where(and(eq(turns.sessionId, sessionId), eq(turns.turnNumber, turnNumber)))
     .get();
@@ -397,7 +482,7 @@ export function getTurnDetail(
     .all();
 
   const stepRows = db
-    .select()
+    .select(stepDetailCols)
     .from(steps)
     .where(eq(steps.turnId, t.id))
     .orderBy(steps.stepIndex)
@@ -533,7 +618,12 @@ export function getSessionUsage(sessionId: string, dataDir?: string): SessionUsa
     .get();
 
   const s = db
-    .select()
+    .select({
+      cachedInputTokens: sessions.cachedInputTokens,
+      cachedOutputTokens: sessions.cachedOutputTokens,
+      cachedTotalTokens: sessions.cachedTotalTokens,
+      cachedTurnCount: sessions.cachedTurnCount,
+    })
     .from(sessions)
     .where(eq(sessions.id, sessionId))
     .get();
@@ -605,7 +695,7 @@ export function getStepWithParts(
 ): TurnDetail["steps"][number] & { parts: unknown[] } | null {
   const db = dbFor(dataDir);
   const t = db
-    .select()
+    .select({ id: turns.id })
     .from(turns)
     .where(and(eq(turns.sessionId, sessionId), eq(turns.turnNumber, turnNumber)))
     .get();

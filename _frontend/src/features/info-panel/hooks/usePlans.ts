@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { listPlans, listPlansBatched, listSessions, listWorkspaces } from "../../../lib/api";
+import { listPlans, listPlansBatched, listWorkspaces } from "../../../lib/api";
+import { useSessionStore } from "../../sessions/store";
 import type { DesignGroup, PlanScope } from "../types";
 import { workspaceLabel } from "../types";
 
@@ -29,6 +30,8 @@ export function usePlans({
   const [groups, setGroups] = useState<DesignGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sidebar already fetched the session list — read it instead of an extra round-trip.
+  const storeSessions = useSessionStore((s) => s.sessions);
 
   const refresh = useCallback(async () => {
     if (!enabled) return;
@@ -102,7 +105,7 @@ export function usePlans({
       }
 
       // session scope
-      const sessionList = await listSessions();
+      const sessionList = storeSessions;
       const byId = new Map(sessionList.map((s) => [s.id, s]));
       const ids = new Set<string>();
       if (currentSessionId) ids.add(currentSessionId);
@@ -156,7 +159,7 @@ export function usePlans({
     } finally {
       setLoading(false);
     }
-  }, [scope, workspaceRoot, currentSessionId, enabled]);
+  }, [scope, workspaceRoot, currentSessionId, enabled, storeSessions]);
 
   // Clear groups immediately when scope changes to avoid stale flash
   useEffect(() => {

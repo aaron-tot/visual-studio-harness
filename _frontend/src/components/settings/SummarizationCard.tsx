@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Plus, FileText, X, AlertTriangle, Search, Filter, FlaskConical } from "lucide-react";
 import { ModelDropdown } from "../chat/ModelDropdown";
 import { getMdsScopePaths, type ScopeItem } from "../../lib/api";
@@ -50,21 +50,27 @@ export function SummarizationCard({
   const activeSessionId = useSessionStore((s) => s.activeId ?? s.sessions[0]?.id);
   const effSession = sessionId ?? activeSessionId;
 
-  useEffect(() => {
+  // Fetch scope-paths lazily — only when the user opens the prompt picker,
+  // never on panel mount (that would walk MDS trees + hydrate the session).
+  const loadScopeItems = useCallback(async () => {
     if (!effSession) return;
-    let cancelled = false;
-    getMdsScopePaths({ sessionId: effSession, workspaceRoot })
-      .then((result) => {
-        if (cancelled) return;
-        const all: ScopeItem[] = [];
-        for (const [, scope] of Object.entries(result.scopes) as [PlanScope, { available: boolean; items: ScopeItem[] }][]) {
-          if (scope.available) all.push(...scope.items);
-        }
-        setScopeItems(all);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    try {
+      const result = await getMdsScopePaths({ sessionId: effSession, workspaceRoot });
+      const all: ScopeItem[] = [];
+      for (const [, scope] of Object.entries(result.scopes) as [PlanScope, { available: boolean; items: ScopeItem[] }][]) {
+        if (scope.available) all.push(...scope.items);
+      }
+      setScopeItems(all);
+    } catch { /* keep whatever we have */ }
   }, [effSession, workspaceRoot]);
+
+  const togglePromptPicker = () => {
+    setShowPromptPicker((v) => {
+      const next = !v;
+      if (next) void loadScopeItems();
+      return next;
+    });
+  };
 
   // Auto-correct stale promptMd path after MDS DnD (item moved → path no longer valid)
   useEffect(() => {
@@ -208,7 +214,7 @@ export function SummarizationCard({
                 </button>
               )}
               <button
-                onClick={() => setShowPromptPicker((v) => !v)}
+                onClick={togglePromptPicker}
                 className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
               >
                 {promptMd ? "Change" : "Attach MD"}

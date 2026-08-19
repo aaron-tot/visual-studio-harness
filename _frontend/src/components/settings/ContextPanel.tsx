@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Save } from "lucide-react";
 import { getSessionContextConfig, putSessionContextConfig, getScopedContextConfig, putScopedContextConfig } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
@@ -27,6 +27,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
   const [summarizationPromptMd, setSummarizationPromptMd] = useState<string | undefined>();
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
+  // Whether ctxConfig.enabled was explicitly present (else default to true on save).
+  const enabledExplicit = useRef(false);
 
   // History inclusion settings (moved from General)
   const [includeFailedTurns, setIncludeFailedTurns] = useState(true);
@@ -79,6 +81,7 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
       setIncludePatches(ctxConfig.includePatchesInHistory ?? false);
       setIncludeOtherParts(ctxConfig.includeOtherPartsInHistory ?? false);
       setSummarizeIncludePriorSummary(ctxConfig.summarizeIncludePriorSummary ?? true);
+      enabledExplicit.current = ctxConfig.enabled !== undefined;
     } catch { /* ignore */ }
     setLoading(false);
   };
@@ -136,13 +139,13 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     if (partial.summarizeIncludePriorSummary !== undefined) body.summarizeIncludePriorSummary = partial.summarizeIncludePriorSummary;
     try {
       if (scope === "session" && sessionId) {
-        const current = await getSessionContextConfig(sessionId);
+        // Merge from already-loaded state — no re-GET of context-config per PUT.
         await putSessionContextConfig(sessionId, {
           ...body,
-          enabled: partial.enabled !== undefined ? partial.enabled : (current.enabled ?? true),
-          summarizationModel: partial.summarizationModel ?? current.summarizationModel ?? undefined,
-          summarizationFallbackModel: partial.summarizationFallbackModel ?? current.summarizationFallbackModel ?? undefined,
-          summarizationPromptMd: partial.summarizationPromptMd ?? current.summarizationPromptMd ?? undefined,
+          enabled: partial.enabled !== undefined ? partial.enabled : (enabledExplicit.current ? enabled : true),
+          summarizationModel: partial.summarizationModel ?? summarizationModel,
+          summarizationFallbackModel: partial.summarizationFallbackModel ?? summarizationFallbackModel,
+          summarizationPromptMd: partial.summarizationPromptMd ?? summarizationPromptMd,
         });
       } else {
         await putScopedContextConfig(scope, body, { workspaceRoot });

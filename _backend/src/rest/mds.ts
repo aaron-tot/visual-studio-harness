@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { join, dirname, resolve } from "node:path";
 import { mkdir, writeFile, stat, rename, rm, readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { getSession } from "../storage/session";
+import { getSessionMetaPublic } from "../storage/session";
 import { resolveDataDirInfo, getMode } from "../paths";
 import { resolveMdsScopeDir, globalSystemPromptPath, projectAgentsMdPath } from "../features/mds/paths";
 import { listAgentsMdAtRoot } from "../features/mds/reader";
@@ -30,8 +30,8 @@ export function registerMdsRoutes(app: FastifyInstance, dataDir: string) {
 
     let wsRoot = (q.workspaceRoot || "").trim();
     if (q.sessionId) {
-      const session = await getSession(resolvedDataDir, q.sessionId);
-      if (session?.meta?.workspaceRoot) wsRoot = session.meta.workspaceRoot;
+      const session = await getSessionMetaPublic(resolvedDataDir, q.sessionId);
+      if (session?.workspaceRoot) wsRoot = session.workspaceRoot;
     }
 
     const globalPath = resolveMdsScopeDir("global", resolvedDataDir);

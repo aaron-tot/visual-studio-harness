@@ -49,6 +49,14 @@ import type { ContextScopeConfig } from "./context-window";
 /** Sessions currently performing an auto compaction (avoids double-firing). */
 const compactingSessions = new Set<string>();
 
+/** Default fraction of the summarizer's context reserved as headroom. */
+const DEFAULT_SAFETY_MARGIN = 0.2;
+
+function clampMargin(m: number): number {
+  if (typeof m !== "number" || !Number.isFinite(m)) return DEFAULT_SAFETY_MARGIN;
+  return Math.min(0.9, Math.max(0, m));
+}
+
 export function isPendingAutoCompaction(args: {
   enabled: boolean;
   triggerTokens: number;
@@ -98,6 +106,8 @@ interface EffectiveAutoConfig {
   fallbackModelRef: string | null;
   promptMd: string | null;
   summarizeIncludePriorSummary: boolean;
+  /** Fraction of the summarizer's max context reserved as headroom (0..1). */
+  safetyMargin: number;
 }
 
 function readScopedCtx(dataDir: string): { global: Record<string, unknown>; workspaces: Record<string, unknown> } {
@@ -138,7 +148,7 @@ function resolveEffectiveAutoConfig(
   const scopeAs = (c: ContextScopeConfig | null | undefined): Record<string, unknown> =>
   (c as Record<string, unknown>) ?? {};
 
-  const val = <T>(key: "autoCompactionEnabled" | "autoCompactionTriggerTokens" | "summarizationModel" | "summarizationFallbackModel" | "summarizationPromptMd" | "summarizeIncludePriorSummary"): T | undefined => {
+  const val = <T>(key: "autoCompactionEnabled" | "autoCompactionTriggerTokens" | "summarizationModel" | "summarizationFallbackModel" | "summarizationPromptMd" | "summarizeIncludePriorSummary" | "summarizationSafetyMargin"): T | undefined => {
     if (sessionOn && scopeAs(sessionCtx)[key] !== undefined) return scopeAs(sessionCtx)[key] as T;
     if (projectOn && scopeAs(project)[key] !== undefined) return scopeAs(project)[key] as T;
     if (scopeAs(global)[key] !== undefined) return scopeAs(global)[key] as T;
@@ -152,6 +162,7 @@ function resolveEffectiveAutoConfig(
     fallbackModelRef: val<string>("summarizationFallbackModel") ?? null,
     promptMd: val<string>("summarizationPromptMd") ?? null,
     summarizeIncludePriorSummary: val<boolean>("summarizeIncludePriorSummary") ?? true,
+    safetyMargin: clampMargin(val<number>("summarizationSafetyMargin") ?? DEFAULT_SAFETY_MARGIN),
   };
 }
 

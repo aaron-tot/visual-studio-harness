@@ -12,7 +12,7 @@ import {
 import type { ChatState, RetryCountdownState } from "./types";
 import type { RetryEntry } from "../../../../_shared/types";
 import {
-  getSession,
+  getSessionMeta,
   getTurns,
   getEffectiveContextConfig,
   getSessionDraftInput,
@@ -244,14 +244,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     wsClient.send({ type: "request_session_state", sessionId: id, requestId });
 
     try {
-      const session = await getSession(id);
+      const meta = await getSessionMeta(id);
       if (epoch !== loadSessionEpoch) return;
-      if (session) {
-        const ws = session.meta.workspaceRoot || get().workspaceRoot;
-        if (session.meta.workspaceRoot) {
-          localStorage.setItem("VISUAL STUDIO HARNESS.workspaceRoot", session.meta.workspaceRoot);
+      if (meta) {
+        const ws = meta.workspaceRoot || get().workspaceRoot;
+        if (meta.workspaceRoot) {
+          localStorage.setItem("VISUAL STUDIO HARNESS.workspaceRoot", meta.workspaceRoot);
         }
-        set({ sessionMeta: session.meta, workspaceRoot: ws });
+        set({ sessionMeta: meta, workspaceRoot: ws });
       }
     } catch {
     }

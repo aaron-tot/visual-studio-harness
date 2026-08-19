@@ -4,7 +4,7 @@ import { effectiveFirstTurnFromAnchor, snapBoundaryToRanges } from "../../../../
 import { toJSONSchema } from "zod/v4";
 import {
   createSession,
-  getSession,
+  getSessionMetaPublic,
   writeSessionSystemPrompt,
   updateSessionTimestamp,
   updateSessionWorkspace,
@@ -113,9 +113,9 @@ export async function runTurn(
     const merged = getAgentSettings(baseSettings, config);
     runtime = resolveRuntimeFromSettings(merged, config.providers);
   } else {
-    const existing = await getSession(dataDir, sessionId);
+    const existing = await getSessionMetaPublic(dataDir, sessionId);
     if (!existing) throw new Error("Session not found");
-    runtime = await resolveSessionRuntime(dataDir, existing.meta, config);
+    runtime = await resolveSessionRuntime(dataDir, existing, config);
   }
   const provider = runtime.provider;
   const model = runtime.model;
@@ -155,18 +155,18 @@ export async function runTurn(
     await createSession(dataDir, meta);
     created = true;
   } else {
-    const existing = await getSession(dataDir, sessionId);
+    const existing = await getSessionMetaPublic(dataDir, sessionId);
     if (!existing) throw new Error("Session not found");
-    if (!existing.meta.workspaceRoot?.trim()) {
+    if (!existing.workspaceRoot?.trim()) {
       const wsInput = input.workspaceRoot?.trim() || getWorkspaceRoot();
       const norm = normalizeWorkspace(wsInput);
       if ("error" in norm) throw new Error(norm.error);
       workspaceRoot = norm.path;
       await updateSessionWorkspace(dataDir, sessionId, workspaceRoot);
     } else {
-      workspaceRoot = existing.meta.workspaceRoot;
+      workspaceRoot = existing.workspaceRoot;
     }
-    if (agentName !== undefined && agentName !== existing.meta.agentName) {
+    if (agentName !== undefined && agentName !== existing.agentName) {
       await updateSessionAgentName(dataDir, sessionId, agentName);
     }
   }
@@ -324,10 +324,10 @@ export async function runTurn(
   const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns: historyFlags.includeFailedTurnsInHistory, firstTurnNumber });
 
   await bus?.emit("message.user_persisted", hookCtx, { message: userMessage, sessionId });
-  const session = await getSession(dataDir, sessionId);
+  const session = await getSessionMetaPublic(dataDir, sessionId);
   if (!session) throw new Error("Session not found after create");
-  events.onSessionReady?.({ sessionId, created, meta: session.meta, turnId: turnNumber });
-  await bus?.emit("turn.start", hookCtx, { sessionId, created, meta: session.meta, workspaceRoot });
+  events.onSessionReady?.({ sessionId, created, meta: session, turnId: turnNumber });
+  await bus?.emit("turn.start", hookCtx, { sessionId, created, meta: session, workspaceRoot });
 
   const useTools = toolsEnabled();
   const mcpTools = getMcpManager().getTools();
@@ -821,10 +821,12 @@ onStepFinish: async (info) => {
               costUsd: stepCostUsd ?? undefined,
             }, dataDir);
             // Emit after the step is persisted so live stats (usage tree) can refresh per step.
-            // When auto compaction is on, also surface the step's context size
-            // (input + cache-read tokens) so the UI can show progress toward the
-            // compaction threshold per provider step return.
-            const stepUsed = (info.inputTokens ?? 0) + (info.cacheReadTokens ?? 0);
+            // When auto compaction is on, also surface the step's context size so
+            // the UI can show progress toward the compaction threshold per provider
+            // step return. Context size = the step's input token count (which
+            // already includes the cached portion); never add cacheReadTokens,
+            // which is a sub-slice and would double-count the cached context.
+            const stepUsed = info.inputTokens ?? 0;
             const stepContextTokens = autoCompactionOn && autoCompactionThreshold > 0
               ? { used: stepUsed, max: autoCompactionThreshold, pending: stepUsed >= autoCompactionThreshold }
               : undefined;
@@ -916,7 +918,7 @@ onStepFinish: async (info) => {
       await bus?.emit("turn.error", hookCtx, { sessionId, error, durationMs: Date.now() - turnStarted });
       unregisterSession(sessionId);
       return {
-        sessionId, created, meta: session.meta, workspaceRoot, userMessage,
+        sessionId, created, meta: session, workspaceRoot, userMessage,
         assistantMessage: buildErrorAssistantMessage(errInfo, { modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber }),
         error: errInfo.message, rawError: errInfo.raw, errorIsCustom: errInfo.isCustom,
         modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber, success: false,
@@ -933,7 +935,7 @@ onStepFinish: async (info) => {
       finalizeTurnTrace(traceTurnId, { success: false, errorMessage: errInfo.message, errorRaw: errInfo.raw, errorIsCustom: errInfo.isCustom }, dataDir, streamResult.steps);
       unregisterSession(sessionId);
       return {
-        sessionId, created, meta: session.meta, workspaceRoot, userMessage,
+        sessionId, created, meta: session, workspaceRoot, userMessage,
         assistantMessage: buildErrorAssistantMessage(errInfo, { modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber, priorContent: fullContent }),
         error: errInfo.message, rawError: errInfo.raw, errorIsCustom: errInfo.isCustom,
         modelName: model.displayName, providerName: provider.displayName, durationMs: Date.now() - turnStarted, turnId: turnNumber, success: false,
@@ -974,8 +976,8 @@ onStepFinish: async (info) => {
 
     unregisterSession(sessionId);
 
-    const updated = await getSession(dataDir, sessionId);
-    const meta = updated?.meta ?? session.meta;
+    const updated = await getSessionMetaPublic(dataDir, sessionId);
+    const meta = updated ?? session;
     const responseDurationMs = Date.now() - turnStarted;
 
     await bus?.emit("turn.complete", hookCtx, { sessionId, meta, workspaceRoot, userMessage, assistantMessage, durationMs: responseDurationMs });
@@ -1015,7 +1017,7 @@ onStepFinish: async (info) => {
     await bus?.emit("turn.error", hookCtx, { sessionId, error: errInfo.message, durationMs: Date.now() - turnStarted });
     const errAssistantMsg = buildErrorAssistantMessage(errInfo, { modelName: model.displayName, providerName: provider.displayName, turnId: turnNumber });
     let failedMeta = { id: sessionId, title: "", providerName: "", modelName: "", created: "", updated: "" };
-    try { const failedSession = await getSession(dataDir, sessionId); if (failedSession?.meta) failedMeta = failedSession.meta; } catch {}
+    try { const failedMetaRow = await getSessionMetaPublic(dataDir, sessionId); if (failedMetaRow) failedMeta = failedMetaRow; } catch {}
     return {
       sessionId, created, meta: failedMeta, workspaceRoot, userMessage,
       assistantMessage: errAssistantMsg,

@@ -5,6 +5,7 @@ import { AgentSelector, type AgentOption } from "../chat/input/AgentSelector";
 import { ModelDropdown } from "../chat/ModelDropdown";
 import { PricingSettingsCard } from "./PricingSettingsCard";
 import { UpdateIndicator } from "./UpdateIndicator";
+import { compactDb, type CompactDbResult } from "../../lib/api";
 
 const WINDOW_UNITS = ["seconds", "minutes", "hours"] as const;
 
@@ -275,6 +276,68 @@ function GenerateToolSeedsButton() {
             <div className="text-zinc-500">No changes (skills already up to date)</div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function CompactDatabaseSection() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<CompactDbResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCompact = async () => {
+    if (busy) return;
+    if (
+      !window.confirm(
+        "Compact the database now? All in-flight agent sessions will be stopped first."
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      const r = await compactDb();
+      setResult(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const mb = (b: number) => `${(b / 1e6).toFixed(1)} MB`;
+
+  return (
+    <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
+      <div className="text-sm text-zinc-200">Database compaction</div>
+      <div className="text-xs text-zinc-500">
+        Shrinks the main database file by removing pages freed when sessions
+        were archived or deleted. Takes a few seconds and temporarily needs
+        roughly the size of the live database in free space.
+      </div>
+      <button
+        type="button"
+        onClick={() => void handleCompact()}
+        disabled={busy}
+        className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-200 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {busy ? "Compacting…" : "Compact database now"}
+      </button>
+      <div className="text-[11px] text-amber-500/80">
+        Stops all running sessions first. No sessions are deleted — it only
+        releases disk space from data that is already archived.
+      </div>
+      {result && (
+        <div className="text-[11px] text-emerald-400/90">
+          Done — freed {mb(result.freedBytes)} ({result.afterBytes} →{" "}
+          {mb(result.afterBytes)}), {result.abortedSessions} session(s) stopped.
+        </div>
+      )}
+      {error && (
+        <div className="text-[11px] text-red-400/80">Compaction failed: {error}</div>
       )}
     </div>
   );
@@ -567,6 +630,9 @@ export function GeneralPanel() {
         </div>
         <GenerateToolSeedsButton />
       </div>
+
+      {/* DB compaction */}
+      <CompactDatabaseSection />
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
 import {
   moveSessionToArchive,
   migrateArchivedSessions,
+  compactLiveDb,
 } from "./archive";
 
 let dataDir: string;
@@ -168,5 +169,82 @@ describe("migrateArchivedSessions", () => {
       const n = db.query("SELECT COUNT(*) n FROM sessions WHERE id IN ('MIG1','MIG2')").get() as { n: number };
       expect(n.n).toBe(2);
     });
+  });
+
+  test("when rows are moved, the live DB is compacted (freelist cleared, file shrinks)", () => {
+    const livePath = liveDbPath(dataDir);
+    const live = new Database(livePath);
+    try {
+      // Grow live rows referenced ONLY by the archived session, so the migration
+      // deletes them -> large freelist.
+      const snap = ensurePromptSnapshot("big-" + "a".repeat(1_000_000), dataDir);
+      seedSession("MIG3", { title: "Archived with blobs" });
+      const t = seedTurn("MIG3", 1);
+      updateTurnSnapshots(t.t, snap, undefined, dataDir);
+      updateSessionFields("MIG3", { archived: true }, dataDir);
+    } finally {
+      live.close();
+    }
+
+    const result = migrateArchivedSessions(dataDir);
+
+    expect(result.moved).toBeGreaterThanOrEqual(1);
+    expect(result.failed).toEqual([]);
+    expect(result.compacted).toBeDefined();
+
+    // Freelist is fully cleared post-compaction.
+    const check = new Database(livePath);
+    try {
+      const fl = check.query("PRAGMA freelist_count").get() as { freelist_count: number };
+      expect(fl.freelist_count).toBe(0);
+    } finally {
+      check.close();
+    }
+  });
+});
+
+describe("compactLiveDb", () => {
+  test("vacuum clears freelist and shrinks the live DB file", () => {
+    const livePath = liveDbPath(dataDir);
+    const live = new Database(livePath);
+    try {
+      for (let i = 0; i < 400; i++) {
+        live
+          .query(
+            `INSERT INTO prompt_snapshots (content_hash, content, created_at)
+             VALUES (?, ?, ?)`
+          )
+          .run(`compact-${i}`, "y".repeat(10_000), new Date().toISOString());
+      }
+      // Delete the rows so the pages they occupied become freelist.
+      live.query(`DELETE FROM prompt_snapshots WHERE content_hash LIKE 'compact-%'`).run();
+    } finally {
+      live.close();
+    }
+
+    const res = compactLiveDb(dataDir);
+    expect(res.freedBytes).toBeGreaterThan(0);
+    expect(res.afterBytes).toBeLessThan(res.beforeBytes);
+
+    const check = new Database(livePath);
+    try {
+      const freel = check.query("PRAGMA freelist_count").get() as { freelist_count: number };
+      expect(freel.freelist_count).toBe(0);
+    } finally {
+      check.close();
+    }
+  });
+
+  test("no-op when there is nothing to reclaim", () => {
+    const res = compactLiveDb(dataDir);
+    expect(res.freedBytes).toBeGreaterThanOrEqual(0);
+    expect(res.afterBytes).toBeLessThanOrEqual(res.beforeBytes);
+    const check = new Database(liveDbPath(dataDir));
+    try {
+      const freel = check.query("PRAGMA freelist_count").get() as { freelist_count: number };
+      expect(freel.freelist_count).toBe(0);
+    } finally {
+      check.close();
+    }
   });
 });

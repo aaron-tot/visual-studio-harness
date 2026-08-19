@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { listResearch, listResearchBatched, listSessions, listWorkspaces } from "../../../lib/api";
+import { listResearch, listResearchBatched, listWorkspaces } from "../../../lib/api";
+import { useSessionStore } from "../../sessions/store";
 import type { ResearchGroup, PlanScope } from "../types";
 import { workspaceLabel } from "../types";
 
@@ -19,6 +20,8 @@ export function useResearchDocs({
   const [groups, setGroups] = useState<ResearchGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sidebar already fetched the session list — read it instead of an extra round-trip.
+  const storeSessions = useSessionStore((s) => s.sessions);
 
   const refresh = useCallback(async () => {
     if (!enabled) return;
@@ -75,7 +78,7 @@ export function useResearchDocs({
       }
 
       // session scope
-      const sessionList = await listSessions();
+      const sessionList = storeSessions;
       const byId = new Map(sessionList.map((s) => [s.id, s]));
       const ids = new Set<string>();
       if (currentSessionId) ids.add(currentSessionId);
@@ -113,7 +116,7 @@ export function useResearchDocs({
     } finally {
       setLoading(false);
     }
-  }, [scope, workspaceRoot, currentSessionId, enabled]);
+  }, [scope, workspaceRoot, currentSessionId, enabled, storeSessions]);
 
   // Clear groups immediately when scope changes to avoid stale flash
   useEffect(() => {

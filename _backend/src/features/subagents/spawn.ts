@@ -1,5 +1,5 @@
 import { loadConfig } from "../../storage/config";
-import { getSession } from "../../storage/session";
+import { getSessionMetaPublic } from "../../storage/session";
 import { runTurn } from "../../agent/turn";
 import { getAgentSettings, getSubagentSettings, resolveRuntimeFromSettings } from "../../agent/runtime-settings";
 import { withSubagentSlot } from "./concurrency";
@@ -39,7 +39,7 @@ export async function runSubagentTurn(
   ctx: SubagentSpawnContext
 ): Promise<SubagentSpawnResult> {
   const config = await loadConfig(ctx.dataDir);
-  const parentMeta = await getSession(ctx.dataDir, ctx.parentSessionId);
+  const parentMeta = await getSessionMetaPublic(ctx.dataDir, ctx.parentSessionId);
 
   // v1: force serial
   const maxConcurrent = 1;
@@ -161,7 +161,7 @@ export async function runSubagentTurn(
     let isNew = false;
 
     if (args.taskId?.trim()) {
-      const existing = await getSession(ctx.dataDir, args.taskId.trim());
+      const existing = await getSessionMetaPublic(ctx.dataDir, args.taskId.trim());
       if (!existing) {
         return {
           title: description,
@@ -174,7 +174,7 @@ export async function runSubagentTurn(
           isError: true,
         };
       }
-      if (existing.meta.kind !== "subagent") {
+      if (existing.kind !== "subagent") {
         return {
           title: description,
           output: `ERROR task: session '${args.taskId}' is not a subagent session`,
@@ -186,7 +186,7 @@ export async function runSubagentTurn(
           isError: true,
         };
       }
-      if (existing.meta.parentId !== ctx.parentSessionId) {
+      if (existing.parentId !== ctx.parentSessionId) {
         return {
           title: description,
           output: `ERROR task: task_id does not belong to this parent session`,
@@ -198,7 +198,7 @@ export async function runSubagentTurn(
           isError: true,
         };
       }
-      childSessionId = existing.meta.id;
+      childSessionId = existing.id;
     } else {
       isNew = true;
       childSessionId = "new";

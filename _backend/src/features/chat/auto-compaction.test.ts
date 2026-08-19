@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { isPendingAutoCompaction } from "./auto-compaction";
+import { isPendingAutoCompaction, AutoCompactionBlockedError } from "./auto-compaction";
+
+describe("AutoCompactionBlockedError", () => {
+  test("is an Error and carries a message", () => {
+    const err = new AutoCompactionBlockedError("boom");
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(AutoCompactionBlockedError);
+    expect(err.name).toBe("AutoCompactionBlockedError");
+    expect(err.message).toBe("boom");
+  });
+});
 
 describe("isPendingAutoCompaction", () => {
   const base = {

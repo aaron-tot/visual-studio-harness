@@ -172,13 +172,11 @@ export async function runTurn(
   }
 
   // Pending auto-compaction: summarize + pin before this user message is persisted
-  // so the new turn is not part of the summary.
+  // so the new turn is not part of the summary. On failure AutoCompactionBlockedError
+  // propagates (no catch here) → the send is blocked, no turn is created, and the
+  // user message is not consumed, so the user can simply retry.
   if (!isNew) {
-    try {
-      await maybeAutoCompact(sessionId, dataDir ?? "", workspaceRoot ?? undefined);
-    } catch (err) {
-      console.error("[auto-compaction] error before turn:", err);
-    }
+    await maybeAutoCompact(sessionId, dataDir ?? "", workspaceRoot ?? undefined);
   }
 
   hookCtx = withHookContext(hookCtx, {

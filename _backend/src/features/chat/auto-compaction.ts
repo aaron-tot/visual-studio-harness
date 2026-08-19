@@ -55,6 +55,18 @@ export function isPendingAutoCompaction(args: {
   return true;
 }
 
+/**
+ * Thrown when a required (pending) auto-compaction fails. Propagates out of
+ * runTurn before the user's turn is created, so the send is blocked and the
+ * user message is not consumed — the user can simply retry.
+ */
+export class AutoCompactionBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AutoCompactionBlockedError";
+  }
+}
+
 function emitCompacting(sessionId: string, active: boolean) {
   try { sendToSession(sessionId, { type: "compacting", sessionId, active }); } catch { /* ignore */ }
 }
@@ -287,8 +299,7 @@ async function performAutoCompaction(
   const messages = buildSummarizationMessages(priorSummary, rangeTurns);
 
   if (!cfg.modelRef || !/^[^/]+\/[^/]+$/.test(cfg.modelRef)) {
-    console.error("[auto-compaction] no valid summarization model configured; skipping");
-    return;
+    throw new AutoCompactionBlockedError("auto-compaction: no valid summarization model configured");
   }
   const promptContent = (await readSummarizationPrompt(cfg.promptMd)) ?? `Summarize conversation turns ${startTurn}–${endTurnNum}`;
   const originalTokens = db
@@ -386,8 +397,7 @@ async function performAutoCompaction(
   }).returning({ id: turns.id }).get();
   const summaryTurnId = summaryTurnResult?.id;
   if (!summaryTurnId) {
-    console.error("[auto-compaction] failed to create summary turn");
-    return;
+    throw new AutoCompactionBlockedError("auto-compaction: failed to create summary turn");
   }
   try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
 
@@ -426,8 +436,7 @@ async function performAutoCompaction(
     markSummaryTurnError(dataDir, summaryTurnId);
     try { sendSessionStateToSession(childSessionId); } catch { /* ignore */ }
     try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
-    console.error("[auto-compaction] summarize failed:", err);
-    return;
+    throw new AutoCompactionBlockedError(`auto-compaction: summarize failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   const summaryText = (result.text ?? "").trim();
   const usage = result.usage;
@@ -436,7 +445,7 @@ async function performAutoCompaction(
     db.update(turns).set({ status: "error", success: false, finishReason: "error", completedAt: new Date().toISOString() })
       .where(eq(turns.id, childTurnId)).run();
     markSummaryTurnError(dataDir, summaryTurnId);
-    return;
+    throw new AutoCompactionBlockedError("auto-compaction: summary produced no text");
   }
 
   // Finalize the child turn + step (real usage) and mark its parts complete.

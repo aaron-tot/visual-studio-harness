@@ -12,7 +12,7 @@ import {
   writeSession,
 } from "../features/tools/perms/store";
 import { resolveAllKnownTools } from "../features/tools/perms/resolve";
-import { getSessionMetaPublic } from "../storage/session";
+import { getLiveSessionMeta } from "../storage/session";
 
 function isToolsMap(v: unknown): v is Record<string, PermissionMode> {
   if (!v || typeof v !== "object") return false;
@@ -144,7 +144,7 @@ export function registerPermsRoutes(app: FastifyInstance, dataDir: string) {
     const sessionId = (q.sessionId || "").trim();
     if (!sessionId) return reply.code(400).send({ error: "sessionId query required" });
 
-    const meta = await getSessionMetaPublic(dataDir, sessionId);
+    const meta = await getLiveSessionMeta(dataDir, sessionId);
     if (!meta) return reply.code(404).send({ error: "session not found" });
 
     const resolved = await resolveAllKnownTools({

@@ -1,6 +1,5 @@
 import type {
   ConfigFile,
-  Session,
   SessionMeta,
   LayoutNode,
   ModelConfig,
@@ -74,13 +73,9 @@ export function getActiveSessions() {
   return fetchJson<{ sessionIds: string[] }>(`${BASE}/sessions/active`);
 }
 
+/** Lightweight meta only — GET /api/sessions/:id is meta-only (no transcript). */
 export function getSession(id: string) {
-  return fetchJson<Session>(`${BASE}/sessions/${id}`);
-}
-
-/** Lightweight meta only — NO full transcript hydrate. */
-export function getSessionMeta(id: string) {
-  return fetchJson<SessionMeta>(`${BASE}/sessions/${encodeURIComponent(id)}/meta`);
+  return fetchJson<SessionMeta>(`${BASE}/sessions/${id}`);
 }
 
 export function deleteSession(id: string) {

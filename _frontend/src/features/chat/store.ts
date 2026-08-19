@@ -12,7 +12,7 @@ import {
 import type { ChatState, RetryCountdownState } from "./types";
 import type { RetryEntry } from "../../../../_shared/types";
 import {
-  getSessionMeta,
+  getSession,
   getTurns,
   getEffectiveContextConfig,
   getSessionDraftInput,
@@ -244,7 +244,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     wsClient.send({ type: "request_session_state", sessionId: id, requestId });
 
     try {
-      const meta = await getSessionMeta(id);
+      const meta = await getSession(id);
       if (epoch !== loadSessionEpoch) return;
       if (meta) {
         const ws = meta.workspaceRoot || get().workspaceRoot;

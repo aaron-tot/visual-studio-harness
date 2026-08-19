@@ -164,7 +164,7 @@ export async function setSessionLayout(
   dbSetSessionLayout(workspaceRoot, tree, dataDir);
 }
 
-export async function getSessionMetaPublic(
+export async function getLiveSessionMeta(
   dataDir: string,
   id: string
 ): Promise<SessionMeta | null> {

@@ -4,7 +4,7 @@ import { effectiveFirstTurnFromAnchor, snapBoundaryToRanges } from "../../../../
 import { toJSONSchema } from "zod/v4";
 import {
   createSession,
-  getSessionMetaPublic,
+  getLiveSessionMeta,
   writeSessionSystemPrompt,
   updateSessionTimestamp,
   updateSessionWorkspace,
@@ -113,7 +113,7 @@ export async function runTurn(
     const merged = getAgentSettings(baseSettings, config);
     runtime = resolveRuntimeFromSettings(merged, config.providers);
   } else {
-    const existing = await getSessionMetaPublic(dataDir, sessionId);
+    const existing = await getLiveSessionMeta(dataDir, sessionId);
     if (!existing) throw new Error("Session not found");
     runtime = await resolveSessionRuntime(dataDir, existing, config);
   }
@@ -155,7 +155,7 @@ export async function runTurn(
     await createSession(dataDir, meta);
     created = true;
   } else {
-    const existing = await getSessionMetaPublic(dataDir, sessionId);
+    const existing = await getLiveSessionMeta(dataDir, sessionId);
     if (!existing) throw new Error("Session not found");
     if (!existing.workspaceRoot?.trim()) {
       const wsInput = input.workspaceRoot?.trim() || getWorkspaceRoot();
@@ -324,7 +324,7 @@ export async function runTurn(
   const contextTurnIds = resolveContextTurnIds(sessionId, dataDir, { includeFailedTurns: historyFlags.includeFailedTurnsInHistory, firstTurnNumber });
 
   await bus?.emit("message.user_persisted", hookCtx, { message: userMessage, sessionId });
-  const session = await getSessionMetaPublic(dataDir, sessionId);
+  const session = await getLiveSessionMeta(dataDir, sessionId);
   if (!session) throw new Error("Session not found after create");
   events.onSessionReady?.({ sessionId, created, meta: session, turnId: turnNumber });
   await bus?.emit("turn.start", hookCtx, { sessionId, created, meta: session, workspaceRoot });
@@ -976,7 +976,7 @@ onStepFinish: async (info) => {
 
     unregisterSession(sessionId);
 
-    const updated = await getSessionMetaPublic(dataDir, sessionId);
+    const updated = await getLiveSessionMeta(dataDir, sessionId);
     const meta = updated ?? session;
     const responseDurationMs = Date.now() - turnStarted;
 
@@ -1017,7 +1017,7 @@ onStepFinish: async (info) => {
     await bus?.emit("turn.error", hookCtx, { sessionId, error: errInfo.message, durationMs: Date.now() - turnStarted });
     const errAssistantMsg = buildErrorAssistantMessage(errInfo, { modelName: model.displayName, providerName: provider.displayName, turnId: turnNumber });
     let failedMeta = { id: sessionId, title: "", providerName: "", modelName: "", created: "", updated: "" };
-    try { const failedMetaRow = await getSessionMetaPublic(dataDir, sessionId); if (failedMetaRow) failedMeta = failedMetaRow; } catch {}
+    try { const failedMetaRow = await getLiveSessionMeta(dataDir, sessionId); if (failedMetaRow) failedMeta = failedMetaRow; } catch {}
     return {
       sessionId, created, meta: failedMeta, workspaceRoot, userMessage,
       assistantMessage: errAssistantMsg,

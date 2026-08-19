@@ -83,7 +83,7 @@ import { KnowledgeBaseService } from "../knowledge-base/knowledge-base-service";
 import { openDocumentByIdOrFilename } from "../knowledge-base/service-queries";
 import { AGENT_FILENAME_PREFIX } from "../knowledge-base/constants";
 import type { KbScope } from "../knowledge-base/db";
-import { getSessionMetaPublic } from "../../storage/session";
+import { getLiveSessionMeta } from "../../storage/session";
 import { getSessionTodosJson, setSessionTodosJson } from "../sessions/db";
 import { localISOString } from "../../utils/datetime";
 import { customToolToToolDef, loadCustomToolDefs } from "../custom-tools/store";
@@ -297,7 +297,7 @@ export interface ToolServices {
   AGENT_FILENAME_PREFIX: string;
 
   // ── storage / sessions ─────────────────────────────────────────────
-  getSessionMetaPublic: (id: string) => ReturnType<typeof getSessionMetaPublic>;
+  getLiveSessionMeta: (id: string) => ReturnType<typeof getLiveSessionMeta>;
   getSessionTodosJson: (id: string) => string | null;
   setSessionTodosJson: (id: string, todosJson: string) => void;
 }
@@ -470,7 +470,7 @@ export function resolveToolCtx(
         ),
       AGENT_FILENAME_PREFIX,
       // storage / sessions
-      getSessionMetaPublic: (id) => getSessionMetaPublic(baseCtx.dataDir, id),
+      getLiveSessionMeta: (id) => getLiveSessionMeta(baseCtx.dataDir, id),
       getSessionTodosJson: (id) => getSessionTodosJson(id, baseCtx.dataDir),
       setSessionTodosJson: (id, todosJson) =>
         setSessionTodosJson(id, todosJson, baseCtx.dataDir),

@@ -94,7 +94,7 @@ describe("tool ctx surface", () => {
     expect(typeof ctx.services?.KnowledgeBaseService).toBe("function");
     expect(typeof ctx.services?.openDocumentByIdOrFilename).toBe("function");
     expect(typeof ctx.services?.AGENT_FILENAME_PREFIX).toBe("string");
-    expect(typeof ctx.services?.getSessionMetaPublic).toBe("function");
+    expect(typeof ctx.services?.getLiveSessionMeta).toBe("function");
     expect(typeof ctx.services?.getSessionTodosJson).toBe("function");
     expect(typeof ctx.services?.setSessionTodosJson).toBe("function");
   });
@@ -110,7 +110,7 @@ describe("tool ctx surface", () => {
     // audit prompts dir derives from the bound dataDir
     expect(ctx.services.resolveAuditPromptsDir()).toBe(join(dataDir, "audit-prompts"));
     // session meta read is bound to sessionId + dataDir
-    expect(typeof ctx.services.getSessionMetaPublic).toBe("function");
+    expect(typeof ctx.services.getLiveSessionMeta).toBe("function");
     // runInPersistentBash wrapper hides sessionId/abortSignal
     expect(typeof ctx.runInPersistentBash).toBe("function");
   });

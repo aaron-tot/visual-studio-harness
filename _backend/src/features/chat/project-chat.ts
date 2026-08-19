@@ -435,29 +435,44 @@ export function listTurnSummaries(sessionId: string, dataDir?: string): TurnSumm
     .where(eq(turns.sessionId, sessionId))
     .orderBy(turns.turnNumber)
     .all();
-  return rows.map((t) => {
-    const ctxRows = db
-      .select({ turnNumber: turns.turnNumber })
-      .from(turnContext)
-      .innerJoin(turns, eq(turns.id, turnContext.contextTurnId))
-      .where(eq(turnContext.turnId, t.id))
-      .orderBy(turnContext.position)
-      .all();
-    return {
-      turnNumber: t.turnNumber,
-      status: t.status as TurnStatus,
-      userContentPreview: t.userContent?.slice(0, 100),
-      modelName: t.modelName ?? undefined,
-      providerName: t.providerName ?? undefined,
-      durationMs: t.durationMs ?? undefined,
-      inputTokens: t.inputTokens ?? undefined,
-      outputTokens: t.outputTokens ?? undefined,
-      totalTokens: t.totalTokens ?? undefined,
-      stepCount: t.stepCount ?? undefined,
-      success: t.success ?? undefined,
-      contextTurnNumbers: ctxRows.map((r) => r.turnNumber),
-    };
-  });
+
+  // Batch all context refs for these turns in one query (no N+1); ordering by
+  // position keeps each turn's list ordered when grouped in JS.
+  const turnIds = rows.map((t) => t.id);
+  const ctxRows = turnIds.length > 0
+    ? db
+        .select({
+          turnId: turnContext.turnId,
+          turnNumber: turns.turnNumber,
+          position: turnContext.position,
+        })
+        .from(turnContext)
+        .innerJoin(turns, eq(turns.id, turnContext.contextTurnId))
+        .where(inArray(turnContext.turnId, turnIds))
+        .orderBy(turnContext.position)
+        .all()
+    : [];
+  const ctxByTurn = new Map<number, number[]>();
+  for (const c of ctxRows) {
+    const arr = ctxByTurn.get(c.turnId) ?? [];
+    arr.push(c.turnNumber);
+    ctxByTurn.set(c.turnId, arr);
+  }
+
+  return rows.map((t) => ({
+    turnNumber: t.turnNumber,
+    status: t.status as TurnStatus,
+    userContentPreview: t.userContent?.slice(0, 100),
+    modelName: t.modelName ?? undefined,
+    providerName: t.providerName ?? undefined,
+    durationMs: t.durationMs ?? undefined,
+    inputTokens: t.inputTokens ?? undefined,
+    outputTokens: t.outputTokens ?? undefined,
+    totalTokens: t.totalTokens ?? undefined,
+    stepCount: t.stepCount ?? undefined,
+    success: t.success ?? undefined,
+    contextTurnNumbers: ctxByTurn.get(t.id) ?? [],
+  }));
 }
 
 export function getTurnDetail(

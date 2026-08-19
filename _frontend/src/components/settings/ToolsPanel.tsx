@@ -8,7 +8,7 @@ import {
   putWorkspacePerms,
   getSessionPerms,
   putSessionPerms,
-  getSessionMeta,
+  getSession,
   resetGlobalPerms,
   EXTERNAL_DIRECTORY_PREFIX,
   type ToolMeta,
@@ -130,7 +130,7 @@ export function ToolsPanel({ sessionId }: Props) {
         if (cancelled) return;
         setTools(toolsRes.tools);
         if (sessionId) {
-          const meta = await getSessionMeta(sessionId);
+          const meta = await getSession(sessionId);
           if (!cancelled) setWorkspaceRoot(meta.workspaceRoot || "");
         }
         if (!cancelled) setReady(true);

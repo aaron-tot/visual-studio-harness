@@ -13,7 +13,7 @@ import { useClickOutside } from "../../hooks/useClickOutside";
 import { useSnippetMenu } from "../../hooks/useSnippetMenu";
 import { SnippetMenu } from "../chat/SnippetMenu";
 import { wsClient } from "../../lib/ws";
-import { getSessionMeta, listFs } from "../../lib/api";
+import { getSession, listFs } from "../../lib/api";
 import { AgentSelector, type AgentOption } from "../chat/input/AgentSelector";
 import { ModelDropdown } from "../chat/ModelDropdown";
 import { ThinkingDropdown } from "../chat/ThinkingDropdown";
@@ -454,7 +454,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   useEffect(() => {
     if (!isSubagent || !parentId) { setParentTitle(null); return; }
     let cancelled = false;
-    getSessionMeta(parentId).then((s) => {
+    getSession(parentId).then((s) => {
       if (!cancelled) setParentTitle(s.title || parentId);
     }).catch(() => {
       if (!cancelled) setParentTitle(parentId);

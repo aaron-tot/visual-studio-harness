@@ -10,7 +10,7 @@ import { resolveSlotBusyDecision } from "../features/subagents/slot-busy-wait";
 import { forceSlotWaitTimeout } from "../features/subagents/slot-wait-control";
 import { resolveAgentChange } from "../features/tools/agent-change-wait";
 import { setToolMode } from "../features/tools/perms/store";
-import { getSessionMetaPublic } from "../features/sessions/store";
+import { getLiveSessionMeta } from "../features/sessions/store";
 import type { PermissionDecision, PermissionMode, PermsLayer, ThinkingEffort } from "../../../_shared/types";
 
 type GetDataDir = () => string;
@@ -108,7 +108,7 @@ export function registerWsHandler(
               let workspaceRoot: string | undefined;
               if (write.layer === "workspace" || write.layer === "session") {
                 if (sessionId) {
-                  const meta = await getSessionMetaPublic(dataDir, sessionId);
+                  const meta = await getLiveSessionMeta(dataDir, sessionId);
                   workspaceRoot = meta?.workspaceRoot;
                 }
               }

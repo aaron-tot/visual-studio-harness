@@ -11,7 +11,7 @@ import {
   putWorkspacePerms,
   getSessionPerms,
   putSessionPerms,
-  getSessionMeta,
+  getSession,
   resetGlobalPerms,
   type PermissionMode,
 } from "../../lib/api";
@@ -93,7 +93,7 @@ export function CustomToolsPanel({ sessionId }: Props) {
 
   useEffect(() => {
     if (!sessionId) return;
-    getSessionMeta(sessionId).then((s) => setWorkspaceRoot(s.workspaceRoot || "")).catch(() => {});
+    getSession(sessionId).then((s) => setWorkspaceRoot(s.workspaceRoot || "")).catch(() => {});
   }, [sessionId]);
 
   useEffect(() => {

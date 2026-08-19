@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ExtendedToolContext, ToolDef, ToolFieldDef } from "../types";
-import { getSessionMetaPublic } from "../../../storage/session";
+import { getLiveSessionMeta } from "../../../storage/session";
 import { listAgents } from "../../../rest/agents";
 export const agentChangeTool: ToolDef = {
   name: "agent_change",
@@ -23,7 +23,7 @@ export const agentChangeTool: ToolDef = {
 
     let currentAgent = "main";
     try {
-      const meta = await getSessionMetaPublic(ctx.dataDir, ctx.sessionId);
+      const meta = await getLiveSessionMeta(ctx.dataDir, ctx.sessionId);
       if (meta?.kind === "subagent") {
         currentAgent = "sub";
       }

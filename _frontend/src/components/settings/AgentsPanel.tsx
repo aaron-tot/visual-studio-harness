@@ -21,19 +21,26 @@ export function AgentsPanel() {
   const [sysPickerTab, setSysPickerTab] = useState<"discover" | "custom">("discover");
   const sessionId = useSessionStore((s) => s.activeId ?? s.sessions[0]?.id);
 
-  // Fetch scope items for the default system prompt picker
-  useEffect(() => {
+  // Load scope items lazily — only when the default system prompt picker opens.
+  const loadScopeItems = async () => {
     if (!sessionId) return;
-    getMdsScopePaths({ sessionId, workspaceRoot: undefined })
-      .then((result) => {
-        const all: ScopeItem[] = [];
-        for (const scope of Object.values(result.scopes)) {
-          if (scope.available) all.push(...scope.items);
-        }
-        setScopeItems(all);
-      })
-      .catch(() => {});
-  }, [sessionId]);
+    try {
+      const result = await getMdsScopePaths({ sessionId, workspaceRoot: undefined });
+      const all: ScopeItem[] = [];
+      for (const scope of Object.values(result.scopes)) {
+        if (scope.available) all.push(...scope.items);
+      }
+      setScopeItems(all);
+    } catch { /* keep whatever we have */ }
+  };
+
+  const toggleDefaultSysPicker = () => {
+    setShowDefaultSysPicker((v) => {
+      const next = !v;
+      if (next) void loadScopeItems();
+      return next;
+    });
+  };
 
   const loadAgents = async () => {
     try {
@@ -141,7 +148,7 @@ export function AgentsPanel() {
               </button>
             )}
             <button
-              onClick={() => setShowDefaultSysPicker(!showDefaultSysPicker)}
+              onClick={toggleDefaultSysPicker}
               className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
             >
               {config.systemPromptBase ? "Change" : <><Plus className="h-3.5 w-3.5" /> Set</>}

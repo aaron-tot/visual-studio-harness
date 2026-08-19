@@ -1,5 +1,5 @@
 import { loadConfig } from "../../storage/config";
-import { getSessionMetaPublic } from "../../storage/session";
+import { getLiveSessionMeta } from "../../storage/session";
 import { runTurn } from "../../agent/turn";
 import { getAgentSettings, getSubagentSettings, resolveRuntimeFromSettings } from "../../agent/runtime-settings";
 import { withSubagentSlot } from "./concurrency";
@@ -39,7 +39,7 @@ export async function runSubagentTurn(
   ctx: SubagentSpawnContext
 ): Promise<SubagentSpawnResult> {
   const config = await loadConfig(ctx.dataDir);
-  const parentMeta = await getSessionMetaPublic(ctx.dataDir, ctx.parentSessionId);
+  const parentMeta = await getLiveSessionMeta(ctx.dataDir, ctx.parentSessionId);
 
   // v1: force serial
   const maxConcurrent = 1;
@@ -161,7 +161,7 @@ export async function runSubagentTurn(
     let isNew = false;
 
     if (args.taskId?.trim()) {
-      const existing = await getSessionMetaPublic(ctx.dataDir, args.taskId.trim());
+      const existing = await getLiveSessionMeta(ctx.dataDir, args.taskId.trim());
       if (!existing) {
         return {
           title: description,

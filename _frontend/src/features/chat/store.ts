@@ -143,9 +143,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return set((state) => {
       if (seq <= state.lastSeq) return {};
       const parts = [...state.streamingParts];
-      const idx = parts.findIndex((p) => p.type === "error");
-      const prev = idx >= 0 ? (parts[idx] as { type: "error"; retries?: RetryEntry[] } | undefined) : undefined;
-      // A new failure supersedes the previous pending retry.
+      // Create a stable key for this error to group retries of the same upstream failure
+      const errorKey = `${entry.errorCode ?? "none"}:${entry.category ?? "unknown"}:${entry.errorLabel}`;
+      // Find existing error part for this specific upstream error
+      const idx = parts.findIndex(
+        (p) => p.type === "error" && (p as any).errorKey === errorKey,
+      );
+      const prev = idx >= 0 ? (parts[idx] as { type: "error"; retries?: RetryEntry[]; errorKey?: string } | undefined) : undefined;
+      // Mark previous pending retries for THIS error as failed
       const retries = (prev?.retries ?? []).map((r) =>
         r.status === "pending" ? { ...r, status: "failed" as const } : r
       );
@@ -159,6 +164,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         timestamp: entry.errorTime,
         retries,
         providerName: state._pendingProviderName,
+        errorKey,
         _seq: seq,
       };
       if (idx >= 0) parts[idx] = errPart as any;
@@ -474,8 +480,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       chatDebug("store", "doneStreaming", { turnId, hadContinue: !!hasContinue, nextStreaming: !!hasContinue, wasStopped });
       const msgs = [...state.messages];
       const last = msgs[msgs.length - 1];
-      // Turn ended — settle any pending retry entries and KEEP the error part
-      // (amber recovered log) so the collapsible survives the committed message.
+      // Turn ended — settle any pending retry entries in ALL error parts and KEEP them
+      // (amber recovered log) so the collapsibles survive the committed message.
       const outcome = wasStopped ? ("aborted" as const) : ("succeeded" as const);
       const settledParts = state.streamingParts.map((p) => {
         if (p.type !== "error" || !p.retries || p.retries.length === 0) return p;
@@ -522,39 +528,72 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const errLine = `[Error: ${errText}]`;
       const msgs = [...state.messages];
       let parts = state.streamingParts.length > 0 ? sortParts(state.streamingParts) : [];
-      // Merge the backend retry log into the error part (authoritative), else fall
-      // back to entries accumulated live; settle pending as failed.
+      // Merge the backend retry log into the matching error part(s) by errorKey.
+      // If backendRetries have errorKey info, match by that; otherwise fall back
+      // to the first error part (legacy behavior).
       const backendRetries = (meta?.retries ?? []).map((r) =>
         r.status === "pending" ? { ...r, status: "failed" as const } : r
       );
-      const errIdx = parts.findIndex((p) => p.type === "error");
-      if (errIdx >= 0) {
-        const existing = parts[errIdx] as { type: "error"; message: string; raw?: string; isCustom?: boolean; category?: string; timestamp?: string; retries?: RetryEntry[]; providerName?: string };
-        const mergedRetries = backendRetries.length > 0
-          ? backendRetries
-          : (existing.retries ?? []).map((r) => (r.status === "pending" ? { ...r, status: "failed" as const } : r));
-        parts[errIdx] = {
-          ...existing,
-          message: errText,
-          raw: isCustom ? raw : undefined,
-          isCustom,
-          category,
-          timestamp: meta?.errorTime ?? existing.timestamp ?? new Date().toISOString(),
-          providerName: existing.providerName ?? meta?.providerName ?? state._pendingProviderName,
-          ...(mergedRetries.length > 0 ? { retries: mergedRetries } : {}),
-        } as any;
+      if (backendRetries.length > 0) {
+        // Group backend retries by their errorKey (if present)
+        const retriesByKey = new Map<string, RetryEntry[]>();
+        for (const r of backendRetries) {
+          const key = (r as any).errorKey ?? `${r.errorCode ?? "none"}:${r.category ?? "unknown"}:${r.errorLabel}`;
+          const list = retriesByKey.get(key);
+          if (list) list.push(r);
+          else retriesByKey.set(key, [r]);
+        }
+        // Merge into existing error parts by errorKey
+        for (const [key, retries] of retriesByKey) {
+          const idx = parts.findIndex(
+            (p) => p.type === "error" && (p as any).errorKey === key,
+          );
+          if (idx >= 0) {
+            const existing = parts[idx] as { type: "error"; retries?: RetryEntry[] };
+            parts[idx] = { ...existing, retries } as any;
+          } else {
+            // New error part for this key
+            const firstRetry = retries[0];
+            parts.push({
+              type: "error" as const,
+              message: firstRetry.message,
+              raw: firstRetry.raw,
+              isCustom: firstRetry.isCustom,
+              category: firstRetry.category,
+              timestamp: firstRetry.errorTime,
+              retries,
+              providerName: state._pendingProviderName,
+              errorKey: key,
+            } as any);
+          }
+        }
+      } else if (parts.some((p) => p.type === "error")) {
+        // No backend retries — settle any pending retries in existing error parts
+        parts = parts.map((p) => {
+          if (p.type !== "error" || !p.retries || p.retries.length === 0) return p;
+          return {
+            ...p,
+            retries: p.retries.map((r) =>
+              r.status === "pending" ? { ...r, status: "failed" as const } : r
+            ),
+          };
+        });
       } else {
-        const errorPart = {
-          type: "error" as const,
-          message: errText,
-          raw: isCustom ? raw : undefined,
-          isCustom,
-          category,
-          timestamp: meta?.errorTime ?? new Date().toISOString(),
-          providerName: meta?.providerName || state._pendingProviderName,
-          ...(backendRetries.length > 0 ? { retries: backendRetries } : {}),
-        };
-        parts = [...parts, errorPart as any];
+        // No error parts at all — create one for the final error
+        const errorKey = `${0}:${category ?? "unknown"}:${errText.slice(0, 50)}`;
+        parts = [
+          ...parts,
+          {
+            type: "error" as const,
+            message: errText,
+            raw: isCustom ? raw : undefined,
+            isCustom,
+            category,
+            timestamp: meta?.errorTime ?? new Date().toISOString(),
+            providerName: meta?.providerName || state._pendingProviderName,
+            errorKey,
+          } as any,
+        ];
       }
       const streamed = textContentFromParts(parts);
       const content = streamed ? `${streamed}\n\n${errLine}` : errLine;

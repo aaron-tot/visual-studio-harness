@@ -171,6 +171,16 @@ export async function runTurn(
     }
   }
 
+  // Pending auto-compaction: summarize + pin before this user message is persisted
+  // so the new turn is not part of the summary.
+  if (!isNew) {
+    try {
+      await maybeAutoCompact(sessionId, dataDir ?? "", workspaceRoot ?? undefined);
+    } catch (err) {
+      console.error("[auto-compaction] error before turn:", err);
+    }
+  }
+
   hookCtx = withHookContext(hookCtx, {
     sessionId, workspaceRoot,
     providerName: provider.displayName,
@@ -816,8 +826,9 @@ onStepFinish: async (info) => {
             // When auto compaction is on, also surface the step's context size
             // (input + cache-read tokens) so the UI can show progress toward the
             // compaction threshold per provider step return.
+            const stepUsed = (info.inputTokens ?? 0) + (info.cacheReadTokens ?? 0);
             const stepContextTokens = autoCompactionOn && autoCompactionThreshold > 0
-              ? { used: (info.inputTokens ?? 0) + (info.cacheReadTokens ?? 0), max: autoCompactionThreshold }
+              ? { used: stepUsed, max: autoCompactionThreshold, pending: stepUsed >= autoCompactionThreshold }
               : undefined;
             await events.onStepEnd?.({ stepIndex: info.stepIndex, contextTokens: stepContextTokens });
             currentStepId = null;
@@ -970,15 +981,6 @@ onStepFinish: async (info) => {
     const responseDurationMs = Date.now() - turnStarted;
 
     await bus?.emit("turn.complete", hookCtx, { sessionId, meta, workspaceRoot, userMessage, assistantMessage, durationMs: responseDurationMs });
-
-    // v2 auto compaction: after a successful turn, if the last input context hit
-    // the threshold, summarize + pin so the next turn starts compact. Runs to
-    // completion here so the next send cannot race it.
-    try {
-      await maybeAutoCompact(sessionId, dataDir ?? "", workspaceRoot ?? undefined);
-    } catch (err) {
-      console.error("[auto-compaction] error at turn.complete:", err);
-    }
 
     if (assistantMessage) {
       assistantMessage.modelName = model.displayName;

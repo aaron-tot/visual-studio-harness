@@ -13,8 +13,8 @@ export interface ContextScopeConfig {
   windowSize?: number;
   pinnedTurn?: number | null;
   // Auto compaction (v2): when enabled and the last-turn input context reaches
-  // autoCompactionTriggerTokens, the session auto-summarizes and pins to the
-  // new summary once the turn completes.
+  // autoCompactionTriggerTokens, the next send auto-summarizes and pins to the
+  // new summary before that user message is persisted.
   autoCompactionEnabled?: boolean;
   autoCompactionTriggerTokens?: number;
   /** Show the header token/compaction indicator (default on). */

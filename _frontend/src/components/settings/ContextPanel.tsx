@@ -221,8 +221,8 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                 <h3 className="text-sm font-medium text-zinc-100 mb-1">Compaction &amp; Summary</h3>
                 <p className="text-xs text-zinc-500 mb-3">
                   Choose how context is managed and how summaries are produced. Manual offers the
-                  slider / pin; Auto Compaction summarizes automatically once the input context
-                  reaches the threshold.
+                  slider / pin; Auto Compaction summarizes on the next send once the input
+                  context reaches the threshold.
                 </p>
                 <div className="flex items-center gap-2 mb-3">
                   <button type="button" onClick={() => saveMode({ autoCompactionEnabled: false })}
@@ -233,10 +233,10 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
                 {autoCompactionEnabled ? (
                   <div>
                     <p className="text-xs text-zinc-400 mb-2">
-                      After an agent turn finishes, if the full input context (provider-reported tokens)
-                      of the last step is at or above the threshold, it automatically summarizes the
-                      conversation and pins context to the new summary. The manual slider / pinning is
-                      off while auto compaction is on.
+                      If the last turn's input context (provider-reported tokens) is at or above
+                      the threshold, the next send summarizes first, then your message. The
+                      header shows "will fire before next message". The manual slider / pinning
+                      is off while auto compaction is on.
                     </p>
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-sm text-zinc-300">Trigger at input tokens &ge;</span>

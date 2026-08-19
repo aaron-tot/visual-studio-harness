@@ -3,8 +3,8 @@ import { getEffectiveContextConfig, type SessionContextConfig } from "../../lib/
 import { useChatStore } from "../../features/chat/store";
 
 const TOOLTIP =
-  "At the max tokens listed it will trigger a compaction to bring the token " +
-  "context size down. To adjust, go to Settings → Context → Auto Compaction.";
+  "At the max tokens listed, the next send summarizes first, then your " +
+  "message. To adjust, go to Settings → Context → Auto Compaction.";
 
 function fmtTokens(n: number): string {
   if (!n || n <= 0) return "0";
@@ -49,29 +49,41 @@ export function ContextCompactionIndicator({
   const threshold = cfg.autoCompactionTriggerTokens ?? 0;
   const used = contextTokens?.used ?? 0;
   const pct = threshold > 0 ? Math.min(100, Math.round((used / threshold) * 100)) : 0;
+  const willFire = contextTokens?.pending === true
+    || (contextTokens?.pending !== false && threshold > 0 && used >= threshold);
 
   return (
-    <div
-      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-zinc-700/60 bg-zinc-900/70 text-[10px] text-zinc-300 font-mono cursor-help select-none mx-1"
-      title={TOOLTIP}
-      data-testid="context-compaction-indicator"
-    >
-      <span className="shrink-0">
-        {contextTokens ? (
-          <>
-            <span className="text-zinc-100">{fmtTokens(used)}</span>
-            <span className="text-zinc-500">/{fmtTokens(threshold)}</span>
-          </>
-        ) : (
-          <span className="text-zinc-500">…</span>
-        )}
-      </span>
-      <span className="inline-block w-16 h-1.5 rounded-full bg-zinc-700/70 overflow-hidden" aria-hidden>
+    <div className="inline-flex items-center gap-1.5 mx-1">
+      <div
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-zinc-700/60 bg-zinc-900/70 text-[10px] text-zinc-300 font-mono cursor-help select-none"
+        title={TOOLTIP}
+        data-testid="context-compaction-indicator"
+      >
+        <span className="shrink-0">
+          {contextTokens ? (
+            <>
+              <span className="text-zinc-100">{fmtTokens(used)}</span>
+              <span className="text-zinc-500">/{fmtTokens(threshold)}</span>
+            </>
+          ) : (
+            <span className="text-zinc-500">…</span>
+          )}
+        </span>
+        <span className="inline-block w-16 h-1.5 rounded-full bg-zinc-700/70 overflow-hidden" aria-hidden>
+          <span
+            className={`block h-full rounded-full ${pct >= 90 ? "bg-amber-400" : "bg-zinc-400"}`}
+            style={{ width: `${contextTokens ? Math.max(pct, 2) : 0}%` }}
+          />
+        </span>
+      </div>
+      {willFire && (
         <span
-          className={`block h-full rounded-full ${pct >= 90 ? "bg-amber-400" : "bg-zinc-400"}`}
-          style={{ width: `${contextTokens ? Math.max(pct, 2) : 0}%` }}
-        />
-      </span>
+          data-testid="context-compaction-will-fire"
+          className="text-[10px] text-amber-400 whitespace-nowrap select-none"
+        >
+          will fire before next message
+        </span>
+      )}
     </div>
   );
 }

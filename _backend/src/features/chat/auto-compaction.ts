@@ -1,10 +1,10 @@
 /**
- * Auto compaction (v2): when a turn completes and the provider-reported input
- * context of its last step is at/above a configured token threshold, compact
- * the conversation by (a) summarizing the currently in-context turns into a new
- * summary turn (reusing the summarizer + chain) and (b) pinning the session
- * context to that summary. Subsequent turns then receive the compact summary
- * (message-builder injects it) plus any fresh turns after it.
+ * Auto compaction (v2): when the last live turn's provider-reported input
+ * context is at/above a configured token threshold, the session is pending.
+ * The next runTurn (user send / auto-continue) compact first — (a) summarize
+ * the currently in-context turns into a new summary turn and (b) pin the
+ * session to that summary — then persist and stream the new user message.
+ * The new message is never included in the summary.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,6 +20,7 @@ import {
   markSummaryTurnError,
   getSessionModelConfigJson,
   setSessionModelConfigJson,
+  getLatestSummaryRange,
   getLatestSummaryRangeBefore,
   insertSummaryRange,
 } from "../sessions/db";
@@ -35,11 +36,28 @@ import {
   buildSummarizationMessages,
   readSummarizationPrompt,
 } from "../sessions/summarizer";
-import { sendSessionStateToSession } from "../sessions/view-tracker";
+import { sendSessionStateToSession, sendToSession } from "../sessions/view-tracker";
 import type { ContextScopeConfig } from "./context-window";
 
 /** Sessions currently performing an auto compaction (avoids double-firing). */
 const compactingSessions = new Set<string>();
+
+export function isPendingAutoCompaction(args: {
+  enabled: boolean;
+  triggerTokens: number;
+  lastInputTokens: number;
+  lastTurnNumber: number;
+  latestSummaryEndTurn: number | null;
+}): boolean {
+  if (!args.enabled || args.triggerTokens <= 0) return false;
+  if (args.lastInputTokens < args.triggerTokens) return false;
+  if (args.latestSummaryEndTurn != null && args.latestSummaryEndTurn >= args.lastTurnNumber) return false;
+  return true;
+}
+
+function emitCompacting(sessionId: string, active: boolean) {
+  try { sendToSession(sessionId, { type: "compacting", sessionId, active }); } catch { /* ignore */ }
+}
 
 interface EffectiveAutoConfig {
   enabled: boolean;
@@ -115,13 +133,13 @@ export function getLastContextTokenUsage(
   dataDir: string,
   sessionId: string,
   workspaceRoot?: string,
-): { used: number; max: number } | null {
+): { used: number; max: number; pending: boolean } | null {
   const cfg = resolveEffectiveAutoConfig(sessionId, dataDir, workspaceRoot);
   if (!cfg.enabled || !cfg.triggerTokens || cfg.triggerTokens <= 0) return null;
 
   const db = getDbForDataDir(dataDir);
   const lastLive = db
-    .select({ inputTokens: turns.inputTokens, cacheReadTokens: turns.cacheReadTokens })
+    .select({ turnNumber: turns.turnNumber, inputTokens: turns.inputTokens, cacheReadTokens: turns.cacheReadTokens })
     .from(turns)
     .where(and(eq(turns.sessionId, sessionId), eq(turns.kind, "turn"), eq(turns.success, true)))
     .orderBy(desc(turns.turnNumber))
@@ -129,9 +147,18 @@ export function getLastContextTokenUsage(
     .get();
   if (!lastLive) return null;
 
+  const used = (lastLive.inputTokens ?? 0) + (lastLive.cacheReadTokens ?? 0);
+  const latest = getLatestSummaryRange(dataDir, sessionId);
   return {
-    used: (lastLive.inputTokens ?? 0) + (lastLive.cacheReadTokens ?? 0),
+    used,
     max: cfg.triggerTokens,
+    pending: isPendingAutoCompaction({
+      enabled: cfg.enabled,
+      triggerTokens: cfg.triggerTokens,
+      lastInputTokens: used,
+      lastTurnNumber: lastLive.turnNumber,
+      latestSummaryEndTurn: latest?.endTurn ?? null,
+    }),
   };
 }
 
@@ -154,8 +181,8 @@ function readSummaryText(dataDir: string, summaryTurnId: number): string | null 
 }
 
 /**
- * Trigger entry point, called when a turn completes.
- * Returns true if a compaction was started.
+ * Trigger entry point, called at the start of the next runTurn when the
+ * session is already at/above the threshold. Returns true if a compaction ran.
  */
 export async function maybeAutoCompact(
   sessionId: string,
@@ -178,19 +205,33 @@ export async function maybeAutoCompact(
   if (!lastLive) return false;
 
   const lastInputTokens = (lastLive.inputTokens ?? 0) + (lastLive.cacheReadTokens ?? 0);
-  if (lastInputTokens < cfg.triggerTokens) return false;
-
-  // Nothing left to compact (a summary already covers the whole conversation).
-  const prior = getLatestSummaryRangeBefore(dataDir, sessionId, lastLive.turnNumber);
-  if (prior && prior.endTurn >= lastLive.turnNumber) return false;
+  const latest = getLatestSummaryRange(dataDir, sessionId);
+  if (!isPendingAutoCompaction({
+    enabled: cfg.enabled,
+    triggerTokens: cfg.triggerTokens,
+    lastInputTokens,
+    lastTurnNumber: lastLive.turnNumber,
+    latestSummaryEndTurn: latest?.endTurn ?? null,
+  })) return false;
 
   compactingSessions.add(sessionId);
+  emitCompacting(sessionId, true);
   try {
-    console.error(`[auto-compaction] session=${sessionId} inputTokens=${lastInputTokens} threshold=${cfg.triggerTokens} → compacting`);
+    console.error(`[auto-compaction] session=${sessionId} inputTokens=${lastInputTokens} threshold=${cfg.triggerTokens} → compacting before next message`);
     await performAutoCompaction(sessionId, dataDir, workspaceRoot, cfg, lastLive.turnNumber);
+    try {
+      sendToSession(sessionId, {
+        type: "context_tokens",
+        sessionId,
+        used: lastInputTokens,
+        max: cfg.triggerTokens,
+        pending: false,
+      });
+    } catch { /* ignore */ }
     return true;
   } finally {
     compactingSessions.delete(sessionId);
+    emitCompacting(sessionId, false);
     try { sendSessionStateToSession(sessionId); } catch { /* ignore */ }
   }
 }

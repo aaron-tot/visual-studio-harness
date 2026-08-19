@@ -64,7 +64,19 @@ wsClient.on("context_tokens", (data: any) => {
   const currentId = useSessionViewStore.getState().currentSessionId;
   if (data.sessionId !== currentId) return;
   if (typeof data.used !== "number" || typeof data.max !== "number") return;
-  useChatStore.setState({ contextTokens: { used: data.used, max: data.max } });
+  useChatStore.setState({
+    contextTokens: {
+      used: data.used,
+      max: data.max,
+      ...(typeof data.pending === "boolean" ? { pending: data.pending } : {}),
+    },
+  });
+});
+
+wsClient.on("compacting", (data: any) => {
+  const currentId = useSessionViewStore.getState().currentSessionId;
+  if (data.sessionId !== currentId) return;
+  useChatStore.getState().setCompacting(data.active === true);
 });
 
 wsClient.on("reasoning", (data: any) => {

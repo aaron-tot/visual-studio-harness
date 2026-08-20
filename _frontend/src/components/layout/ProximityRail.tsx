@@ -112,21 +112,26 @@ export function ProximityRail({
   // Mobile/tablet: fixed slide-over drawer + backdrop + riding toggle button.
   if (isMobile) {
     const hidden = !mobileOpen;
-    // Drawer is full-screen; translating by its own (full) width moves it
-    // completely off the screen so no sliver remains when closed.
-    const translate = hidden
+    // Panel opens to full width minus 50px gap at the far edge.
+    // Closed: translate full viewport width so it clears completely.
+    const away = hidden
       ? side === "left"
-        ? "-translate-x-full"
-        : "translate-x-full"
-      : "translate-x-0";
+        ? "calc(-100vw)"
+        : "calc(100vw)"
+      : "0px";
+    // Panel spans from its screen edge to 50px before the opposite edge.
+    const drawerPos =
+      side === "left"
+        ? { left: 0, right: 50 }
+        : { right: 0, left: 50 };
     // Toggle button: hidden when the OTHER panel is open; otherwise present.
     const showButton = openPanel === null || openPanel === side;
-    // The icon rides with the panel: it starts at this panel's screen edge and
-    // travels all the way to the opposite edge when the panel opens, then back.
+    // Icon rides WITH the panel, maintaining a constant 10px gap from the
+    // panel's far edge. Panel edge is at 50px from far edge, so icon sits at 60px.
     const iconDx = mobileOpen
       ? side === "left"
-        ? "calc(100vw - var(--button-w) - 16px)"
-        : "calc(-100vw + var(--button-w) + 16px)"
+        ? "calc(100vw - 60px)"
+        : "calc(-100vw + 60px)"
       : "0px";
     return (
       <>
@@ -138,7 +143,8 @@ export function ProximityRail({
           aria-hidden={hidden}
         />
         <div
-          className={`fixed inset-0 z-[60] bg-zinc-950 shadow-2xl transition-transform duration-300 ease-out lg:hidden flex flex-col ${translate} ${className}`}
+          className={`fixed top-0 bottom-0 z-[60] bg-zinc-950 shadow-2xl transition-transform duration-300 ease-out lg:hidden flex flex-col ${className}`}
+          style={{ ...drawerPos, transform: `translateX(${away})` }}
         >
           {contentNode}
         </div>

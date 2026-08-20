@@ -29,6 +29,58 @@ body {
   animation: pulse-border 2s ease-in-out infinite;
 }
 
+/* Phone UI CSS variables — controlled by JS based on config + viewport.
+   These are set on :root by usePhoneUi hook when isMobile=true. */
+:root {
+  --phone-message-scale: 1;
+  --phone-ui-scale: 1;
+  --phone-input-height-scale: 1;
+  --phone-touch-scale: 1;
+}
+
+/* Mobile/tablet (below lg): apply phone UI scales via CSS custom properties */
+@media (max-width: 1023.98px) {
+  /* Scale message text (markdown content, message bubbles) */
+  [data-message-text],
+  [data-message-text] *,
+  .prose,
+  .prose * {
+    font-size: calc(1rem * var(--phone-message-scale)) !important;
+  }
+
+  /* Scale input selectors, toolbars, dropdowns, buttons in chat area */
+  [data-chat-input-selectors],
+  [data-chat-input-selectors] *,
+  .agent-selector,
+  .model-dropdown,
+  .thinking-dropdown,
+  .snippet-menu,
+  .context-indicator,
+  .chat-toolbar,
+  .chat-toolbar * {
+    font-size: calc(0.875rem * var(--phone-ui-scale)) !important;
+  }
+
+  /* Scale textarea / input area height */
+  textarea[data-chat-textarea],
+  .chat-textarea {
+    min-height: calc(44px * var(--phone-input-height-scale)) !important;
+    max-height: calc(160px * var(--phone-input-height-scale)) !important;
+    font-size: calc(0.875rem * var(--phone-message-scale)) !important;
+  }
+
+  /* Scale touch targets on interactive elements */
+  button,
+  [role="button"],
+  a,
+  select,
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: calc(44px * var(--phone-touch-scale));
+    min-width: calc(44px * var(--phone-touch-scale));
+  }
+}
+
 /*
  * Mobile/tablet (below Tailwind lg): bump the base font size inside the two
  * side panels so tappable list items (sessions, groups, audits, ideas, notes)

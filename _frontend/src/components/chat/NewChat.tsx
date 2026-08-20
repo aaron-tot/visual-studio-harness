@@ -578,7 +578,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
   }, [sessionId]);
 
   const controlsRow = (
-    <div className={cardToolbar}>
+    <div data-chat-input-selectors className={cardToolbar}>
       <AgentSelector agents={agents} selectedAgent={selectedAgent} triggerClassName={triggerPill}
         onSelect={handleAgentSelect}
       />
@@ -611,7 +611,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
       <div className="flex items-end gap-2">
       <div className="flex-1 relative">
         <InjectIndicator />
-        <textarea data-testid="message-input" ref={inputRef} value={stagedChatInput} onChange={(e) => setInput(e.target.value)}
+        <textarea data-chat-textarea data-testid="message-input" ref={inputRef} value={stagedChatInput} onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Type a message..." rows={1} className={chatTextarea} />
       </div>

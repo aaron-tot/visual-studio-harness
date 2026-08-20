@@ -73,7 +73,7 @@ export function Markdown({ content, className = "" }: MarkdownProps) {
   if (!content) return null;
 
   return (
-    <div className={`markdown-body min-w-0 max-w-none ${className}`}>
+    <div data-message-text className={`markdown-body min-w-0 max-w-none ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkLinkPaths]}
         components={{

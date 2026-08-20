@@ -553,6 +553,70 @@ export function GeneralPanel() {
             </select>
           </div>
 
+          {/* Phone UI (mobile/tablet) */}
+          <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
+            <div className="text-sm text-zinc-200">Phone / Tablet UI</div>
+            <div className="text-xs text-zinc-500 mb-2">
+              When on screens below 1024px, enable larger text, bigger input area, and larger touch targets.
+            </div>
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={config.phoneUi?.enabled ?? true}
+                onChange={(e) => patch({ phoneUi: { ...config.phoneUi, enabled: e.target.checked } })}
+                className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500/30"
+              />
+              <div>
+                <div className="text-sm text-zinc-200 group-hover:text-zinc-100">Enable phone UI</div>
+                <div className="text-xs text-zinc-500 mt-0.5">
+                  Scales up message text, input selectors, and input height on mobile/tablet only.
+                </div>
+              </div>
+            </label>
+
+            <div className="ml-7 space-y-3" style={{ opacity: (config.phoneUi?.enabled ?? true) ? 1 : 0.5 }}>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400 w-28">Message scale</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={2}
+                  step={0.05}
+                  value={config.phoneUi?.messageFontScale ?? 1.3}
+                  onChange={(e) => patch({ phoneUi: { ...config.phoneUi, messageFontScale: Math.max(1, Math.min(2, Number(e.target.value))) } })}
+                  className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center"
+                />
+                <span className="text-xs text-zinc-600">(default 1.3)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400 w-28">UI scale</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={2}
+                  step={0.05}
+                  value={config.phoneUi?.uiFontScale ?? 1.2}
+                  onChange={(e) => patch({ phoneUi: { ...config.phoneUi, uiFontScale: Math.max(1, Math.min(2, Number(e.target.value))) } })}
+                  className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center"
+                />
+                <span className="text-xs text-zinc-600">(default 1.2)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400 w-28">Input height</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={3}
+                  step={0.1}
+                  value={config.phoneUi?.inputHeightScale ?? 1.5}
+                  onChange={(e) => patch({ phoneUi: { ...config.phoneUi, inputHeightScale: Math.max(1, Math.min(3, Number(e.target.value))) } })}
+                  className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-center"
+                />
+                <span className="text-xs text-zinc-600">(default 1.5)</span>
+              </div>
+            </div>
+          </div>
+
           {/* Permission request timeout */}
           <label className="flex items-start gap-3 cursor-pointer group">
             <input

@@ -11,6 +11,7 @@ import { useChatStore } from "./stores/chat";
 import { useConfigStore } from "./stores/config";
 import { wsClient } from "./lib/ws";
 import { useBackendReload } from "./hooks/useBackendReload";
+import { usePhoneUi } from "./hooks/usePhoneUi";
 
 
 function SessionIdCopy({ id }: { id: string }) {
@@ -40,6 +41,7 @@ type SettingsTab = "general" | "providers" | "agents" | "prompts" | "tools" | "c
 
 function App() {
   useBackendReload();
+  usePhoneUi();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("providers");
   const [search, setSearch] = useState("");

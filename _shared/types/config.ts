@@ -260,8 +260,32 @@ export const DEFAULT_UPDATE_REPO: { owner: string; name: string } = {
   name: "visual-studio-harness",
 };
 
+/** Phone/tablet UI overrides (applies only below lg breakpoint). */
+export interface PhoneUiConfig {
+  /** Master enable toggle. */
+  enabled?: boolean;
+  /** Base font scale multiplier for chat messages (default 1.3). */
+  messageFontScale?: number;
+  /** Base font scale multiplier for input selectors/dropdowns (default 1.2). */
+  uiFontScale?: number;
+  /** Input textarea min-height multiplier (default 1.5). */
+  inputHeightScale?: number;
+  /** Global touch target scale for interactive elements (default 1.2). */
+  touchTargetScale?: number;
+}
+
+export const DEFAULT_PHONE_UI: PhoneUiConfig = {
+  enabled: true,
+  messageFontScale: 1.3,
+  uiFontScale: 1.2,
+  inputHeightScale: 1.5,
+  touchTargetScale: 1.2,
+};
+
 export interface ConfigFile {
   providers: ProviderConfig[];
+  /** Phone/tablet UI overrides. Only applies below lg (1024px). */
+  phoneUi?: PhoneUiConfig;
   /** @deprecated Search providers now live in `tools/builtin/searchOnline/searchOnline.json` (`ToolConfig.searchProviders`). Kept so existing configs still load. */
   searchProviders?: SearchProviderConfig[];
   /** GitHub repo the update indicator checks for new commits. Defaults to DEFAULT_UPDATE_REPO. */

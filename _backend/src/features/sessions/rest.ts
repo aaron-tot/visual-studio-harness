@@ -248,6 +248,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       summarizationFallbackModel?: string | null;
       summarizationPromptMd?: string | null;
       summarizeIncludePriorSummary?: boolean | null;
+      summarizationSafetyMargin?: number | null;
+      summarizationPriorTurns?: number | null;
     };
 
     // Merge with existing config
@@ -272,6 +274,8 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       summarizationFallbackModel: body.summarizationFallbackModel !== undefined ? body.summarizationFallbackModel : existingCtx.summarizationFallbackModel ?? undefined,
       summarizationPromptMd: body.summarizationPromptMd !== undefined ? body.summarizationPromptMd : existingCtx.summarizationPromptMd ?? undefined,
       summarizeIncludePriorSummary: body.summarizeIncludePriorSummary !== undefined ? body.summarizeIncludePriorSummary : existingCtx.summarizeIncludePriorSummary ?? true,
+      summarizationSafetyMargin: body.summarizationSafetyMargin !== undefined ? body.summarizationSafetyMargin : existingCtx.summarizationSafetyMargin ?? 0.2,
+      summarizationPriorTurns: body.summarizationPriorTurns !== undefined ? body.summarizationPriorTurns : existingCtx.summarizationPriorTurns ?? 0,
     };
     setSessionModelConfigJson(id, JSON.stringify(existing), dataDir);
     return { ok: true };

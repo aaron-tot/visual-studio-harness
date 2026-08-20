@@ -95,6 +95,7 @@ function streamWsHandlers(getSessionId: () => string, getTurnId: () => number | 
         ...(entry.raw ? { raw: entry.raw } : {}),
         ...(entry.isCustom != null ? { isCustom: entry.isCustom } : {}),
         ...(entry.category ? { category: entry.category } : {}),
+        ...(entry.errorCode != null ? { errorCode: entry.errorCode } : {}),
         errorTime: entry.errorTime,
       });
     },

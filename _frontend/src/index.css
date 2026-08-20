@@ -4,6 +4,9 @@
 
 :root {
   color-scheme: dark;
+  /* Mobile/tablet edge toggle button size (44px). The drawer reserves a strip
+     of this width + margin so the button stays visible as a close control. */
+  --button-w: 44px;
 }
 
 body {
@@ -24,6 +27,32 @@ body {
 }
 .animate-pulse-border {
   animation: pulse-border 2s ease-in-out infinite;
+}
+
+/*
+ * Mobile/tablet (below Tailwind lg): bump the base font size inside the two
+ * side panels so tappable list items (sessions, groups, audits, ideas, notes)
+ * are easier to read and hit with a finger. The bump scales rem-based Tailwind
+ * text utilities AND the small arbitrary-px sizes, via !important. At lg+ this
+ * rule never applies, so desktop stays pixel-identical.
+ */
+@media (max-width: 1023.98px) {
+  .panel-scope {
+    font-size: 1.0625rem; /* ~17px base within the panels */
+  }
+  .panel-scope button,
+  .panel-scope [role="treeitem"],
+  .panel-scope [data-tree-item] {
+    font-size: 15px !important;
+  }
+  .panel-scope .text-xs,
+  .panel-scope .text-[10px],
+  .panel-scope .text-[11px] {
+    font-size: 15px !important;
+  }
+  .panel-scope .text-[9px] {
+    font-size: 13px !important;
+  }
 }
 
 .scrollbar-hide {

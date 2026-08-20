@@ -113,7 +113,7 @@ export function InfoPanel() {
         aria-orientation="vertical"
         aria-label="Resize info panel"
         title="Drag to resize"
-        className={`absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 cursor-ew-resize z-30 group ${
+        className={`hidden lg:block absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 cursor-ew-resize z-30 group ${
           resizing ? "bg-zinc-500/40" : "hover:bg-zinc-600/40"
         }`}
         onMouseDown={onHandleMouseDown}
@@ -123,6 +123,7 @@ export function InfoPanel() {
       </div>
       <ProximityRail
         panel={panel}
+        side="right"
         contentWidth={panelWidth}
         noTransition={resizing}
         pinTitle={{ pinned: "Unpin panel", unpinned: "Pin panel open" }}

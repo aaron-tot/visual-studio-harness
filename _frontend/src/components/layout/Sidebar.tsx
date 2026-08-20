@@ -103,6 +103,7 @@ export function Sidebar({ search }: SidebarProps) {
     <div className="relative h-full flex shrink-0">
       <ProximityRail
         panel={panel}
+        side="left"
         contentWidth={sidebarWidth}
         noTransition={resizing}
         pinTestId="sidebar-pin"
@@ -200,7 +201,7 @@ export function Sidebar({ search }: SidebarProps) {
         aria-orientation="vertical"
         aria-label="Resize sidebar"
         title="Drag to resize"
-        className={`absolute right-0 top-0 bottom-0 w-1.5 -mr-0.5 cursor-ew-resize z-30 group ${
+        className={`hidden lg:block absolute right-0 top-0 bottom-0 w-1.5 -mr-0.5 cursor-ew-resize z-30 group ${
           resizing ? "bg-zinc-500/40" : "hover:bg-zinc-600/40"
         }`}
         onMouseDown={onHandleMouseDown}

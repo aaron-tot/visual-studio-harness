@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShortcut } from "./useShortcut";
+import { useIsMobile } from "./useIsMobile";
+import { useMobilePanelStore } from "../stores/mobilePanel";
 
 export type ProximitySide = "left" | "right";
 
@@ -39,6 +41,12 @@ export interface ProximityPanelState {
   contentProps: {
     onClick: () => void;
   };
+  /** True when viewport is below lg (mobile drawer mode) */
+  isMobile: boolean;
+  /** True when this panel is the currently-open mobile drawer */
+  mobileOpen: boolean;
+  /** Close the mobile drawer for this panel */
+  closeMobile: () => void;
 }
 
 /**
@@ -75,14 +83,25 @@ export function useProximityPanel(options: UseProximityPanelOptions): ProximityP
 
   const [visible, setVisible] = useState(false);
   const [pinned, setPinned] = useState(() => loadPinned(side));
+  const isMobile = useIsMobile();
+  // Which panel is the currently-open mobile drawer (single-open invariant).
+  const openPanel = useMobilePanelStore((s) => s.openPanel);
+  const closeMobilePanel = useMobilePanelStore((s) => s.close);
+  const toggleMobilePanel = useMobilePanelStore((s) => s.toggle);
+
+  const mobileOpen = openPanel === side;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const isOpen = visible || pinned;
+  const isOpen = isMobile ? mobileOpen : visible || pinned;
   const isOpenRef = useRef(isOpen);
   isOpenRef.current = isOpen;
   const pinnedRef = useRef(pinned);
   pinnedRef.current = pinned;
+  const mobileOpenRef = useRef(mobileOpen);
+  mobileOpenRef.current = mobileOpen;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const sideRef = useRef(side);
+  sideRef.current = side;
 
   const clearHideTimer = useCallback(() => {
     if (hideTimer.current) {
@@ -92,6 +111,7 @@ export function useProximityPanel(options: UseProximityPanelOptions): ProximityP
   }, []);
 
   const open = useCallback(() => {
+    if (mobileOpenRef.current) return;
     clearHideTimer();
     setVisible(true);
   }, [clearHideTimer]);
@@ -102,6 +122,10 @@ export function useProximityPanel(options: UseProximityPanelOptions): ProximityP
     setPinned(false);
     onCloseRef.current?.();
   }, [clearHideTimer]);
+
+  const closeMobile = useCallback(() => {
+    closeMobilePanel(sideRef.current);
+  }, [closeMobilePanel]);
 
   const pin = useCallback(() => {
     clearHideTimer();
@@ -121,16 +145,21 @@ export function useProximityPanel(options: UseProximityPanelOptions): ProximityP
   }, [pin, unpin]);
 
   const toggleOpen = useCallback(() => {
+    if (isMobile) {
+      toggleMobilePanel(sideRef.current);
+      return;
+    }
     if (isOpenRef.current) close();
     else open();
-  }, [close, open]);
+  }, [toggleMobilePanel, close, open, isMobile]);
 
   // Always call hooks; empty id is a no-op inside useShortcut (no keys).
   useShortcut(pinShortcut || "__noop.pin", () => {
     if (!pinShortcut) return;
+    if (isMobile) return;
     if (isOpenRef.current) close();
     else pin();
-  }, [pinShortcut, close, pin]);
+  }, [pinShortcut, close, pin, isMobile]);
 
   useShortcut(toggleShortcut || "__noop.toggle", () => {
     if (!toggleShortcut) return;
@@ -138,6 +167,7 @@ export function useProximityPanel(options: UseProximityPanelOptions): ProximityP
   }, [toggleShortcut, toggleOpen]);
 
   useEffect(() => {
+    if (isMobile) return;
     const handleMouseMove = (e: MouseEvent) => {
       if (pinnedRef.current) return;
       const nearEdge =
@@ -151,22 +181,24 @@ export function useProximityPanel(options: UseProximityPanelOptions): ProximityP
     };
     document.addEventListener("mousemove", handleMouseMove);
     return () => document.removeEventListener("mousemove", handleMouseMove);
-  }, [side, threshold, clearHideTimer]);
+  }, [side, threshold, clearHideTimer, isMobile]);
 
   useEffect(() => () => clearHideTimer(), [clearHideTimer]);
 
   const onMouseEnter = useCallback(() => {
+    if (isMobile) return;
     clearHideTimer();
     if (!pinnedRef.current) setVisible(true);
-  }, [clearHideTimer]);
+  }, [clearHideTimer, isMobile]);
 
   const onMouseLeave = useCallback(() => {
+    if (isMobile) return;
     if (pinnedRef.current) return;
     clearHideTimer();
     hideTimer.current = setTimeout(() => {
       setVisible(false);
     }, hideDelayMs);
-  }, [clearHideTimer, hideDelayMs]);
+  }, [clearHideTimer, hideDelayMs, isMobile]);
 
   return {
     visible,
@@ -176,6 +208,7 @@ export function useProximityPanel(options: UseProximityPanelOptions): ProximityP
     unpin,
     open,
     close,
+    closeMobile,
     togglePin,
     toggleOpen,
     railProps: {
@@ -185,8 +218,11 @@ export function useProximityPanel(options: UseProximityPanelOptions): ProximityP
     },
     contentProps: {
       onClick: () => {
+        if (isMobile) return;
         if (!pinnedRef.current) pin();
       },
     },
+    isMobile,
+    mobileOpen,
   };
 }

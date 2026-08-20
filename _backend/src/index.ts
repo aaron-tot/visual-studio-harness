@@ -11,7 +11,7 @@ import { registerSessionRoutes } from "./rest/sessions";
 import { registerMessageRoutes } from "./rest/messages";
 import { registerFsRoutes } from "./rest/fs";
 import { registerPermsRoutes } from "./rest/perms";
-import { registerWsHandler } from "./ws/handler";
+import { registerWsHandler, closeAllConnections } from "./ws/handler";
 import { broadcastConfig } from "./ws/configPush";
 import { registerOpenUrlRoutes } from "./rest/open-url";
 import { registerMdsRoutes } from "./rest/mds";
@@ -273,6 +273,7 @@ async function main() {
   registerKnowledgeRoutes(app, knowledgeService);
 
   // Initialize workspace graphs in background (non-blocking) — gated by workspaceGraph config
+  let reconcileInterval: ReturnType<typeof setInterval> | null = null;
   if (currentConfig.workspaceGraph !== false) {
     const manager = new WorkspaceGraphManager();
     setWorkspaceGraphManager(manager);
@@ -298,7 +299,7 @@ async function main() {
     })();
 
     // Periodically reconcile workspace graphs with active (non-archived) sessions
-    const reconcileInterval = setInterval(async () => {
+    reconcileInterval = setInterval(async () => {
       try {
         const sessions = await listSessions(DATA_DIR, { includeSubagents: false, includeArchived: false });
         const activeRoots = new Set(
@@ -325,23 +326,26 @@ async function main() {
         }
       } catch { /* skip if listing fails */ }
     }, 5000);
-
-    // Clear interval on shutdown. Must exit: registering a handler disables the
-    // default terminate behavior, and nodemon's hot-reload relies on SIGTERM
-    // killing the child — without process.exit() the dev server never restarts.
-    process.on("SIGTERM", () => {
-      clearInterval(reconcileInterval);
-      process.exit(0);
-    });
-    process.on("SIGINT", () => {
-      clearInterval(reconcileInterval);
-      process.exit(0);
-    });
   } else {
     console.log("[workspace-graph] disabled by config (workspaceGraph: false)");
   }
 
   registerWsHandler(app, () => DATA_DIR, () => currentConfig);
+
+  // ── Graceful shutdown ────────────────────────────────────────────────
+  // Close WebSocket connections, stop workspace-graph watchers, and clear the
+  // reconcile interval so no timers/connections leak on exit. Must exit:
+  // registering a handler disables the default terminate behavior, and
+  // nodemon's hot-reload relies on SIGTERM killing the child — without
+  // process.exit() the dev server never restarts.
+  const shutdown = () => {
+    if (reconcileInterval) clearInterval(reconcileInterval);
+    closeAllConnections();
+    getWorkspaceGraphManager()?.stopAll().catch(() => {});
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 
   app.get("/api/health", async () => ({ status: "ok", mode: MODE, dataDir: DATA_DIR }));
 

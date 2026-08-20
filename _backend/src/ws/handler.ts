@@ -1,1 +1,1 @@
-export { registerWsHandler, setPendingContinue, consumePendingContinue, clearPendingContinue } from "../transports/ws";
+export { registerWsHandler, closeAllConnections, setPendingContinue, consumePendingContinue, clearPendingContinue } from "../transports/ws";

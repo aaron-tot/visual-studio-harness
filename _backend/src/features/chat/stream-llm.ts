@@ -531,40 +531,41 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
           // Retry-tick/end countdown events are still emitted from here.
           const sid = options.sessionId;
 
-          // Wait with periodic retry_tick emissions
+          // Wait with periodic retry_tick emissions. Both timers and the abort
+          // listener are cleaned up on every terminal path so nothing lingers on
+          // the session's AbortSignal after the wait completes.
           let abortedDuringWait = false;
-          await new Promise<void>((resolve) => {
-            if (signal?.aborted) {
-              abortedDuringWait = true;
-              resolve();
+          const startWait = Date.now();
+          const endWait = startWait + delay;
+          const tickInterval = setInterval(() => {
+            const remainingMs = endWait - Date.now();
+            if (remainingMs <= 0) {
+              clearInterval(tickInterval);
               return;
             }
-            const startWait = Date.now();
-            const endWait = startWait + delay;
-            const tickInterval = setInterval(() => {
-              const remainingMs = endWait - Date.now();
-              if (remainingMs <= 0) {
-                clearInterval(tickInterval);
-                return;
-              }
-              if (sid) {
-                sendToSession(sid, {
-                  type: "retry_tick",
-                  sessionId: sid,
-                  remainingMs,
-                });
-              }
-            }, 1000);
-            const timer = setTimeout(() => {
-              clearInterval(tickInterval);
-              resolve();
-            }, delay);
-            signal?.addEventListener("abort", () => {
+            if (sid) {
+              sendToSession(sid, {
+                type: "retry_tick",
+                sessionId: sid,
+                remainingMs,
+              });
+            }
+          }, 1000);
+          await new Promise<void>((resolve) => {
+            let finished = false;
+            const onAbort = () => finish(true);
+            const finish = (abortedWait: boolean) => {
+              if (finished) return;
+              finished = true;
               clearInterval(tickInterval);
               clearTimeout(timer);
-              abortedDuringWait = true;
+              signal?.removeEventListener("abort", onAbort);
+              abortedDuringWait = abortedWait;
               resolve();
-            }, { once: true });
+            };
+            const timer = setTimeout(() => finish(false), delay);
+            if (signal?.aborted) { finish(true); return; }
+            signal?.addEventListener("abort", onAbort, { once: true });
           });
 
           // Emit retry_end

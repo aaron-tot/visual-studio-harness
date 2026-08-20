@@ -7,7 +7,7 @@ import { maxStepPartSeq } from "../chat/project-chat";
 import { getLastContextTokenUsage } from "../chat/auto-compaction";
 import type { Message, MessagePartType } from "../../../../_shared/types";
 
-const socketToSession = new Map<WebSocket, string>();
+const socketToSession = new WeakMap<WebSocket, string>();
 const sessionToSockets = new Map<string, Set<WebSocket>>();
 
 function addSocket(socket: WebSocket, sessionId: string) {

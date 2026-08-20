@@ -30,6 +30,7 @@ import { registerPricingRoutes } from "./rest/pricing";
 import { registerUpdatesRoutes } from "./features/updates/rest";
 import { checkForUpdates } from "./features/updates/check";
 import { initPricingCache } from "./features/pricing/models-dev";
+import { closeAllDbs } from "./db/client";
 import { setWorkspaceGraphManager, getWorkspaceGraphManager } from "./core/workspaceGraph/service-singleton";
 import { WorkspaceGraphManager } from "./core/workspaceGraph/graph-manager";
 import { listSessions } from "./features/sessions/store";
@@ -342,6 +343,7 @@ async function main() {
     if (reconcileInterval) clearInterval(reconcileInterval);
     closeAllConnections();
     getWorkspaceGraphManager()?.stopAll().catch(() => {});
+    closeAllDbs();
     process.exit(0);
   };
   process.on("SIGTERM", shutdown);

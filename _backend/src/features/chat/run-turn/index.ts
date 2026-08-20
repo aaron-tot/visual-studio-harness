@@ -669,6 +669,7 @@ export async function runTurn(
             // NOTE: partSeq intentionally NOT reset — the frontend lastSeq keeps
             // climbing during the live turn, so seq must stay monotonic across
             // retries or post-retry tokens/events get dropped by the seq guard.
+            stepWriter.close(); // release the previous writer's debounce timer/Maps
             stepWriter = createStepStreamWriter(sessionId, traceTurnId, 0, dataDir);
             stepIdByIndex = {};
             perStepCtx.pendingInjection = null;
@@ -878,7 +879,7 @@ onStepFinish: async (info) => {
       rawResponse = streamResult.rawResponse;
       _streamResult = streamResult;
     } finally {
-      stepWriter.closeOpen();
+      stepWriter.close();
       if (rawRequest !== undefined || rawResponse !== undefined) {
         updateTurnRawCapture(traceTurnId, rawRequest, rawResponse, dataDir);
       }

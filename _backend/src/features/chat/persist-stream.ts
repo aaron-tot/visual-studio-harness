@@ -104,5 +104,18 @@ export function createStepStreamWriter(sessionId: string, turnId: number, stepId
     toolPartIds.clear();
   };
 
-  return { writeDelta, closeOpen, toolPartIds, setToolPart, updateToolResult, rebindStep, getOpen: () => open };
+  // Release all held resources: pending debounce timer + in-flight buffers/Maps.
+  // Safe to call more than once (idempotent). Callers must invoke this when a
+  // turn is abandoned or a writer is replaced (e.g. on stream retry) so a
+  // scheduled timer can't fire after the turn ends.
+  const close = () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    open = null;
+    toolPartIds.clear();
+  };
+
+  return { writeDelta, closeOpen, toolPartIds, setToolPart, updateToolResult, rebindStep, getOpen: () => open, close };
 }

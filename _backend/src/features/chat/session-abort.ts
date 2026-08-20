@@ -1,6 +1,8 @@
 import type { SessionAbortPayload } from "../hooks";
 import { buildHookContext, getBus } from "../hooks";
 import { cancelPermissionsForSession } from "../tools/permission-wait";
+import { cancelAgentChangeRequestsForSession } from "../tools/agent-change-wait";
+import { cancelSlotBusyDecisionsForSession } from "../subagents/slot-busy-wait";
 import { killBashSession } from "../tools/host/pty-session";
 
 const sessionAborts = new Map<string, AbortController>();
@@ -63,6 +65,8 @@ export function cancelSession(sessionId: string, dataDir?: string): boolean {
   else { console.warn("[cancelSession] no AbortController found for session", sessionId); }
   killBashSession(sessionId);
   cancelPermissionsForSession(sessionId);
+  cancelAgentChangeRequestsForSession(sessionId);
+  cancelSlotBusyDecisionsForSession(sessionId);
   emitSessionAbort(sessionId, "user_cancel", dataDir);
   return hadAc;
 }

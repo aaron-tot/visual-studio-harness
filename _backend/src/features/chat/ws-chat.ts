@@ -199,12 +199,12 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       requestSlotBusyDecision: async (req) => {
         sendToSession(sessionId, { type: "slot_busy_request", sessionId, requestId: req.requestId, toolCallId: req.toolCallId, detail: req.detail, free: req.free, total: req.total, modelAlias: req.modelAlias, baseUrl: req.baseUrl, defaultPollIntervalSec: req.defaultPollIntervalSec, defaultWaitTimeoutSec: req.defaultWaitTimeoutSec });
         if (req.toolCallId) sendToSession(sessionId, { type: "tool_update", sessionId, toolCallId: req.toolCallId, status: "awaiting_config" });
-        return waitForSlotBusyDecision(req.requestId);
+        return waitForSlotBusyDecision(req.requestId, undefined, sessionId);
       },
       requestAgentChange: async (req) => {
         sendToSession(sessionId, { type: "agent_change_request", sessionId, requestId: req.requestId, toolCallId: req.toolCallId, suggestedAgent: req.suggestedAgent, reason: req.reason, agents: req.agents });
         if (req.toolCallId) sendToSession(sessionId, { type: "tool_update", sessionId, toolCallId: req.toolCallId, status: "awaiting_agent_change" });
-        return waitForAgentChange(req.requestId);
+        return waitForAgentChange(req.requestId, undefined, sessionId);
       },
       abortTurn: () => cancelSession(sessionId, dataDir),
       onSlotWaitStart: (info) => {

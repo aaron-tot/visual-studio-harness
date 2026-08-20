@@ -404,6 +404,23 @@ export function evictDbForDataDir(dataDir?: string): void {
   dbs.delete(path);
 }
 
+/**
+ * Close and evict every cached DB connection (graceful shutdown).
+ * After this, any subsequent getDb/getDbForDataDir opens a fresh connection.
+ */
+export function closeAllDbs(): void {
+  for (const path of Array.from(dbs.keys())) {
+    const db = dbs.get(path);
+    if (!db) continue;
+    try {
+      (db.$client as Database).close();
+    } catch {
+      /* already closed */
+    }
+    dbs.delete(path);
+  }
+}
+
 /** Absolute path to the live session DB for a data dir (or the process default). */
 export function liveDbPath(dataDir?: string): string {
   return dataDir

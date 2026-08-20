@@ -200,6 +200,19 @@ export async function startJavaScriptWatcher(
     if (closed || filename == null) return;
     const fullPath = join(dirAbs, filename.toString());
 
+    // A watched directory that no longer exists was deleted — release its
+    // inotify watch so `dirWatchers` and the kernel watch budget don't leak
+    // stale entries as files/dirs churn during a long-running session.
+    if (dirWatchers.has(fullPath) && !existsSync(fullPath)) {
+      try {
+        dirWatchers.get(fullPath)?.close();
+      } catch {
+        /* already closed */
+      }
+      dirWatchers.delete(fullPath);
+      return;
+    }
+
     // A newly-created directory needs its own watch. `stat` is cheap and these
     // events are rare relative to file edits.
     let isDirEntry = false;

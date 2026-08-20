@@ -51,7 +51,7 @@ import {
   getPendingSummaryTurns,
   expireStaleSummaryPlaceholders,
 } from "./db";
-import { readSummarizationPrompt, buildSummarizationMessages } from "./summarizer";
+import { readSummarizationPrompt, buildSummarizationMessages, splitModelRef } from "./summarizer";
 import { runSummaryBlock, type BlockSummaryResult } from "./summarize-block";
 import { resolveSummarizerContextLimit, perBlockBudget, planChunks, extractPriorTurns } from "./summary-blocks";
 
@@ -503,9 +503,9 @@ export function registerSessionRoutes(app: FastifyInstance, dataDir: string) {
       return reply.code(400).send({ error: "No summarization model configured" });
     }
 
-    // Validate modelRef format (should be "Provider/Model")
-    const modelRefParts = modelRef.split("/");
-    if (modelRefParts.length !== 2 || !modelRefParts[0] || !modelRefParts[1]) {
+    // Validate modelRef format: first slash splits Provider from model id
+    // (model ids may themselves contain slashes, e.g. OpenRouter vendor/model).
+    if (!splitModelRef(modelRef)) {
       return reply.code(400).send({ error: "Invalid summarization model format. Expected 'Provider/Model'" });
     }
 

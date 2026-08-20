@@ -15,8 +15,40 @@ import {
   expireStaleSummaryPlaceholders,
 } from "./db";
 import { insertSubagentSpawn, getSpawnByToolCallId } from "../subagents/db";
+import { runSummaryBlock } from "./summarize-block";
 
 const TEST_DATA_DIR = "/tmp/vsh-test-summarize-block";
+
+describe("runSummaryBlock model-ref gate", () => {
+  const base = {
+    dataDir: "/tmp/vsh-test-summarize-block-ref",
+    sessionId: "unused",
+    startTurn: 1,
+    endTurn: 1,
+    rangeTurns: [] as { role: "user" | "assistant"; content: string }[],
+    rangeGroups: [] as { userContent: string; assistantContents: string[] }[],
+    priorSummary: null,
+    initiator: "test",
+  };
+
+  it("rejects a missing model with the no-valid-model error", async () => {
+    await expect(runSummaryBlock({ ...base, modelRef: null })).rejects.toThrow(
+      /summary block: no valid summarization model/,
+    );
+  });
+
+  it("does not reject an Openrouter vendor/model id as invalid format", async () => {
+    try {
+      await runSummaryBlock({
+        ...base,
+        modelRef: "Openrouter/deepseek/deepseek-v4-flash-0731",
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      expect(msg).not.toMatch(/no valid summarization model/);
+    }
+  });
+});
 
 describe("Summary Ranges", () => {
   let testSessionId: string;

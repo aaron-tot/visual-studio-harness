@@ -21,7 +21,7 @@ import { createStepStreamWriter } from "../chat/persist-stream";
 import { insertSubagentSpawn } from "../subagents/db";
 import { createSession, markSummaryTurnError, insertSummaryRange, getSummaryRangeByRange } from "./db";
 import { getNextTurnNumber, createTurn, createStep, finalizeStep } from "../chat/db-trace";
-import { runSummarizer, readSummarizationPrompt } from "./summarizer";
+import { runSummarizer, readSummarizationPrompt, splitModelRef } from "./summarizer";
 import { cloneRangeTurnsToChild } from "../chat/summary-clone";
 import { sendSessionStateToSession } from "./view-tracker";
 
@@ -70,9 +70,11 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
     modelRef, fallbackModelRef, promptMd, initiator, prevRangeId, priorTurns, priorTurnGroups,
   } = input;
 
-  if (!modelRef || !/^[^/]+\/[^/]+$/.test(modelRef)) {
+  const parsedRef = splitModelRef(modelRef);
+  if (!parsedRef) {
     throw new Error(`summary block: no valid summarization model (${modelRef})`);
   }
+  const { providerName, modelName } = parsedRef;
 
   const db = getDbForDataDir(dataDir);
   const now = new Date().toISOString();
@@ -91,7 +93,7 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
   const childSessionId = generateId();
   const childLabel = `Summary: turns ${startTurn}–${endTurn}`;
   createSession(
-    { id: childSessionId, title: childLabel, kind: "subagent", parentId: sessionId, taskLabel: childLabel, providerName: modelRef.split("/")[0] ?? "", modelName: modelRef.split("/")[1] ?? "", workspaceRoot, created: now, updated: now },
+    { id: childSessionId, title: childLabel, kind: "subagent", parentId: sessionId, taskLabel: childLabel, providerName, modelName, workspaceRoot, created: now, updated: now },
     dataDir,
   );
 
@@ -99,8 +101,8 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
   cloneRangeTurnsToChild(dataDir, childSessionId, seedGroups, now, priorCloneGroup ?? null);
 
   const childTurnNumber = getNextTurnNumber(childSessionId, dataDir);
-  const childTurnId = createTurn(childSessionId, childTurnNumber, promptContent, now, { providerName: modelRef.split("/")[0] ?? "unknown", modelName: modelRef.split("/")[1] ?? "summarizer" }, dataDir);
-  const childStepId = createStep(childTurnId, childSessionId, 0, { providerName: modelRef.split("/")[0] ?? "unknown", modelId: modelRef.split("/")[1] ?? "summarizer" }, dataDir);
+  const childTurnId = createTurn(childSessionId, childTurnNumber, promptContent, now, { providerName, modelName }, dataDir);
+  const childStepId = createStep(childTurnId, childSessionId, 0, { providerName, modelId: modelName }, dataDir);
   const childWriter = createStepStreamWriter(childSessionId, childTurnId, childStepId, dataDir);
   let childPartSeq = 0;
 
@@ -110,7 +112,7 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
     kind: "summary",
     promptMd: promptMd ?? null,
     model: modelRef,
-    provider: modelRef.split("/")[0] ?? null,
+    provider: providerName,
     range: { startTurn, endTurn },
     originalTokens,
     summaryTokens: 0,
@@ -122,7 +124,7 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
   const summaryTurnNumber = getNextTurnNumber(sessionId, dataDir);
   const summaryTurnResult = db.insert(turns).values({
     sessionId, turnNumber: summaryTurnNumber, userContent: placeholderContent, userTimestamp: now,
-    status: "pending", success: false, providerName: modelRef.split("/")[0] ?? "unknown", modelName: modelRef.split("/")[1] ?? "summarizer",
+    status: "pending", success: false, providerName, modelName,
     finishReason: null, durationMs: 0, startedAt: now, completedAt: null, inputTokens: 0, outputTokens: 0,
     totalTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, stepCount: 0, kind: "summary",
     configSnapshotJson: JSON.stringify(summaryMeta),
@@ -181,7 +183,7 @@ export async function runSummaryBlock(input: SummaryBlockInput): Promise<BlockSu
 
   // Finalize the main summary turn + step + text part.
   db.update(turns).set({ userContent: promptContent, status: "success", success: true, finishReason: "stop", durationMs: Math.max(0, Date.now() - startedMs), completedAt: new Date().toISOString(), inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, totalTokens: usage?.totalTokens ?? 0, reasoningTokens: usage?.reasoningTokens ?? 0, stepCount: 1, configSnapshotJson: JSON.stringify({ ...summaryMeta, summaryTokens: usage?.totalTokens ?? 0 }) }).where(eq(turns.id, summaryTurnId)).run();
-  const stepResult = db.insert(steps).values({ sessionId, turnId: summaryTurnId, stepIndex: 0, status: "completed", providerName: modelRef.split("/")[0] ?? "unknown", modelId: modelRef.split("/")[1] ?? "summarizer", finishReason: "stop", startedAt: now, completedAt: now, stepTimeMs: 0 }).returning({ id: steps.id }).get();
+  const stepResult = db.insert(steps).values({ sessionId, turnId: summaryTurnId, stepIndex: 0, status: "completed", providerName, modelId: modelName, finishReason: "stop", startedAt: now, completedAt: now, stepTimeMs: 0 }).returning({ id: steps.id }).get();
   const stepId = stepResult?.id;
   if (stepId) {
     db.insert(stepParts).values({ sessionId, turnId: summaryTurnId, stepId, type: "text", seq: 0, status: "completed", data: JSON.stringify({ content: summaryText }), createdAt: now }).run();

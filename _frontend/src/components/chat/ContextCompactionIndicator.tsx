@@ -51,6 +51,7 @@ export function ContextCompactionIndicator({
   const pct = threshold > 0 ? Math.min(100, Math.round((used / threshold) * 100)) : 0;
   const willFire = contextTokens?.pending === true
     || (contextTokens?.pending !== false && threshold > 0 && used >= threshold);
+  const hasData = contextTokens != null;
 
   return (
     <div className="inline-flex items-center gap-1.5 mx-1">
@@ -60,19 +61,13 @@ export function ContextCompactionIndicator({
         data-testid="context-compaction-indicator"
       >
         <span className="shrink-0">
-          {contextTokens ? (
-            <>
-              <span className="text-zinc-100">{fmtTokens(used)}</span>
-              <span className="text-zinc-500">/{fmtTokens(threshold)}</span>
-            </>
-          ) : (
-            <span className="text-zinc-500">…</span>
-          )}
+          <span className="text-zinc-100">{fmtTokens(contextTokens?.used ?? 0)}</span>
+          <span className="text-zinc-500">/{fmtTokens(threshold)}</span>
         </span>
         <span className="inline-block w-16 h-1.5 rounded-full bg-zinc-700/70 overflow-hidden" aria-hidden>
           <span
             className={`block h-full rounded-full ${pct >= 90 ? "bg-amber-400" : "bg-zinc-400"}`}
-            style={{ width: `${contextTokens ? Math.max(pct, 2) : 0}%` }}
+            style={{ width: `${hasData ? Math.max(pct, 2) : 0}%` }}
           />
         </span>
       </div>

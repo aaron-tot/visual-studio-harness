@@ -18,6 +18,18 @@ type GetConfig = () => import("../../../_shared/types").ConfigFile;
 
 const connections = new Set<WebSocket>();
 
+/** Close every tracked connection and empty the set (graceful shutdown). */
+export function closeAllConnections(): void {
+  for (const socket of connections) {
+    try {
+      socket.close();
+    } catch {
+      /* already closed */
+    }
+  }
+  connections.clear();
+}
+
 function broadcast(payload: unknown): void {
   const msg = JSON.stringify(payload);
   console.log("Backend received payload: ",payload)

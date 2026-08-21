@@ -7,6 +7,7 @@ import { writeTool } from "./builtins/write";
 import { editTool } from "./builtins/edit";
 import { applyPatchTool } from "./builtins/apply_patch";
 import { bashTool } from "./builtins/bash";
+import { shellTool } from "./builtins/shell";
 import { skillTool } from "./builtins/skill";
 import { makeTaskTool, taskTool } from "./builtins/task";
 import { agentChangeTool } from "./builtins/agent_change";
@@ -30,6 +31,7 @@ const ALL_TOOLS: (ToolDef | ((agents?: Record<string, AgentSettings>) => ToolDef
   editTool,
   applyPatchTool,
   bashTool,
+  shellTool,
   skillTool,
   makeTaskTool,
   taskTool,

@@ -1,0 +1,68 @@
+{
+  "name": "shell",
+  "description": "Manage the interactive shells for THIS conversation's session. Actions: create, list, listOutput, sendText, sendCommand, readOutput, resize, close, closeAll. All actions are scoped to the current session only.",
+  "entry": "index.ts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "create",
+          "list",
+          "listOutput",
+          "sendText",
+          "sendCommand",
+          "readOutput",
+          "resize",
+          "close",
+          "closeAll"
+        ],
+        "description": "Action to perform on the session's shells"
+      },
+      "name": {
+        "type": "string",
+        "description": "Shell name (create)"
+      },
+      "cwd": {
+        "type": "string",
+        "description": "Working directory (create)"
+      },
+      "id": {
+        "type": "string",
+        "description": "Shell id (required for most actions)"
+      },
+      "text": {
+        "type": "string",
+        "description": "Raw text to write (sendText)"
+      },
+      "command": {
+        "type": "string",
+        "description": "Command line to execute (sendCommand)"
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 120000,
+        "description": "Reserved for future command-wait (default 30000)"
+      },
+      "cols": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Columns for resize"
+      },
+      "rows": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Rows for resize"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "enabled": true,
+  "permissionDefault": "allow"
+}

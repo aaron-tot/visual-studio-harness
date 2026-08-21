@@ -6,6 +6,7 @@ export {
   closeShell,
   listShells,
   getShellOutput,
+  getShellForSession,
   closeAllShellsForSession,
   closeAllShells,
 } from "./manager";

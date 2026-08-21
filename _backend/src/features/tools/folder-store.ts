@@ -87,6 +87,16 @@ import { getLiveSessionMeta } from "../../storage/session";
 import { getSessionTodosJson, setSessionTodosJson } from "../sessions/db";
 import { localISOString } from "../../utils/datetime";
 import { customToolToToolDef, loadCustomToolDefs } from "../custom-tools/store";
+import {
+  createShell,
+  listShells,
+  getShellOutput,
+  getShellForSession,
+  writeToShell,
+  resizeShell,
+  closeShell,
+  closeAllShellsForSession,
+} from "../shared-shell/manager";
 import type { BaseToolContext, ToolDef, ToolResult } from "./types";
 import type { SearchProviderConfig, ToolConfig, ToolSettings } from "../../../../_shared/types";
 
@@ -300,6 +310,21 @@ export interface ToolServices {
   getLiveSessionMeta: (id: string) => ReturnType<typeof getLiveSessionMeta>;
   getSessionTodosJson: (id: string) => string | null;
   setSessionTodosJson: (id: string, todosJson: string) => void;
+
+  // ── shared-shell ───────────────────────────────────────────────────
+  /** Manage the session's interactive shells (shared-shell feature). All
+   *  operations are session-scoped; a shell id is only usable when it belongs
+   *  to the given session. */
+  sharedShell: {
+    create: (sessionId: string, opts?: { name?: string; cwd?: string }) => Promise<import("../shared-shell/types").Shell>;
+    list: (sessionId: string) => import("../shared-shell/types").Shell[];
+    getOutput: (id: string) => Promise<string>;
+    findForSession: (sessionId: string, id: string) => import("../shared-shell/types").Shell | undefined;
+    write: (id: string, data: string) => void;
+    resize: (id: string, cols: number, rows: number) => void;
+    close: (id: string) => void;
+    closeAllForSession: (sessionId: string) => void;
+  };
 }
 
 /** The harness-provided `ctx` passed to every folder tool entry. */
@@ -474,6 +499,17 @@ export function resolveToolCtx(
       getSessionTodosJson: (id) => getSessionTodosJson(id, baseCtx.dataDir),
       setSessionTodosJson: (id, todosJson) =>
         setSessionTodosJson(id, todosJson, baseCtx.dataDir),
+      // shared-shell (session-scoped interactive shells)
+      sharedShell: {
+        create: (sessionId, opts) => createShell({ sessionId, name: opts?.name, cwd: opts?.cwd }),
+        list: (sessionId) => listShells(sessionId),
+        getOutput: (id) => getShellOutput(id),
+        findForSession: (sessionId, id) => getShellForSession(sessionId, id),
+        write: (id, data) => writeToShell(id, data),
+        resize: (id, cols, rows) => resizeShell(id, cols, rows),
+        close: (id) => closeShell(id),
+        closeAllForSession: (sessionId) => closeAllShellsForSession(sessionId),
+      },
     },
   };
   return extensions ? Object.assign(ctx, extensions) : ctx;

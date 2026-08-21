@@ -166,6 +166,17 @@ export async function getShellOutput(id: string): Promise<string> {
   return buffer || "";
 }
 
+/**
+ * Look up a shell by id, but only if it belongs to `sessionId`. Returns undefined
+ * when the shell does not exist OR belongs to a different session — used by the
+ * agent tool to enforce per-session scoping.
+ */
+export function getShellForSession(sessionId: string, id: string): Shell | undefined {
+  const m = shellsById.get(id);
+  if (!m || m.shell.sessionId !== sessionId) return undefined;
+  return { ...m.shell };
+}
+
 export function closeAllShellsForSession(sessionId: string): void {
   const sessionMap = shellsBySession.get(sessionId);
   if (!sessionMap) return;

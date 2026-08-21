@@ -451,7 +451,9 @@ function pinContextTo(sessionId: string, dataDir: string, pinnedTurn: number): v
   try {
     const raw = getSessionModelConfigJson(sessionId, dataDir);
     const parsed = raw ? JSON.parse(raw) : {};
-    parsed.context = { ...(parsed.context ?? {}), mode: "fixed", pinnedTurn, enabled: true };
+    // Only the user's "Use custom settings" toggle may change context.enabled —
+    // never auto-enable the session override here (preserve the existing flag).
+    parsed.context = { ...(parsed.context ?? {}), mode: "fixed", pinnedTurn };
     setSessionModelConfigJson(sessionId, JSON.stringify(parsed), dataDir);
   } catch (err) {
     console.error("[auto-compaction] could not pin context:", err);

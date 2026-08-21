@@ -68,7 +68,6 @@ export function TurnContextMenu({ sessionId, turnId, messages, x, y, onClose }: 
     putSessionContextConfig(sessionId, {
       pinnedTurn: tn,
       mode: "fixed",
-      enabled: true,
     })
       .then(() => bumpContextConfigVersion())
       .catch(() => {});

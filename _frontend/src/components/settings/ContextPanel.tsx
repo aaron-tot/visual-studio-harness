@@ -152,7 +152,7 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
         // Merge from already-loaded state — no re-GET of context-config per PUT.
         await putSessionContextConfig(sessionId, {
           ...body,
-          enabled: partial.enabled !== undefined ? partial.enabled : (enabledExplicit.current ? enabled : true),
+          enabled: partial.enabled !== undefined ? partial.enabled : (enabledExplicit.current ? enabled : false),
           summarizationModel: partial.summarizationModel ?? summarizationModel,
           summarizationFallbackModel: partial.summarizationFallbackModel ?? summarizationFallbackModel,
           summarizationPromptMd: partial.summarizationPromptMd ?? summarizationPromptMd,
@@ -185,12 +185,13 @@ export function ContextPanel({ sessionId }: ContextPanelProps) {
     } catch { /* ignore */ }
   };
 
-  // Changing the context mode (Manual/Auto or sliding/fixed) also enables this
-  // scope's overrides so the choice actually takes effect (global is always on).
+  // Changing the context mode (Manual/Auto or sliding/fixed) takes effect only
+  // when the user has the override toggled on — the toggle alone owns
+  // context.enabled, so this never forces it (R1).
   const saveMode = async (partial: {
     autoCompactionEnabled?: boolean; mode?: "sliding" | "fixed"; windowSize?: number;
   }) => {
-    await save({ ...partial, enabled: scope === "global" ? undefined : true });
+    await save(partial);
   };
 
   const scopePath =

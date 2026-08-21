@@ -313,7 +313,7 @@ export function ContextHistoryLine({
       setContextMode("fixed");
       setFirstTurnNumber(value);
       setPinnedTurn(value);
-      putSessionContextConfig(sessionId, { pinnedTurn: value, mode: "fixed", enabled: true }).catch(() => {});
+      putSessionContextConfig(sessionId, { pinnedTurn: value, mode: "fixed" }).catch(() => {});
     },
     [getSnapTurn, sessionId, turnPositions],
   );
@@ -343,7 +343,6 @@ export function ContextHistoryLine({
           mode: "sliding",
           windowSize,
           pinnedTurn: null,
-          enabled: true,
         }).catch(() => {});
       }
     } else if (contextMode === "sliding" && firstTurnNumber != null) {
@@ -354,7 +353,6 @@ export function ContextHistoryLine({
         putSessionContextConfig(sessionId, {
           mode: "fixed",
           pinnedTurn: firstTurnNumber,
-          enabled: true,
         }).catch(() => {});
       }
     }

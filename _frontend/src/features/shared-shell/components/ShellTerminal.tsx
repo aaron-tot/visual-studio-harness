@@ -1,5 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { Terminal as Xterm } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "lucide-react";
+import "@xterm/xterm/css/xterm.css";
 import { useSharedShellStore } from "../store";
 import type { Shell } from "../types";
 
@@ -8,70 +12,102 @@ interface ShellTerminalProps {
 }
 
 /**
- * Interactive shell surface: shows live output and lets the user type a command
- * to send to the backend shell process. Output is streamed over WS into the
- * store's `outputByShell` buffer.
+ * Real interactive terminal rendered with xterm.js, mirroring VSCode's
+ * integrated terminal. Backend PTY output is written into the xterm buffer;
+ * keystrokes are forwarded back to the PTY so colours, job control and
+ * full-screen apps behave natively. Mounted per shell via a `key` so each shell
+ * owns a single xterm instance.
  */
 export function ShellTerminal({ shell }: ShellTerminalProps) {
-  const [command, setCommand] = useState("");
-  const outputBodyRef = useRef<HTMLDivElement>(null);
-  const output = useSharedShellStore((s) => s.outputByShell[shell.id] ?? "");
-  const writeShell = useSharedShellStore((s) => s.writeShell);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const xtermRef = useRef<Xterm | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+  const wroteInitialRef = useRef(false);
 
-  // Auto-scroll to bottom on new output.
+  // Initialise xterm once per shell mount.
   useEffect(() => {
-    if (outputBodyRef.current) {
-      outputBodyRef.current.scrollTop = outputBodyRef.current.scrollHeight;
-    }
-  }, [output]);
+    const el = containerRef.current;
+    if (!el || xtermRef.current) return;
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = command;
-    if (!trimmed) return;
-    setCommand("");
-    try {
-      // Send the command plus a newline to execute it.
-      await writeShell(shell.id, trimmed + "\n");
-    } catch (err) {
-      console.error("Failed to write to shell:", err);
+    const term = new Xterm({
+      fontSize: 13,
+      fontFamily: "JetBrains Mono, Fira Code, Menlo, Monaco, Consolas, monospace",
+      cursorBlink: true,
+      theme: { background: "#0e0e11" },
+      scrollback: 5000,
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.loadAddon(new WebLinksAddon());
+    term.open(el);
+    fit.fit();
+    term.focus();
+
+    xtermRef.current = term;
+    fitRef.current = fit;
+
+    // Forward keystrokes and resize events to the backend PTY.
+    const dataSub = term.onData((data) => {
+      useSharedShellStore.getState().writeShell(shell.id, data).catch(() => {});
+    });
+    const resizeSub = term.onResize(({ cols, rows }) => {
+      useSharedShellStore.getState().resizeShell(shell.id, cols, rows).catch(() => {});
+    });
+
+    // Initial transcript already captured for this shell.
+    const initial = useSharedShellStore.getState().outputByShell[shell.id] ?? "";
+    if (initial) term.write(initial);
+    // Clear the consumed buffer so the subscription below doesn't re-flush it.
+    if (initial) {
+      useSharedShellStore.setState((s) => ({
+        outputByShell: { ...s.outputByShell, [shell.id]: "" },
+      }));
     }
-  };
+    wroteInitialRef.current = true;
+
+    return () => {
+      dataSub.dispose();
+      resizeSub.dispose();
+      term.dispose();
+      xtermRef.current = null;
+      fitRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shell.id]);
+
+  // Live output push: subscribe to this shell's output buffer and write any new
+  // deltas into xterm, then clear them.
+  useEffect(() => {
+    const unsub = useSharedShellStore.subscribe((state) => {
+      const term = xtermRef.current;
+      if (!term) return;
+      const data = state.outputByShell[shell.id];
+      if (!data) return;
+      term.write(data);
+      useSharedShellStore.setState((s) => ({
+        outputByShell: { ...s.outputByShell, [shell.id]: "" },
+      }));
+    });
+    return () => {
+      unsub();
+    };
+  }, [shell.id]);
+
+  // Best-effort fit after initial layout.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => fitRef.current?.fit());
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   return (
     <div className="h-full flex flex-col rounded-lg border border-zinc-800 bg-zinc-900/40 overflow-hidden">
-      {/* Header row */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/70 text-xs text-zinc-400">
         <Terminal size={13} className="text-zinc-500" />
         <span className="truncate">{shell.name}</span>
         <span className="flex-1" />
         <span className="text-[10px] text-zinc-600">{shell.status}</span>
       </div>
-
-      {/* Output area */}
-      <div
-        ref={outputBodyRef}
-        className="flex-1 overflow-y-auto px-3 py-2 font-mono text-xs text-zinc-300 whitespace-pre-wrap break-all min-h-0"
-      >
-        {output || (
-          <span className="text-zinc-600">
-            Shell ready. Type a command below and press Enter.
-          </span>
-        )}
-      </div>
-
-      {/* Command input */}
-      <form onSubmit={submit} className="flex items-center gap-2 border-t border-zinc-800/70 px-2 py-1.5">
-        <span className="text-emerald-400 select-none">›</span>
-        <input
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          placeholder="Type a command…"
-          className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none font-mono"
-          autoComplete="off"
-          spellCheck={false}
-        />
-      </form>
+      <div ref={containerRef} className="flex-1 min-h-0 px-1 py-1" />
     </div>
   );
 }

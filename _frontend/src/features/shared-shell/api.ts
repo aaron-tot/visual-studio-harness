@@ -25,6 +25,15 @@ export async function writeShellApi(id: string, data: string): Promise<{ ok?: bo
   return res.json();
 }
 
+export async function resizeShellApi(id: string, cols: number, rows: number): Promise<{ ok?: boolean; error?: string }> {
+  const res = await fetch(`${BASE}/resize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, cols, rows }),
+  });
+  return res.json();
+}
+
 export async function getShellOutputApi(id: string): Promise<{ output: string }> {
   const res = await fetch(`${BASE}/output`, {
     method: "POST",

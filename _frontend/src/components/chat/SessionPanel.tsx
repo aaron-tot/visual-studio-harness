@@ -276,7 +276,7 @@ export function SessionPanel({ sessionId, onHeightChange }: SessionPanelProps) {
             {/* Left: active shell for this session */}
             <div className="flex-1 min-w-0 min-h-0">
               {activeShell ? (
-                <ShellTerminal shell={activeShell} />
+                <ShellTerminal key={activeShell.id} shell={activeShell} />
               ) : (
                 <div className="h-full rounded-lg border border-dashed border-zinc-800 flex items-center justify-center text-xs text-zinc-600">
                   No shells — press + to create one

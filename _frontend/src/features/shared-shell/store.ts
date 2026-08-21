@@ -4,6 +4,7 @@ import {
   createShellApi,
   listShellsApi,
   writeShellApi,
+  resizeShellApi,
   closeShellApi,
   getShellOutputApi,
   closeSessionShellsApi,
@@ -28,6 +29,8 @@ interface SharedShellState {
   selectShell: (sessionId: string, shellId: string) => void;
   /** Write raw data to a shell (send a command). */
   writeShell: (shellId: string, data: string) => Promise<void>;
+  /** Resize a shell's PTY window. */
+  resizeShell: (shellId: string, cols: number, rows: number) => Promise<void>;
   /** Clear all shells for a session (archive). */
   clearSession: (sessionId: string) => Promise<void>;
   /** Reset display state for a session (session switch). */
@@ -107,8 +110,19 @@ export const useSharedShellStore = create<SharedShellState>((set, get) => ({
 
   listShells: async (sessionId) => {
     const { shells } = await listShellsApi(sessionId);
+    // Pull each shell's real accumulated buffer so the terminal shows output
+    // from the very start, not just whatever arrives over WS after subscribing.
+    const outputs: Record<string, string> = {};
+    for (const sh of shells) {
+      try {
+        outputs[sh.id] = (await getShellOutputApi(sh.id)).output;
+      } catch {
+        /* backend shell may have vanished */
+      }
+    }
     set((s) => ({
       bySession: { ...s.bySession, [sessionId]: shells },
+      outputByShell: { ...s.outputByShell, ...outputs },
     }));
   },
 
@@ -117,15 +131,21 @@ export const useSharedShellStore = create<SharedShellState>((set, get) => ({
     if (!res.ok || !res.shell) {
       throw new Error(res.error || "Failed to create shell");
     }
-    // shell:created WS normally adds it; also add locally here for reliability.
+    // shell:created WS normally adds; but add locally here for reliability.
     const shell = res.shell;
+    let output = "";
+    try {
+      output = (await getShellOutputApi(shell.id)).output;
+    } catch {
+      /* none yet */
+    }
     set((s) => ({
       bySession: {
         ...s.bySession,
         [sessionId]: [...(s.bySession[sessionId] ?? []).filter((x) => x.id !== shell.id), shell],
       },
       activeBySession: { ...s.activeBySession, [sessionId]: shell.id },
-      outputByShell: { ...s.outputByShell, [shell.id]: "" },
+      outputByShell: { ...s.outputByShell, [shell.id]: output },
     }));
     return shell;
   },
@@ -148,6 +168,10 @@ export const useSharedShellStore = create<SharedShellState>((set, get) => ({
 
   writeShell: async (shellId, data) => {
     await writeShellApi(shellId, data);
+  },
+
+  resizeShell: async (shellId, cols, rows) => {
+    await resizeShellApi(shellId, cols, rows);
   },
 
   clearSession: async (sessionId) => {

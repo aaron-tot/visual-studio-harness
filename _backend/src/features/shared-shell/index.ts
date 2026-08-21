@@ -2,6 +2,7 @@ export type { Shell, ShellStatus, ShellUpdate } from "./types";
 export {
   createShell,
   writeToShell,
+  resizeShell,
   closeShell,
   listShells,
   getShellOutput,

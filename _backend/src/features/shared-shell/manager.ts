@@ -1,112 +1,136 @@
-/** Shared-shell manager: spawns a persistent bash process per shell, keyed by
- *  shell id, grouped by session. Commands written to stdin; output captured
- *  into a rolling buffer and broadcast over WS.
+/** Shared-shell manager: owns per-session shell lifecycle metadata and routes
+ *  PTY work through the Node.js PTY host (node-pty). Output streamed over the
+ *  host's stdio IPC is broadcast to the frontend via WS and kept in a rolling
+ *  buffer so a shell's real transcript is available from the very start.
  */
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { broadcastToAll } from "../../ws/configPush";
+import { ptyHost } from "./pty-client";
 import type { Shell } from "./types";
 
-const OUTPUT_MAX_BYTES = 256 * 1024; // rolling buffer cap
+const OUTPUT_MAX_BYTES = 2 * 1024 * 1024; // rolling buffer cap
 const MAX_SHELLS_PER_SESSION = 20;
 
 interface ManagedShell {
   shell: Shell;
-  proc: ChildProcessWithoutNullStreams;
   buffer: string;
 }
 
 const shellsById = new Map<string, ManagedShell>();
 const shellsBySession = new Map<string, Map<string, ManagedShell>>();
+let hostReady: Promise<void> | null = null;
+
+function ensureHost(): Promise<void> {
+  if (!hostReady) {
+    hostReady = ptyHost.connect().catch((err) => {
+      hostReady = null;
+      throw err;
+    });
+  }
+  return hostReady;
+}
 
 function makeShellId(): string {
   return `shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function onData(id: string, chunk: Buffer): void {
-  const m = shellsById.get(id);
-  if (!m) return;
-  const text = chunk.toString("utf-8");
-  m.buffer += text;
-  if (Buffer.byteLength(m.buffer, "utf-8") > OUTPUT_MAX_BYTES) {
-    m.buffer = m.buffer.slice(-OUTPUT_MAX_BYTES);
-  }
-  broadcastToAll({ type: "shell:output", payload: { id, sessionId: m.shell.sessionId, data: text } });
+function emitCreated(shell: Shell): void {
+  broadcastToAll({ type: "shell:created", payload: { shell } });
 }
 
-function onExit(id: string): void {
-  const m = shellsById.get(id);
-  if (!m) return;
-  m.shell.status = "stopped";
-  shellsById.delete(id);
-  shellsBySession.get(m.shell.sessionId)?.delete(id);
+function onHostData(msg: { id: string; data?: string }): void {
+  const m = shellsById.get(msg.id);
+  if (!m || msg.data === undefined) return;
+  m.buffer += msg.data;
+  if (Buffer.byteLength(m.buffer, "utf8") > OUTPUT_MAX_BYTES) {
+    m.buffer = m.buffer.slice(-OUTPUT_MAX_BYTES);
+  }
   broadcastToAll({
-    type: "shell:updated",
-    payload: { id, sessionId: m.shell.sessionId, status: "stopped" },
+    type: "shell:output",
+    payload: { id: msg.id, sessionId: m.shell.sessionId, data: msg.data },
   });
 }
 
-export function createShell(opts: {
-  sessionId: string;
-  name?: string;
-  cwd?: string;
-}): Shell {
+function onHostExit(msg: { id: string; exitCode?: number; signal?: number | null }): void {
+  const m = shellsById.get(msg.id);
+  if (!m) return;
+  m.shell.status = "stopped";
+  shellsById.delete(msg.id);
+  shellsBySession.get(m.shell.sessionId)?.delete(msg.id);
+  broadcastToAll({
+    type: "shell:updated",
+    payload: { id: msg.id, sessionId: m.shell.sessionId, status: "stopped" },
+  });
+}
+
+function onHostCreated(msg: { id: string; pid?: number }): void {
+  const m = shellsById.get(msg.id);
+  if (m) m.shell.status = "running";
+}
+
+function onHostError(msg: { id: string; message?: string }): void {
+  const m = shellsById.get(msg.id);
+  if (m) m.shell.status = "error";
+  broadcastToAll({
+    type: "shell:updated",
+    payload: { id: msg.id, sessionId: m?.shell.sessionId, status: "error", message: msg.message },
+  });
+}
+
+// Wire host events once (module-level is safe; pty-host is a singleton).
+ptyHost.on("data", onHostData);
+ptyHost.on("exit", onHostExit);
+ptyHost.on("created", onHostCreated);
+ptyHost.on("error", onHostError);
+
+export function createShell(opts: { sessionId: string; name?: string; cwd?: string }): Shell {
+  void ensureHost();
   const sessionMap = shellsBySession.get(opts.sessionId) ?? new Map();
   if (sessionMap.size >= MAX_SHELLS_PER_SESSION) {
     throw new Error(`Too many shells for this session (max ${MAX_SHELLS_PER_SESSION})`);
   }
 
   const id = makeShellId();
-  const cwd = opts.cwd || process.cwd();
-  const proc = spawn("bash", ["--noprofile", "--norc", "-i"], {
-    cwd,
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-      PS1: `[${opts.sessionId.slice(0, 8)}] $ `,
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
   const shell: Shell = {
     id,
     name: opts.name ?? `Shell ${sessionMap.size + 1}`,
     sessionId: opts.sessionId,
-    status: "running",
-    cwd,
+    status: "starting",
+    cwd: opts.cwd || process.cwd(),
     createdAt: Date.now(),
   };
 
-  const managed: ManagedShell = { shell, proc, buffer: "" };
-  shellsById.set(id, managed);
-  sessionMap.set(id, managed);
+  shellsById.set(id, { shell, buffer: "" });
+  sessionMap.set(id, shellsById.get(id)!);
   shellsBySession.set(opts.sessionId, sessionMap);
 
-  proc.stdout.on("data", (d: Buffer) => onData(id, d));
-  proc.stderr.on("data", (d: Buffer) => onData(id, d));
-  proc.on("exit", () => onExit(id));
+  ptyHost.create(id, {
+    shell: "/bin/bash",
+    args: ["-l"],
+    cwd: shell.cwd,
+    cols: 80,
+    rows: 24,
+  });
 
-  broadcastToAll({ type: "shell:created", payload: { shell } });
+  emitCreated(shell);
   return shell;
 }
 
 export function writeToShell(id: string, data: string): void {
-  const m = shellsById.get(id);
-  if (!m || m.proc.killed) throw new Error(`Shell ${id} not running`);
-  m.proc.stdin.write(data);
+  if (!shellsById.has(id)) throw new Error(`Shell ${id} not running`);
+  ptyHost.write(id, data);
+}
+
+export function resizeShell(id: string, cols: number, rows: number): void {
+  if (!shellsById.has(id)) throw new Error(`Shell ${id} not running`);
+  ptyHost.resize(id, cols, rows);
 }
 
 export function closeShell(id: string): void {
+  ptyHost.kill(id);
   const m = shellsById.get(id);
-  if (!m) return;
-  try {
-    m.proc.kill("SIGTERM");
-    // Ensure a hard kill if graceful termination does not complete quickly.
-    setTimeout(() => {
-      const cur = shellsById.get(id);
-      if (cur && cur.proc.exitCode === null) cur.proc.kill("SIGKILL");
-    }, 500);
-  } catch {
-    /* ignore */
+  if (m) {
+    shellsBySession.get(m.shell.sessionId)?.delete(id);
+    shellsById.delete(id);
   }
 }
 
@@ -116,25 +140,47 @@ export function listShells(sessionId: string): Shell[] {
   return [...sessionMap.values()].map((m) => ({ ...m.shell }));
 }
 
-export function getShellOutput(id: string): string {
+export async function getShellOutput(id: string): Promise<string> {
   const m = shellsById.get(id);
-  return m ? m.buffer : "";
+  if (!m) return "";
+  // Ask the host for its authoritative buffer, so we include any bytes the
+  // host captured before a reconnect or a frontend refresh.
+  const buffer = await new Promise<string>((resolve) => {
+    let done = false;
+    const handler = (reply: { id: string; type: string; data?: string }) => {
+      if (reply.id === id && reply.type === "buffer") {
+        done = true;
+        ptyHost.off("buffer", handler);
+        resolve(reply.data ?? "");
+      }
+    };
+    ptyHost.on("buffer", handler);
+    ptyHost.requestBuffer(id);
+    setTimeout(() => {
+      if (!done) {
+        ptyHost.off("buffer", handler);
+        resolve(m.buffer);
+      }
+    }, 500);
+  });
+  return buffer || "";
 }
 
 export function closeAllShellsForSession(sessionId: string): void {
   const sessionMap = shellsBySession.get(sessionId);
   if (!sessionMap) return;
   for (const id of [...sessionMap.keys()]) {
-    closeShell(id);
+    ptyHost.kill(id);
+    shellsById.delete(id);
   }
   shellsBySession.delete(sessionId);
 }
 
-/** Close every shell (app shutdown). */
 export function closeAllShells(): void {
   for (const id of [...shellsById.keys()]) {
-    closeShell(id);
+    ptyHost.kill(id);
   }
   shellsById.clear();
   shellsBySession.clear();
+  ptyHost.close();
 }

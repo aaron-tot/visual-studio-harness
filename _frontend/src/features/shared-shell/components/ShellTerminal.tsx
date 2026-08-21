@@ -87,10 +87,57 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
     });
     ro.observe(el);
 
-    // Forward keystrokes and resize events to the backend PTY.
+
+    // Forward keystrokes (including Ctrl+C/Ctrl+X which arrive as \x03/\x18
+    // control bytes, and Ctrl+V paste content) to the backend PTY.
     const dataSub = term.onData((data) => {
       useSharedShellStore.getState().writeShell(shell.id, data).catch(() => {});
     });
+
+    const writeBytes = (bytes: string) => {
+      useSharedShellStore.getState().writeShell(shell.id, bytes).catch(() => {});
+    };
+
+    // Ensure Ctrl+C / Ctrl+V / Ctrl+X behave like a real terminal.
+    //
+    // xterm.js delegates copy/paste/control-key handling to the embedder:
+    // returning `true` lets xterm process the key (Ctrl+C/Ctrl+X become the
+    // \x03/\x18 control bytes on onData), returning `false` tells xterm to skip
+    // it and hand off to the browser (which fires a native copy/paste event on
+    // the focused textarea that xterm then re-emits as onData).
+    //
+    // So: Ctrl+V → return false so the browser's native paste runs (this is
+    // why Ctrl+Shift+V already pastes); Ctrl+C / Ctrl+X → copy/cut when there
+    // is a selection, otherwise let xterm send the interrupt/cancel byte.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown") return true;
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return true;
+      const key = e.key.toLowerCase();
+      if (key === "v") {
+        // Let the browser fire its native paste event (xterm picks it up).
+        return false;
+      }
+      if (key === "c" || key === "x") {
+        // If terminal text is selected, give the browser plain copy/cut.
+        if (term.hasSelection()) return false;
+        // Otherwise let xterm send the control byte to the shell. NOTE: for
+        // reasons not yet diagnosed, Ctrl+X does not reliably fire here (the
+        // browser often swallows it or it routes to "cut" regardless). Copy
+        // (Ctrl+C) and paste (Ctrl+V) work; CTRL+X IS A KNOWN NON-WORKING CASE
+        // — revisit later. Not urgent since copy/paste work.
+        return true;
+      }
+      return true;
+    });
+
+    // Clicking anywhere gives xterm's textarea focus so keydown/native paste
+    // events actually reach it.
+    const onPointerDown = () => {
+      term.focus();
+    };
+    el.addEventListener("pointerdown", onPointerDown);
+
     const resizeSub = term.onResize(({ cols, rows }) => {
       useSharedShellStore.getState().resizeShell(shell.id, cols, rows).catch(() => {});
     });
@@ -133,6 +180,7 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
       cancelled = true;
       hydratePendingRef.current = true;
       ro.disconnect();
+      el.removeEventListener("pointerdown", onPointerDown);
       dataSub.dispose();
       resizeSub.dispose();
       term.dispose();

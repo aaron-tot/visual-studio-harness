@@ -44,7 +44,7 @@
         "type": "integer",
         "minimum": 100,
         "maximum": 120000,
-        "description": "Reserved for future command-wait (default 30000)"
+        "description": "How long to wait for sendCommand output before returning what's available (ms; default 30000)"
       },
       "limit": {
         "type": "integer",

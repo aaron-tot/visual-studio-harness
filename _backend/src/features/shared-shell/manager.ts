@@ -165,6 +165,73 @@ export function listShells(sessionId: string): Shell[] {
   return [...sessionMap.values()].map((m) => ({ ...m.shell }));
 }
 
+/** Strip ANSI escape/control sequences and CR chars from captured output. */
+function stripAnsi(s: string): string {
+  return s
+    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")
+    .replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, "")
+    .replace(/\r/g, "");
+}
+
+/** Result of an agent-driven command execution. */
+export interface ShellCommandResult {
+  output: string;
+  timedOut: boolean;
+}
+
+/**
+ * Run `command` in the live shell and wait for its output.
+ *
+ * The command + a unique completion marker are written to the PTY, then the
+ * shell's buffer is polled until the marker appears (or `timeoutMs` elapses).
+ * Everything written after the command began and up to the marker is returned
+ * (with ANSI codes stripped). This lets `sendCommand` come back with the actual
+ * command output rather than "command sent" — waiting as long as needed.
+ *
+ * Note: output is captured from the shared rolling buffer, so it is also
+ * streamed live to the GUI as usual. Because the shell is interactive, this
+ * waits for the marker to print; interactive/long-running commands will hit the
+ * timeout and return whatever was produced so far.
+ */
+export async function runShellCommand(
+  id: string,
+  command: string,
+  { timeoutMs = 30000 }: { timeoutMs?: number } = {}
+): Promise<ShellCommandResult> {
+  const m = shellsById.get(id);
+  if (!m) throw new Error(`Shell ${id} not running`);
+
+  const startIndex = m.buffer.length;
+  const marker = `__VSH_CMD_DONE_${Date.now()}_${Math.random().toString(36).slice(2, 10)}__`;
+
+  // Run the command, then echo a unique marker on its own line so we know it
+  // completed. Written as two lines so the marker prints even if the command
+  // itself is a single invocation.
+  writeToShell(id, `${command}\n`);
+  writeToShell(id, `echo '${marker}'\n`);
+
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const poll = setInterval(() => {
+      const m = shellsById.get(id);
+      const buffer = m?.buffer ?? "";
+      // The marker's LAST occurrence is the completed echo (the earlier
+      // occurrence is the echoed "echo <marker>" command line itself).
+      const markerPos = buffer.lastIndexOf(marker);
+      if (markerPos !== -1) {
+        clearInterval(poll);
+        resolve({ output: stripAnsi(buffer.slice(startIndex, markerPos)), timedOut: false });
+        return;
+      }
+      if (Date.now() > deadline) {
+        clearInterval(poll);
+        resolve({ output: stripAnsi(buffer.slice(startIndex)), timedOut: true });
+        return;
+      }
+    }, 100);
+  });
+}
+
 export interface ShellOutputOptions {
   /** Max characters to return (default: full buffer). */
   limit?: number;

@@ -96,6 +96,7 @@ import {
   resizeShell,
   closeShell,
   closeAllShellsForSession,
+  runShellCommand,
 } from "../shared-shell/manager";
 import type { BaseToolContext, ToolDef, ToolResult } from "./types";
 import type { SearchProviderConfig, ToolConfig, ToolSettings } from "../../../../_shared/types";
@@ -327,6 +328,11 @@ export interface ToolServices {
     resize: (id: string, cols: number, rows: number) => void;
     close: (id: string) => void;
     closeAllForSession: (sessionId: string) => void;
+    runCommand: (
+      id: string,
+      command: string,
+      opts?: { timeoutMs?: number },
+    ) => Promise<import("../shared-shell/manager").ShellCommandResult>;
   };
 }
 
@@ -512,6 +518,7 @@ export function resolveToolCtx(
         resize: (id, cols, rows) => resizeShell(id, cols, rows),
         close: (id) => closeShell(id),
         closeAllForSession: (sessionId) => closeAllShellsForSession(sessionId),
+        runCommand: (id, command, opts) => runShellCommand(id, command, opts),
       },
     },
   };

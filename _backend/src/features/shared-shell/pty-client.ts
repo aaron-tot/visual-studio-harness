@@ -1,10 +1,18 @@
 /** PTY client (Bun side): spawns the Node.js PTY host and communicates over
  *  stdio JSON-lines. node-pty must run under Node (Bun ABI is incompatible), so
  *  this process is a `node` child whose stdin/stdout carry framed messages.
+ *
+ *  Dev runs the host straight from the repo (pty-host.cjs beside this file and
+ *  node-pty from node_modules). A compiled binary has neither on disk — the
+ *  embedded PTY runtime (host + node-pty JS/native) is materialized to the
+ *  runtime data dir and the host is spawned from there.
  */
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolveDataDir } from "../../paths";
+import { PTY_RUNTIME_EMBED } from "../../generated/pty-runtime-embed";
 
 interface PtyHostMessage {
   id: string;
@@ -65,9 +73,54 @@ function findNode(): string {
   throw new Error("shared-shell: could not locate a real node binary (set NODE_BIN)");
 }
 
-/** Absolute path to the PTY host CommonJS script. */
-function hostPath(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "pty-host.cjs");
+/**
+ * Resolve the PTY host script path.
+ *
+ * Dev: the repo source tree has `pty-host.cjs` beside this file, spawned
+ * directly (node-pty resolves from the repo node_modules).
+ *
+ * Compiled binary: the repo files aren't on disk, so the embed map is
+ * materialized under the runtime data dir (a `node_modules/node-pty` layout so
+ * the host's `require("node-pty")` resolves) and the host is spawned from there.
+ */
+let materializePromise: Promise<string> | null = null;
+
+async function materializeHost(): Promise<string> {
+  const embeddedKeys = Object.keys(PTY_RUNTIME_EMBED);
+  // Dev: no embedded runtime — use the source copy.
+  if (embeddedKeys.length === 0) {
+    return join(dirname(fileURLToPath(import.meta.url)), "pty-host.cjs");
+  }
+
+  const base = join(resolveDataDir(), "pty-runtime");
+
+  // Layout:
+  //   <base>/pty-host.cjs                     (the host script; requires "node-pty")
+  //   <base>/node_modules/node-pty/...      (so require("node-pty") resolves)
+  let hostDst = "";
+  for (const rel of embeddedKeys) {
+    const parts = rel.split("/").filter((p) => p && p !== "." && p !== "..");
+    let dest: string;
+    if (parts[0] === "pty-host") {
+      dest = join(base, ...parts.slice(1));
+      if (parts.length >= 2 && parts[parts.length - 1] === "pty-host.cjs") hostDst = dest;
+    } else {
+      // everything else is the node-pty package tree
+      dest = join(base, "node_modules", ...parts);
+    }
+    await mkdir(dirname(dest), { recursive: true });
+    await writeFile(dest, Buffer.from(PTY_RUNTIME_EMBED[rel], "base64"));
+  }
+  return hostDst;
+}
+
+/** Absolute path to the PTY host script (cache the async materialization). */
+function hostPath(): string | Promise<string> {
+  if (Object.keys(PTY_RUNTIME_EMBED).length === 0) {
+    return join(dirname(fileURLToPath(import.meta.url)), "pty-host.cjs");
+  }
+  if (!materializePromise) materializePromise = materializeHost();
+  return materializePromise;
 }
 
 class PtyHostClient extends EventEmitter {
@@ -77,7 +130,7 @@ class PtyHostClient extends EventEmitter {
   async connect(): Promise<void> {
     if (this.child) return;
     const nodeBin = findNode();
-    const host = hostPath();
+    const host = await hostPath();
     const proc = Bun.spawn([nodeBin, host], {
       stdout: "pipe",
       stderr: "pipe",

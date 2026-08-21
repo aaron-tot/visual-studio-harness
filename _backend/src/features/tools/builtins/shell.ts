@@ -14,6 +14,7 @@ import {
   resizeShell,
   closeShell,
   closeAllShellsForSession,
+  runShellCommand,
 } from "../../shared-shell/manager";
 import type { ShellOutputOptions } from "../../shared-shell/manager";
 
@@ -49,7 +50,7 @@ const ShellActionSchema = z
       .min(100)
       .max(120000)
       .optional()
-      .describe("Reserved for future command-wait (default 30000)"),
+      .describe("How long to wait for sendCommand output before returning what's available (ms; default 30000)"),
     // read (readOutput/listOutput)
     limit: z
       .number()
@@ -130,8 +131,14 @@ async function execute(args: ShellActionInput, ctx: BaseToolContext): Promise<To
       case "sendCommand": {
         const id = owned();
         if (!args.command) throw new Error("command is required for sendCommand");
-        writeToShell(id, args.command + "\n");
-        return ok("Command Sent", { id, command: args.command });
+        // Wait for the command to complete and return its captured output.
+        const res = await runShellCommand(id, args.command, { timeoutMs: args.timeoutMs });
+        return ok("Command Output", {
+          id,
+          command: args.command,
+          ...(res.timedOut ? { timedOut: true } : {}),
+          output: res.output,
+        });
       }
 
       case "readOutput": {

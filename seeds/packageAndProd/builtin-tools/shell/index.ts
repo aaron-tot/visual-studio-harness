@@ -72,8 +72,16 @@ export async function execute(args: Record<string, unknown>, ctx: any): Promise<
         const id = owned();
         const command = args.command as string | undefined;
         if (!command) throw new Error("command is required for sendCommand");
-        ss.write(id, command + "\n");
-        return result("Command Sent", { id, command });
+        // Wait for the command to finish and return its captured output.
+        const res = await ss.runCommand(id, command, {
+          timeoutMs: (args.timeoutMs as number | undefined) ?? 30000,
+        });
+        return result("Command Output", {
+          id,
+          command,
+          output: res.output,
+          ...(res.timedOut ? { timedOut: true } : {}),
+        });
       }
       case "readOutput": {
         const id = owned();

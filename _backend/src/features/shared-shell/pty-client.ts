@@ -16,29 +16,53 @@ interface PtyHostMessage {
   message?: string;
 }
 
+/** True if `bin`, when run, reports a real Node.js version (not Bun's shim). */
+function isRealNode(bin: string): boolean {
+  try {
+    const probe = Bun.spawnSync([bin, "--version"], { stdout: "pipe" });
+    if (probe.exitCode !== 0) return false;
+    const out = (probe.stdout?.toString() ?? "").trim();
+    // Real node prints "v<major>.<minor>.<patch>". Bun's `node` shim prints a
+    // version without the leading "v" or otherwise is not a node build.
+    return /^v\d+\.\d+\.\d+$/.test(out);
+  } catch {
+    return false;
+  }
+}
+
 function findNode(): string {
   const fromEnv = process.env.NODE_BIN;
-  if (fromEnv) return fromEnv;
-  for (const name of ["node", "nodejs"]) {
-    const p = Bun.which(name);
-    if (p) return p;
-  }
-  const nvm = process.env.HOME
-    ? `${process.env.HOME}/.nvm/versions/node`
-    : null;
+  if (fromEnv && isRealNode(fromEnv)) return fromEnv;
+
+  // Prefer a real Node from nvm before trusting PATH/Bun.which — under Bun, PATH
+  // can contain Bun's own `node` shim (`/tmp/bun-node-*/node`) which is actually
+  // Bun and would crash native node-pty.
+  const nvm = process.env.HOME ? `${process.env.HOME}/.nvm/versions/node` : null;
   if (nvm) {
-    const ls = Bun.spawnSync(["ls", nvm], { stdout: "pipe" }).stdout?.toString() ?? "";
-    for (const v of ls.split("\n").map((s) => s.trim()).filter(Boolean).sort().reverse()) {
-      const bin = join(nvm, v, "bin", "node");
-      try {
-        const probe = Bun.spawnSync([bin, "--version"], { stdout: "pipe" });
-        if (probe.exitCode === 0) return bin;
-      } catch {
-        /* not a valid node */
+    try {
+      const ls = Bun.spawnSync(["ls", nvm], { stdout: "pipe" }).stdout?.toString() ?? "";
+      const versions = ls
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .sort()
+        .reverse();
+      for (const v of versions) {
+        const bin = join(nvm, v, "bin", "node");
+        if (isRealNode(bin)) return bin;
       }
+    } catch {
+      /* no nvm dir */
     }
   }
-  throw new Error("shared-shell: could not locate a node binary (set NODE_BIN)");
+
+  // Fall back to name lookup, still requiring a REAL node.
+  for (const name of ["node", "nodejs"]) {
+    const p = Bun.which(name);
+    if (p && isRealNode(p)) return p;
+  }
+
+  throw new Error("shared-shell: could not locate a real node binary (set NODE_BIN)");
 }
 
 /** Absolute path to the PTY host CommonJS script. */
@@ -52,7 +76,9 @@ class PtyHostClient extends EventEmitter {
 
   async connect(): Promise<void> {
     if (this.child) return;
-    const proc = Bun.spawn([findNode(), hostPath()], {
+    const nodeBin = findNode();
+    const host = hostPath();
+    const proc = Bun.spawn([nodeBin, host], {
       stdout: "pipe",
       stderr: "pipe",
       stdin: "pipe",
@@ -62,6 +88,16 @@ class PtyHostClient extends EventEmitter {
     proc.stdout.pipeTo(
       new WritableStream({
         write: (chunk: Uint8Array) => this.onChunk(chunk),
+      })
+    ).catch(() => {});
+
+    // Surface the node host's stderr to the backend log for diagnostics.
+    proc.stderr?.pipeTo(
+      new WritableStream({
+        write: (chunk: Uint8Array) => {
+          const text = Buffer.from(chunk).toString("utf8").trimEnd();
+          if (text) console.error("[pty-host stderr]", text);
+        },
       })
     ).catch(() => {});
 

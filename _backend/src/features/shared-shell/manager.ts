@@ -82,8 +82,8 @@ ptyHost.on("exit", onHostExit);
 ptyHost.on("created", onHostCreated);
 ptyHost.on("error", onHostError);
 
-export function createShell(opts: { sessionId: string; name?: string; cwd?: string }): Shell {
-  void ensureHost();
+export async function createShell(opts: { sessionId: string; name?: string; cwd?: string }): Promise<Shell> {
+  await ensureHost();
   const sessionMap = shellsBySession.get(opts.sessionId) ?? new Map();
   if (sessionMap.size >= MAX_SHELLS_PER_SESSION) {
     throw new Error(`Too many shells for this session (max ${MAX_SHELLS_PER_SESSION})`);

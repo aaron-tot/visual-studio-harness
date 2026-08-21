@@ -18,7 +18,7 @@ export function registerSharedShellRoutes(app: FastifyInstance): void {
       return { error: "sessionId is required" };
     }
     try {
-      const shell = createShell({ sessionId, name: body?.name, cwd: body?.cwd });
+      const shell = await createShell({ sessionId, name: body?.name, cwd: body?.cwd });
       return { ok: true, shell };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };

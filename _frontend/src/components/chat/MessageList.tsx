@@ -1,9 +1,10 @@
 import { useEffect, useRef, useMemo, useCallback, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { useChatStore } from "../../stores/chat";
 import { MessageRow } from "./MessageRow";
 import { ContextHistoryLine } from "./ContextHistoryLine";
 import { ThinkingIndicator } from "./parts/ThinkingIndicator";
+import { Markdown } from "./markdown/Markdown";
 import type { MessagePartType } from "../../../../_shared/types";
 
 const PIN_EPSILON = 4;
@@ -365,17 +366,28 @@ function SummaryTurnWrapper({
       </button>
       {!isCollapsed && (
         <div className="px-3 pb-3 animate-in fade-in slide-in-from-top-1 duration-150 border-t border-blue-500/20">
-          {/* The summary result is a system-level message: only the generated
-              summary is shown — the handoff prompt (user side) and the
-              assistant pair are never surfaced in the card. */}
-          <MessageRow
-            message={{
-              ...assistantMsg,
-              role: "system",
-              content: assistantMsg.content || "(empty summary)",
-              childSessionId: marker?.childSessionId,
-            }}
-          />
+          {/* Summary result rendered as a system-level block: only the generated
+              summary is shown (the handoff prompt and assistant pair are never
+              surfaced), with proper markdown formatting. */}
+          <div
+            className="rounded-md border border-zinc-700/60 bg-zinc-800/40 px-4 py-3"
+            data-summary-result
+          >
+            <Markdown content={assistantMsg.content || "(empty summary)"} />
+            {marker?.childSessionId && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => useChatStore.getState().loadSession(marker.childSessionId!)}
+                  className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-zinc-500 hover:text-blue-400 hover:bg-zinc-700/60 transition-colors"
+                  title="Open summary sub-session (costs, reasoning, result)"
+                >
+                  <ExternalLink size={12} />
+                  Open sub-session
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -168,8 +168,10 @@ export function listShells(sessionId: string): Shell[] {
 /** Strip ANSI escape/control sequences and CR chars from captured output. */
 function stripAnsi(s: string): string {
   return s
-    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")
-    .replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "") // colour/SGR + cursor CSI sequences
+    // OSC strings (title, OSC-8/OSC-3008 json marks). Stop at ESC or BEL so a
+    // ST-terminated OSC (`ESC \`) can never swallow later command output.
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
     .replace(/\r/g, "");
 }
 
@@ -279,7 +281,10 @@ export async function getShellOutput(id: string, opts?: ShellOutputOptions): Pro
       }
     }, 500);
   });
-  return sliceOutput(buffer || "", opts);
+  // Return clean terminal text — strip ANSI/OSC control sequences (title
+  // sequences, OSC-8/OSC-3008 json marks, colour codes, \r) so the agent sees
+  // roughly what the terminal shows rather than raw escape junk.
+  return sliceOutput(stripAnsi(buffer || ""), opts);
 }
 
 /**

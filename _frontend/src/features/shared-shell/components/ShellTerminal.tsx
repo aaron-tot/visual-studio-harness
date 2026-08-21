@@ -5,6 +5,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { useSharedShellStore } from "../store";
+import { getShellOutputApi } from "../api";
 import type { Shell } from "../types";
 
 interface ShellTerminalProps {
@@ -22,7 +23,6 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Xterm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
-  const wroteInitialRef = useRef(false);
 
   // Initialise xterm once per shell mount.
   useEffect(() => {
@@ -54,16 +54,24 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
       useSharedShellStore.getState().resizeShell(shell.id, cols, rows).catch(() => {});
     });
 
-    // Initial transcript already captured for this shell.
-    const initial = useSharedShellStore.getState().outputByShell[shell.id] ?? "";
-    if (initial) term.write(initial);
-    // Clear the consumed buffer so the subscription below doesn't re-flush it.
-    if (initial) {
-      useSharedShellStore.setState((s) => ({
-        outputByShell: { ...s.outputByShell, [shell.id]: "" },
-      }));
-    }
-    wroteInitialRef.current = true;
+    // On shell switch (this xterm just mounted), the live WS stream only carried
+    // output that arrived while this shell was displayed. The backend PTY holds
+    // the authoritative full transcript — fetch and render it. Also clear the
+    // store buffer for this shell so the live subscription doesn't re-write the
+    // same bytes (store and backend buffers mirror each other).
+    setTimeout(() => {
+      getShellOutputApi(shell.id)
+        .then(({ output }) => {
+          if (!output) return;
+          const live = xtermRef.current;
+          if (live) live.write(output);
+        })
+        .catch(() => {});
+    }, 0);
+    useSharedShellStore.setState((s) => {
+      if (!s.outputByShell[shell.id]) return s;
+      return { outputByShell: { ...s.outputByShell, [shell.id]: "" } };
+    });
 
     return () => {
       dataSub.dispose();

@@ -82,7 +82,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       useChatStore.getState().stopStreaming();
     }
     // Close all shells owned by this session (shared-shell feature).
-    useSharedShellStore.getState().clearSession(id);
+    await useSharedShellStore.getState().clearSession(id);
     await apiDelete(id);
     set({ sessions: get().sessions.filter((s) => s.id !== id), activeId: wasActive ? null : get().activeId });
     // If the archived session was open on screen, navigate to the new-session page.

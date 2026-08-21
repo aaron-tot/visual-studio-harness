@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { ShellList } from "../../features/shared-shell/components/ShellList";
 import { ShellTerminal } from "../../features/shared-shell/components/ShellTerminal";
-import { useSharedShellStore } from "../../features/shared-shell/store";
+import { useSharedShellStore, initSharedShellWs } from "../../features/shared-shell/store";
 
 interface SessionPanelProps {
   /** Active session id. Sizes are persisted per session in localStorage. */
@@ -85,8 +85,13 @@ export function SessionPanel({ sessionId, onHeightChange }: SessionPanelProps) {
   const liveHeightRef = useRef(height);
   const liveWidthRef = useRef(subWidth);
 
-  // Restore per-session saved sizes on any session change (switch, refresh). Kept
-  // in the same render cycle so a state change session id keeps its own layout.
+  // Ensure shared-shell WS handlers are registered (idempotent, app-wide once).
+  useEffect(() => {
+    initSharedShellWs();
+  }, []);
+
+  // Restore per-session saved sizes on any session change (mount, switch, refresh).
+  // Kept in the same render cycle so a state change session id keeps its own layout.
   const prevSessionRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (sessionId === prevSessionRef.current) return;
@@ -124,9 +129,19 @@ export function SessionPanel({ sessionId, onHeightChange }: SessionPanelProps) {
   const createShell = useSharedShellStore((s) => s.createShell);
   const closeShell = useSharedShellStore((s) => s.closeShell);
   const selectShell = useSharedShellStore((s) => s.selectShell);
+  const listShells = useSharedShellStore((s) => s.listShells);
+  const resetSession = useSharedShellStore((s) => s.resetSession);
   const shells = sessionId ? shellRecord[sessionId] ?? [] : [];
   const activeShellId = sessionId ? activeRecord[sessionId] ?? null : null;
   const activeShell = shells.find((sh) => sh.id === activeShellId) ?? shells[shells.length - 1];
+
+  // On session switch: reset display state for the new session and fetch its
+  // shells (if any are still running on the backend).
+  useEffect(() => {
+    if (!sessionId) return;
+    resetSession(sessionId);
+    listShells(sessionId).catch(() => {});
+  }, [sessionId, resetSession, listShells]);
 
   const clampHeight = useCallback((value: number) => {
     const max = window.innerHeight * MAX_HEIGHT_RATIO;
@@ -242,7 +257,10 @@ export function SessionPanel({ sessionId, onHeightChange }: SessionPanelProps) {
         </button>
         <button
           type="button"
-          onClick={() => sessionId && createShell(sessionId)}
+          onClick={() => {
+            if (!sessionId) return;
+            createShell(sessionId).catch((err) => console.error("Failed to create shell:", err));
+          }}
           className="shrink-0 p-1 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
           title="Add shell"
           aria-label="Add shell"
@@ -293,8 +311,10 @@ export function SessionPanel({ sessionId, onHeightChange }: SessionPanelProps) {
                 <ShellList
                   shells={shells}
                   activeShellId={activeShell?.id ?? null}
-                  onSelect={(shellId) => selectShell(sessionId!, shellId)}
-                  onClose={(shellId) => closeShell(sessionId!, shellId)}
+                  onSelect={(shellId) => { if (sessionId) selectShell(sessionId, shellId); }}
+                  onClose={(shellId) => {
+                    if (sessionId) closeShell(sessionId, shellId).catch((err) => console.error("Failed to close shell:", err));
+                  }}
                 />
               </div>
             </div>

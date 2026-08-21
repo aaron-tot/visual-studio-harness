@@ -1,102 +1,181 @@
 import { create } from "zustand";
+import { wsClient } from "../../lib/ws";
+import {
+  createShellApi,
+  listShellsApi,
+  writeShellApi,
+  closeShellApi,
+  getShellOutputApi,
+  closeSessionShellsApi,
+} from "./api";
 import type { Shell, ShellStatus } from "./types";
-
-/** Prefix for generated shell ids. */
-const SHELL_ID_PREFIX = "shell-";
-
-function makeId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `${SHELL_ID_PREFIX}${crypto.randomUUID()}`;
-  }
-  return `${SHELL_ID_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 interface SharedShellState {
   /** sessionId -> ordered shells belonging to that session. */
   bySession: Record<string, Shell[]>;
   /** sessionId -> shellId of the active shell for that session (if any). */
-  activeBySession: Record<string, string>;
+  activeBySession: Record<string, string | null>;
+  /** shellId -> accumulated output from the backend (tail). */
+  outputByShell: Record<string, string>;
 
-  /** Shells for a given session (ordered). */
-  shellsFor: (sessionId: string) => Shell[];
-  /** Active shell id for a session, or null. */
-  activeFor: (sessionId: string) => string | null;
-
-  /** Create a shell for a session; returns the new shell. */
-  createShell: (sessionId: string, name?: string) => Shell;
-  /** Close (remove) a shell for a session. */
-  closeShell: (sessionId: string, shellId: string) => void;
+  /** Fetch the shell list for a session from the backend. */
+  listShells: (sessionId: string) => Promise<void>;
+  /** Create a shell for a session via the backend. */
+  createShell: (sessionId: string, name?: string) => Promise<Shell>;
+  /** Close (remove) a shell for a session via the backend. */
+  closeShell: (sessionId: string, shellId: string) => Promise<void>;
   /** Activate a shell for a session. */
   selectShell: (sessionId: string, shellId: string) => void;
-  /** Clear all shells for a session (archive/timeout/navigation). */
-  clearSession: (sessionId: string) => void;
-  /** Update a shell's status (used by future PTY wiring). */
-  setStatus: (sessionId: string, shellId: string, status: ShellStatus) => void;
+  /** Write raw data to a shell (send a command). */
+  writeShell: (shellId: string, data: string) => Promise<void>;
+  /** Clear all shells for a session (archive). */
+  clearSession: (sessionId: string) => Promise<void>;
+  /** Reset display state for a session (session switch). */
+  resetSession: (sessionId: string) => void;
+}
+
+interface ShellMsg {
+  type: string;
+  payload?: { id?: string; sessionId?: string; data?: string; shell?: Shell };
+}
+
+function isShellMsg(data: unknown): data is ShellMsg {
+  return typeof data === "object" && data !== null && "type" in (data as Record<string, unknown>);
+}
+
+let wsInitRan = false;
+
+/** Wire REST calls + WS broadcasts into the shared-shell store. Idempotent. */
+export function initSharedShellWs(): () => void {
+  if (wsInitRan) return () => {};
+  wsInitRan = true;
+  const onOutput = (data: unknown) => {
+    if (!isShellMsg(data)) return;
+    if (data.type !== "shell:output") return;
+    const id = data.payload?.id;
+    if (!id) return;
+    useSharedShellStore.setState((s) => ({
+      outputByShell: {
+        ...s.outputByShell,
+        [id]: (s.outputByShell[id] ?? "") + (data.payload?.data ?? ""),
+      },
+    }));
+  };
+  const onCreated = (data: unknown) => {
+    if (!isShellMsg(data)) return;
+    if (data.type !== "shell:created" || !data.payload?.shell) return;
+    const shell = data.payload.shell;
+    useSharedShellStore.setState((s) => ({
+      bySession: {
+        ...s.bySession,
+        [shell.sessionId]: [...(s.bySession[shell.sessionId] ?? []).filter((x) => x.id !== shell.id), shell],
+      },
+      activeBySession: { ...s.activeBySession, [shell.sessionId]: shell.id },
+      outputByShell: { ...s.outputByShell, [shell.id]: "" },
+    }));
+  };
+  const onClosed = (data: unknown) => {
+    if (!isShellMsg(data)) return;
+    if (data.type !== "shell:closed" && data.type !== "shell:updated") return;
+    const id = data.payload?.id;
+    const sessionId = data.payload?.sessionId;
+    if (!id || !sessionId) return;
+    useSharedShellStore.setState((s) => {
+      const shells = (s.bySession[sessionId] ?? []).map((sh) =>
+        sh.id === id ? { ...sh, status: "stopped" as ShellStatus } : sh
+      );
+      return { bySession: { ...s.bySession, [sessionId]: shells } };
+    });
+  };
+
+  wsClient.on("shell:output", onOutput);
+  wsClient.on("shell:created", onCreated);
+  wsClient.on("shell:closed", onClosed);
+  wsClient.on("shell:updated", onClosed);
+  return () => {
+    wsClient.off("shell:output", onOutput);
+    wsClient.off("shell:created", onCreated);
+    wsClient.off("shell:closed", onClosed);
+    wsClient.off("shell:updated", onClosed);
+  };
 }
 
 export const useSharedShellStore = create<SharedShellState>((set, get) => ({
   bySession: {},
   activeBySession: {},
+  outputByShell: {},
 
-  shellsFor: (sessionId) => get().bySession[sessionId] ?? [],
+  listShells: async (sessionId) => {
+    const { shells } = await listShellsApi(sessionId);
+    set((s) => ({
+      bySession: { ...s.bySession, [sessionId]: shells },
+    }));
+  },
 
-  activeFor: (sessionId) => get().activeBySession[sessionId] ?? null,
-
-  createShell: (sessionId, name) => {
-    const shell: Shell = {
-      id: makeId(),
-      name: name ?? `Shell ${(get().bySession[sessionId]?.length ?? 0) + 1}`,
-      sessionId,
-      status: "starting",
-      createdAt: Date.now(),
-    };
-    set((state) => ({
+  createShell: async (sessionId, name) => {
+    const res = await createShellApi(sessionId, name);
+    if (!res.ok || !res.shell) {
+      throw new Error(res.error || "Failed to create shell");
+    }
+    // shell:created WS normally adds it; also add locally here for reliability.
+    const shell = res.shell;
+    set((s) => ({
       bySession: {
-        ...state.bySession,
-        [sessionId]: [...(state.bySession[sessionId] ?? []), shell],
+        ...s.bySession,
+        [sessionId]: [...(s.bySession[sessionId] ?? []).filter((x) => x.id !== shell.id), shell],
       },
-      activeBySession: { ...state.activeBySession, [sessionId]: shell.id },
+      activeBySession: { ...s.activeBySession, [sessionId]: shell.id },
+      outputByShell: { ...s.outputByShell, [shell.id]: "" },
     }));
     return shell;
   },
 
-  closeShell: (sessionId, shellId) => {
-    const shells = get().bySession[sessionId] ?? [];
-    const remaining = shells.filter((s) => s.id !== shellId);
-    const nextActive = get().activeBySession[sessionId];
-    set((state) => ({
-      bySession: { ...state.bySession, [sessionId]: remaining },
+  closeShell: async (sessionId, shellId) => {
+    await closeShellApi(shellId);
+    set((s) => ({
+      bySession: { ...s.bySession, [sessionId]: (s.bySession[sessionId] ?? []).filter((x) => x.id !== shellId) },
       activeBySession: {
-        ...state.activeBySession,
-        [sessionId]: nextActive === shellId ? (remaining[remaining.length - 1]?.id ?? null) : nextActive,
+        ...s.activeBySession,
+        [sessionId]:
+          s.activeBySession[sessionId] === shellId ? null : s.activeBySession[sessionId],
       },
     }));
   },
 
   selectShell: (sessionId, shellId) => {
-    set((state) => ({
-      activeBySession: { ...state.activeBySession, [sessionId]: shellId },
-    }));
+    set((s) => ({ activeBySession: { ...s.activeBySession, [sessionId]: shellId } }));
   },
 
-  clearSession: (sessionId) => {
-    set((state) => {
-      const bySession = { ...state.bySession };
-      const activeBySession = { ...state.activeBySession };
+  writeShell: async (shellId, data) => {
+    await writeShellApi(shellId, data);
+  },
+
+  clearSession: async (sessionId) => {
+    try {
+      await closeSessionShellsApi(sessionId);
+    } catch {
+      /* best-effort backend cleanup */
+    }
+    set((s) => {
+      const bySession = { ...s.bySession };
+      const activeBySession = { ...s.activeBySession };
+      const outputByShell = { ...s.outputByShell };
+      (bySession[sessionId] ?? []).forEach((sh) => delete outputByShell[sh.id]);
       delete bySession[sessionId];
       delete activeBySession[sessionId];
-      return { bySession, activeBySession };
+      return { bySession, activeBySession, outputByShell };
     });
   },
 
-  setStatus: (sessionId, shellId, status) => {
-    set((state) => ({
-      bySession: {
-        ...state.bySession,
-        [sessionId]: (state.bySession[sessionId] ?? []).map((s) =>
-          s.id === shellId ? { ...s, status } : s
-        ),
-      },
-    }));
+  resetSession: (sessionId) => {
+    set((s) => {
+      const bySession = { ...s.bySession };
+      const activeBySession = { ...s.activeBySession };
+      const outputByShell = { ...s.outputByShell };
+      (bySession[sessionId] ?? []).forEach((sh) => delete outputByShell[sh.id]);
+      delete bySession[sessionId];
+      delete activeBySession[sessionId];
+      return { bySession, activeBySession, outputByShell };
+    });
   },
 }));

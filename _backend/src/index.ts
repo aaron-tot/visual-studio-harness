@@ -27,6 +27,8 @@ import { registerCustomToolsRoutes } from "./rest/custom-tools";
 import { registerMcpRoutes } from "./rest/mcp";
 import { registerWorkspaceGraphRoutes } from "./rest/workspace-graph";
 import { registerPricingRoutes } from "./rest/pricing";
+import { registerSharedShellRoutes } from "./features/shared-shell/rest";
+import { closeAllShells } from "./features/shared-shell/manager";
 import { registerUpdatesRoutes } from "./features/updates/rest";
 import { checkForUpdates } from "./features/updates/check";
 import { initPricingCache } from "./features/pricing/models-dev";
@@ -272,6 +274,7 @@ async function main() {
   });
 
   registerKnowledgeRoutes(app, knowledgeService);
+  registerSharedShellRoutes(app);
 
   // Initialize workspace graphs in background (non-blocking) — gated by workspaceGraph config
   let reconcileInterval: ReturnType<typeof setInterval> | null = null;
@@ -342,6 +345,7 @@ async function main() {
   const shutdown = () => {
     if (reconcileInterval) clearInterval(reconcileInterval);
     closeAllConnections();
+    closeAllShells();
     getWorkspaceGraphManager()?.stopAll().catch(() => {});
     closeAllDbs();
     process.exit(0);

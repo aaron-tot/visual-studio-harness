@@ -23,6 +23,7 @@ import {
 } from "../chat/project-chat";
 import { sessionHasTurns } from "../chat/db-trace";
 import { moveSessionToArchive } from "./archive";
+import { closeAllShellsForSession } from "../shared-shell/manager";
 
 export interface ListSessionsOptions {
   /** When true, include subagent child sessions. Default false. */
@@ -70,6 +71,8 @@ export async function createSession(
 }
 
 export async function deleteSession(dataDir: string, id: string): Promise<void> {
+  // Close any live shared-shells owned by this session before archiving.
+  closeAllShellsForSession(id);
   // Copy into the archive DB, then remove from live (soft archive rows in the
   // live DB become truly absent — live is the only DB every navigation path reads).
   moveSessionToArchive(dataDir, id);

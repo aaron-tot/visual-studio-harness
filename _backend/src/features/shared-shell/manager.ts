@@ -204,28 +204,28 @@ export async function runShellCommand(
   if (!m) throw new Error(`Shell ${id} not running`);
 
   const startIndex = m.buffer.length;
-  const marker = `__VSH_CMD_DONE_${Date.now()}_${Math.random().toString(36).slice(2, 10)}__`;
+  const token = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const startTag = `VSH_OUT_START_${token}`;
+  const endTag = `VSH_OUT_END_${token}`;
 
-  // Run the command, then echo a unique marker on its own line so we know it
-  // completed. Written as two lines so the marker prints even if the command
-  // itself is a single invocation.
+  // Disable input echo + clear PS1 for the duration of the capture so the
+  // returned text is ONLY the command's actual output — not the echoed command
+  // line or the prompt. The command runs between two unique sentinel echoes.
+  writeToShell(id, `stty -echo; PS1=''; echo ${startTag}\n`);
   writeToShell(id, `${command}\n`);
-  writeToShell(id, `echo '${marker}'\n`);
+  writeToShell(id, `echo ${endTag}; stty echo; PS1='\\u@\\h:\\w\\$ '\n`);
 
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
     const poll = setInterval(() => {
       const m = shellsById.get(id);
       const buffer = m?.buffer ?? "";
-      // The marker's LAST occurrence is the completed echo (the earlier
-      // occurrence is the echoed "echo <marker>" command line itself).
-      const markerPos = buffer.lastIndexOf(marker);
-      if (markerPos !== -1) {
+      const startPos = buffer.lastIndexOf(startTag);
+      const endPos = buffer.lastIndexOf(endTag);
+      if (startPos !== -1 && endPos > startPos) {
         clearInterval(poll);
-        resolve({
-          output: stripAnsi(cleanCommandOutput(buffer.slice(startIndex, markerPos), marker)),
-          timedOut: false,
-        });
+        const out = buffer.slice(startPos + startTag.length, endPos);
+        resolve({ output: stripAnsi(out).trim(), timedOut: false });
         return;
       }
       if (Date.now() > deadline) {
@@ -235,22 +235,6 @@ export async function runShellCommand(
       }
     }, 100);
   });
-}
-
-/**
- * Remove the completion-marker noise (the injected `echo '<marker>'` line and
- * its prompt) from captured command output so sendCommand returns roughly what
- * the user sees: the command echo and its output, without the marker echo.
- */
-function cleanCommandOutput(raw: string, marker: string): string {
-  // Locate the prompt line that precedes the injected marker echo (`...$ echo
-  // '<marker>'`), and cut everything from the start of that line forward.
-  const echoCmd = "$ echo '" + marker + "'";
-  const idx = raw.lastIndexOf(echoCmd);
-  if (idx === -1) return raw.replace(/[\r\n]+$/, "").trimEnd();
-  const lineStart = raw.lastIndexOf("\n", idx);
-  const cut = lineStart === -1 ? raw.slice(0, idx) : raw.slice(0, lineStart);
-  return cut.replace(/[\r\n]+$/, "").trimEnd();
 }
 
 export interface ShellOutputOptions {

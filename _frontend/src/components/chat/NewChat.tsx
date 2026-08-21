@@ -23,6 +23,7 @@ import { ContextBar } from "../chat/ContextBar";
 import { InjectIndicator } from "../InjectIndicator";
 import { ContextIndicator } from "../chat/input/ContextIndicator";
 import { ContextCompactionIndicator } from "./ContextCompactionIndicator";
+import { SessionPanel } from "./SessionPanel";
 import { SlotWaitingBanner } from "../tools/SlotWaitingBanner";
 import { AgentChangeDock } from "../tools/AgentChangeDock";
 import type { SessionConfig, ThinkingEffort } from "../../../../_shared/types";
@@ -361,6 +362,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
     }
   }, [sessionId, isEmptyComposer, clearNewChatDraft]);
   const [cardHeight, setCardHeight] = useState(240);
+  const [panelHeight, setPanelHeight] = useState(0);
   const [modelError, setModelError] = useState(false);
 
   // Single source of truth for agent/model/thinking config
@@ -647,7 +649,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
       </div>
 
       {(submitted || inSession) && (
-        <div className="h-full flex flex-col relative z-40 overflow-auto" style={{ transition: "opacity 500ms ease-in-out", opacity: submitted || inSession ? 1 : 0, paddingTop: "52px", paddingBottom: `calc(${cardHeight}px + 16px)` }}>
+        <div className="h-full flex flex-col relative z-40 overflow-auto" style={{ transition: "opacity 500ms ease-in-out", opacity: submitted || inSession ? 1 : 0, paddingTop: "52px", paddingBottom: `calc(${cardHeight}px + ${panelHeight}px + 16px)` }}>
           {isSubagent && parentId && (
             <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-zinc-800/50 bg-zinc-900/30 text-xs text-zinc-400 shrink-0">
               <button
@@ -692,6 +694,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
         top: submitted || inSession ? "auto" : centeredCardTop,
         bottom: submitted || inSession ? "16px" : "auto",
       }}>
+        <div className="flex flex-col w-full gap-2">
           <div className={glassCard} style={{ boxShadow: isEmptyComposer
             ? (hovered ? glassCardShadowHover : glassCardShadow)
             : (hovered ? glassCardShadowHoverHalf : glassCardShadowHalf) }}
@@ -710,6 +713,12 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
               )}
             </div>
           </div>
+
+          {/* Session-only collapsible panel under the input, same width */}
+          {inSession && !isSubagent && (
+            <SessionPanel sessionId={sessionId} onHeightChange={setPanelHeight} />
+          )}
+        </div>
       </div>
 
       <style>{`

@@ -11,6 +11,7 @@ import {
 } from "../../lib/api";
 import { useChatStore } from "../../stores/chat";
 import { useSessionViewStore } from "../../stores/sessionView";
+import { useSharedShellStore } from "../shared-shell/store";
 
 interface SessionState {
   sessions: SessionMeta[];
@@ -80,6 +81,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (wasActive && get().streamingSessions[id]) {
       useChatStore.getState().stopStreaming();
     }
+    // Close all shells owned by this session (shared-shell feature).
+    useSharedShellStore.getState().clearSession(id);
     await apiDelete(id);
     set({ sessions: get().sessions.filter((s) => s.id !== id), activeId: wasActive ? null : get().activeId });
     // If the archived session was open on screen, navigate to the new-session page.

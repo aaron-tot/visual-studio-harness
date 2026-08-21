@@ -14,6 +14,10 @@ const MAX_SHELLS_PER_SESSION = 20;
 interface ManagedShell {
   shell: Shell;
   buffer: string;
+  /** Active command capture: suppress wrapper/sentinel noise from the WS
+   *  broadcast while a runShellCommand is in flight, so the user's terminal
+   *  only shows the command's real output. */
+  capture?: { startTag: string; endTag: string; done: boolean };
 }
 
 const shellsById = new Map<string, ManagedShell>();
@@ -41,13 +45,47 @@ function emitCreated(shell: Shell): void {
 function onHostData(msg: { id: string; data?: string }): void {
   const m = shellsById.get(msg.id);
   if (!m || msg.data === undefined) return;
+  const prevLen = m.buffer.length;
   m.buffer += msg.data;
   if (Buffer.byteLength(m.buffer, "utf8") > OUTPUT_MAX_BYTES) {
     m.buffer = m.buffer.slice(-OUTPUT_MAX_BYTES);
   }
+
+  // Suppress capture-wrapper noise (the `stty -echo; PS1=...` preface, the
+  // sentinel echoes, and the post-command reset) from what the user sees, while
+  // keeping the full transcript in `buffer` for runShellCommand parsing. The
+  // user then sees only the command's own output during a capture.
+  let visible = msg.data;
+  if (m.capture && !m.capture.done) {
+    const c = m.capture;
+    const curLen = m.buffer.length;
+    // The tag appears twice when a preface command echoes the tag text: once in
+    // the echoed command line and again as the actual `echo` output. We always
+    // key off the LAST occurrence (the echo output).
+    const startPos = m.buffer.lastIndexOf(c.startTag);
+    const endPos = m.buffer.lastIndexOf(c.endTag);
+
+    let visStart = -1;
+    if (startPos !== -1) {
+      const nl = m.buffer.indexOf("\n", startPos + c.startTag.length);
+      visStart = nl === -1 ? startPos + c.startTag.length : nl + 1;
+    }
+    let visEnd = curLen;
+    if (endPos !== -1) {
+      const lineStart = m.buffer.lastIndexOf("\n", endPos) + 1;
+      visEnd = lineStart;
+      if (endPos + c.endTag.length <= curLen) c.done = true;
+    }
+
+    // Broadcast only the intersection of the visible region with this chunk.
+    const from = Math.max(prevLen, visStart);
+    const to = Math.min(curLen, visEnd);
+    visible = to > from ? msg.data.slice(from - prevLen, to - prevLen) : "";
+  }
+
   broadcastToAll({
     type: "shell:output",
-    payload: { id: msg.id, sessionId: m.shell.sessionId, data: msg.data },
+    payload: { id: msg.id, sessionId: m.shell.sessionId, data: visible },
   });
 }
 
@@ -211,26 +249,37 @@ export async function runShellCommand(
   // Disable input echo + clear PS1 for the duration of the capture so the
   // returned text is ONLY the command's actual output — not the echoed command
   // line or the prompt. The command runs between two unique sentinel echoes.
+  // The capture flag also makes onHostData hide this wrapper noise from the
+  // user's GUI terminal (only the real output is broadcast).
+  m.capture = { startTag, endTag, done: false };
   writeToShell(id, `stty -echo; PS1=''; echo ${startTag}\n`);
   writeToShell(id, `${command}\n`);
   writeToShell(id, `echo ${endTag}; stty echo; PS1='\\u@\\h:\\w\\$ '\n`);
 
+  const finish = () => {
+    const mm = shellsById.get(id);
+    if (mm) mm.capture = undefined;
+  };
+
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
     const poll = setInterval(() => {
-      const m = shellsById.get(id);
-      const buffer = m?.buffer ?? "";
+      const mm = shellsById.get(id);
+      const buffer = mm?.buffer ?? "";
       const startPos = buffer.lastIndexOf(startTag);
       const endPos = buffer.lastIndexOf(endTag);
       if (startPos !== -1 && endPos > startPos) {
         clearInterval(poll);
         const out = buffer.slice(startPos + startTag.length, endPos);
+        finish();
         resolve({ output: stripAnsi(out).trim(), timedOut: false });
         return;
       }
       if (Date.now() > deadline) {
         clearInterval(poll);
-        resolve({ output: stripAnsi(buffer.slice(startIndex)), timedOut: true });
+        const out = buffer.slice(startIndex);
+        finish();
+        resolve({ output: stripAnsi(out).trim(), timedOut: true });
         return;
       }
     }, 100);

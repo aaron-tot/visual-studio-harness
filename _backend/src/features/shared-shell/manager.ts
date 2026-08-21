@@ -222,7 +222,10 @@ export async function runShellCommand(
       const markerPos = buffer.lastIndexOf(marker);
       if (markerPos !== -1) {
         clearInterval(poll);
-        resolve({ output: stripAnsi(buffer.slice(startIndex, markerPos)), timedOut: false });
+        resolve({
+          output: stripAnsi(cleanCommandOutput(buffer.slice(startIndex, markerPos), marker)),
+          timedOut: false,
+        });
         return;
       }
       if (Date.now() > deadline) {
@@ -232,6 +235,22 @@ export async function runShellCommand(
       }
     }, 100);
   });
+}
+
+/**
+ * Remove the completion-marker noise (the injected `echo '<marker>'` line and
+ * its prompt) from captured command output so sendCommand returns roughly what
+ * the user sees: the command echo and its output, without the marker echo.
+ */
+function cleanCommandOutput(raw: string, marker: string): string {
+  // Locate the prompt line that precedes the injected marker echo (`...$ echo
+  // '<marker>'`), and cut everything from the start of that line forward.
+  const echoCmd = "$ echo '" + marker + "'";
+  const idx = raw.lastIndexOf(echoCmd);
+  if (idx === -1) return raw.replace(/[\r\n]+$/, "").trimEnd();
+  const lineStart = raw.lastIndexOf("\n", idx);
+  const cut = lineStart === -1 ? raw.slice(0, idx) : raw.slice(0, lineStart);
+  return cut.replace(/[\r\n]+$/, "").trimEnd();
 }
 
 export interface ShellOutputOptions {

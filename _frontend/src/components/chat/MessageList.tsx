@@ -326,7 +326,6 @@ import type { Message } from "../../../../_shared/types/message";
 
 function SummaryTurnWrapper({
   marker,
-  userMsg,
   assistantMsg,
   summaryEndTurn,
   summaryStartTurn,
@@ -366,12 +365,17 @@ function SummaryTurnWrapper({
       </button>
       {!isCollapsed && (
         <div className="px-3 pb-3 animate-in fade-in slide-in-from-top-1 duration-150 border-t border-blue-500/20">
-          <div className="space-y-1">
-            {/* Generation marker sits at the top of the expanded card. */}
-            {marker && <MessageRow message={marker} />}
-            <MessageRow message={userMsg} />
-            <MessageRow message={assistantMsg} />
-          </div>
+          {/* The summary result is a system-level message: only the generated
+              summary is shown — the handoff prompt (user side) and the
+              assistant pair are never surfaced in the card. */}
+          <MessageRow
+            message={{
+              ...assistantMsg,
+              role: "system",
+              content: assistantMsg.content || "(empty summary)",
+              childSessionId: marker?.childSessionId,
+            }}
+          />
         </div>
       )}
     </div>

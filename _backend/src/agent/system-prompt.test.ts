@@ -314,6 +314,35 @@ describe("system-prompt assembly", () => {
     ).toThrow(/exactly once/);
   });
 
+  test("assertExactlyOneSystemMessage exempts summary carriers (any count, any position)", () => {
+    const carrier = (n: number) =>
+      msg("system", `◇ Conversation summary (turns 1–${n}):\nsummary #${n}`);
+    // One base system + many summary carriers appended after history.
+    expect(() =>
+      assertExactlyOneSystemMessage([
+        msg("system", "rules"),
+        msg("user", "hi"),
+        carrier(2),
+        carrier(3),
+      ])
+    ).not.toThrow();
+    // Summary carriers WITHOUT any base system are allowed (carrier-only window).
+    expect(() =>
+      assertExactlyOneSystemMessage([
+        msg("user", "hi"),
+        carrier(2),
+      ])
+    ).not.toThrow();
+    // Two NON-carrier base systems still throw, even with carriers around them.
+    expect(() =>
+      assertExactlyOneSystemMessage([
+        msg("system", "a"),
+        carrier(2),
+        msg("system", "b"),
+      ])
+    ).toThrow(/exactly once/);
+  });
+
   describe("resolveAgentMd", () => {
   test("returns null when agentMd is undefined", async () => {
     expect(await resolveAgentMd(undefined)).toBeNull();

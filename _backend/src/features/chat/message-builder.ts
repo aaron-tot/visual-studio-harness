@@ -1,29 +1,8 @@
 import { inArray, eq } from "drizzle-orm";
 import { getDb, getDbForDataDir } from "../../db/client";
-import { turns, stepParts } from "../../db/schema";
-import type { ModelMessage as CoreMessage, TextPart, ToolCallPart } from "ai";
-import { normalizeToolInput } from "./tool-input";
-
-/** Reasoning parts emitted by this builder. `ai` does not re-export ReasoningPart; this shape is structurally compatible. */
-type EmittedReasoningPart = { type: "reasoning"; text: string };
-
-type ContentPart = TextPart | ToolCallPart | EmittedReasoningPart;
-
-export interface ReplayPartRow {
-  type: string;
-  data: string;
-  status: string | null;
-  toolCallId: string | null;
-  toolName: string | null;
-}
-
-export interface ReplayPartOptions {
-  includeTextParts: boolean;
-  includeTools: boolean;
-  includeReasoningParts: boolean;
-  includePatchParts: boolean;
-  includeOtherParts: boolean;
-}
+import { turns, stepParts, summaryRanges } from "../../db/schema";
+import type { ModelMessage as CoreMessage } from "ai";
+import { parsePartData, replayPartsToMessages, type ReplayPartOptions } from "./replay-parts";
 
 function dbFor(dataDir?: string) {
   return dataDir ? getDbForDataDir(dataDir) : getDb();
@@ -48,158 +27,23 @@ export interface BuildModelMessagesResult {
   systemBlock: string;
 }
 
-function parsePartData(data: string): Record<string, unknown> {
-  try {
-    return JSON.parse(data);
-  } catch {
-    return { content: data };
-  }
-}
+/** Prefix that marks a summary context carrier (exempt in the single-system-message guard). */
+export const SUMMARY_CARRIER_PREFIX = "◇ Conversation summary";
 
 /**
- * Reads a persisted `additional_system_info` injection (a `tool` stepPart with
- * `toolName: "additional_system_info"` and `data.kind === "system-info"` /
- * `data.additionalSystemInfo === true`). Returns the verbatim content and the
- * deterministic toolCallId so the fabricated call + result stay balanced.
- * `toolCallId` may come from the part column (persistence path) or `data`
- * (audit-friendly form). Returns null for normal tool parts.
+ * Builds the labeled system carrier that represents a summary turn in the main
+ * session's model context. The summarizer's handoff prompt (stored in the
+ * summary turn's `userContent`) MUST NOT reach the main agent — the summary
+ * text is carried alone as reference context.
  */
-export function readAdditionalSystemInfoData(
-  data: Record<string, unknown>,
-  toolCallId?: string | null,
-): { content: string; toolCallId: string } | null {
-  if (!(data.additionalSystemInfo === true) && data.kind !== "system-info") return null;
-  const content = typeof data.content === "string" ? data.content : "";
-  const callId = typeof data.toolCallId === "string" ? data.toolCallId : toolCallId ?? "";
-  if (!content || !callId) return null;
-  return { content, toolCallId: callId };
-}
-
-function ensureReasoningBeforeTools(content: ContentPart[]): ContentPart[] {
-  const hasTool = content.some((p) => p.type === "tool-call");
-  if (!hasTool) return content;
-  const hasReasoning = content.some((p) => p.type === "reasoning");
-  if (hasReasoning) return content;
-  // Thinking-mode gateways require reasoning_content on assistant tool-call
-  // messages. Empty text is enough for fabrications / tool-only steps; the
-  // wire shim also forces the key if the SDK omits empty reasoning.
-  return [{ type: "reasoning", text: "" }, ...content];
-}
-
-function pushAssistant(
-  out: CoreMessage[],
-  content: ContentPart[],
-): void {
-  const next = ensureReasoningBeforeTools(content);
-  if (next.length === 0) return;
-  out.push({ role: "assistant", content: next });
-}
-
-/**
- * Replay ordered step_parts into SDK messages without collapsing multi-step
- * rounds. Real model tool rounds stay as assistant → tool result(s). ASI is
- * always its own assistant tool_call + tool result pair (spec: after the
- * causing step's tools; never merged into a mega tool_calls list).
- *
- * Parts must already be in turn order (typically global `seq`).
- */
-export function replayPartsToMessages(
-  parts: ReplayPartRow[],
-  opts: ReplayPartOptions,
-): CoreMessage[] {
-  const out: CoreMessage[] = [];
-  let pendingContent: ContentPart[] = [];
-  let pendingToolResults: CoreMessage[] = [];
-
-  const flushModel = () => {
-    if (pendingContent.length === 0 && pendingToolResults.length === 0) return;
-    pushAssistant(out, pendingContent);
-    out.push(...pendingToolResults);
-    pendingContent = [];
-    pendingToolResults = [];
-  };
-
-  for (const part of parts) {
-    const data = parsePartData(part.data);
-
-    switch (part.type) {
-      case "text": {
-        if (opts.includeTextParts) {
-          const text = typeof data.content === "string" ? data.content : "";
-          if (text) pendingContent.push({ type: "text", text });
-        }
-        break;
-      }
-      case "tool": {
-        const asi = readAdditionalSystemInfoData(data, part.toolCallId);
-        if (asi) {
-          if (!opts.includeTools) break;
-          // Spec: ASI is a `system`-role tail after the step's real tools — same
-          // position as the old fabricated pair, but not callable by the model
-          // (a system message cannot be emitted as a tool call).
-          flushModel();
-          out.push({ role: "system", content: asi.content });
-          break;
-        }
-        if (opts.includeTools && part.toolCallId) {
-          const args = normalizeToolInput(data.args);
-          pendingContent.push({
-            type: "tool-call",
-            toolCallId: part.toolCallId,
-            toolName: part.toolName ?? "",
-            input: args,
-          });
-          const rawOutput = data.result ?? data.output ?? "";
-          pendingToolResults.push({
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolCallId: part.toolCallId,
-                toolName: part.toolName ?? "",
-                output:
-                  part.status === "completed"
-                    ? { type: "text", value: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput) }
-                    : { type: "error-text", value: `Tool call ${part.status} before returning a result` },
-              },
-            ],
-          });
-        }
-        break;
-      }
-      case "reasoning": {
-        if (opts.includeReasoningParts) {
-          pendingContent.push({
-            type: "reasoning",
-            text: typeof data.content === "string" ? data.content : "",
-          });
-        }
-        break;
-      }
-      case "patch": {
-        if (opts.includePatchParts) {
-          pendingContent.push({
-            type: "text",
-            text: typeof data.patch === "string" ? data.patch : JSON.stringify(data.patch),
-          });
-        }
-        break;
-      }
-      case "error":
-      case "retry":
-        break;
-      default: {
-        if (opts.includeOtherParts) {
-          const text = typeof data.content === "string" ? data.content : JSON.stringify(data);
-          if (text) pendingContent.push({ type: "text", text });
-        }
-        break;
-      }
-    }
-  }
-
-  flushModel();
-  return out;
+function summaryCarrier(
+  summaryText: string,
+  range: { startTurn: number; endTurn: number } | undefined,
+): CoreMessage {
+  const label = range
+    ? `${SUMMARY_CARRIER_PREFIX} (turns ${range.startTurn}–${range.endTurn}):`
+    : `${SUMMARY_CARRIER_PREFIX}:`;
+  return { role: "system", content: `${label}\n${summaryText}` };
 }
 
 export async function buildModelMessages(
@@ -210,10 +54,22 @@ export async function buildModelMessages(
 ): Promise<BuildModelMessagesResult> {
   const db = dbFor(dataDir);
 
-  // Summary turns are ordinary context turns: resolveContextTurnIds includes
-  // them at their numeric position, so they flow through buildModelMessages
-  // like any other turn (user prompt + assistant summary text). No special
-  // handling needed here.
+  // Summary turns are reference context, NOT dialogue: the user side of a
+  // summary row is the summarizer's handoff prompt and must never be replayed
+  // to the main agent. Each summary row in range is emitted as ONE labeled
+  // system message carrying the full summary text (same source as the UI
+  // collapsible card). The label reads the covered range from summary_ranges.
+  const rangeBySummaryTurn = new Map<number, { startTurn: number; endTurn: number }>();
+  const rangeRows = db
+    .select({
+      summaryTurnId: summaryRanges.summaryTurnId,
+      startTurn: summaryRanges.startTurn,
+      endTurn: summaryRanges.endTurn,
+    })
+    .from(summaryRanges)
+    .where(eq(summaryRanges.sessionId, sessionId))
+    .all();
+  for (const r of rangeRows) rangeBySummaryTurn.set(r.summaryTurnId, { startTurn: r.startTurn, endTurn: r.endTurn });
 
   // 1. Filter contextTurnIds by completion status
   let filteredTurnIds = [...options.contextTurnIds];
@@ -229,7 +85,7 @@ export async function buildModelMessages(
     const completedIds = new Set(
       turnRows
         .filter((t) => t.success === true && t.status === "success" && t.turnNumber < options.currentTurnNumber)
-        .map((t) => t.id)
+        .map((t) => t.id),
     );
 
     filteredTurnIds = filteredTurnIds.filter((id) => completedIds.has(id));
@@ -242,7 +98,7 @@ export async function buildModelMessages(
       .all();
 
     const validIds = new Set(
-      turnRows.filter((t) => t.turnNumber < options.currentTurnNumber).map((t) => t.id)
+      turnRows.filter((t) => t.turnNumber < options.currentTurnNumber).map((t) => t.id),
     );
 
     filteredTurnIds = filteredTurnIds.filter((id) => validIds.has(id));
@@ -254,7 +110,13 @@ export async function buildModelMessages(
   if (filteredTurnIds.length > 0) {
     // Fetch turn metadata
     const turnRows = db
-      .select({ id: turns.id, turnNumber: turns.turnNumber, userContent: turns.userContent, userTimestamp: turns.userTimestamp })
+      .select({
+        id: turns.id,
+        turnNumber: turns.turnNumber,
+        kind: turns.kind,
+        userContent: turns.userContent,
+        userTimestamp: turns.userTimestamp,
+      })
       .from(turns)
       .where(inArray(turns.id, filteredTurnIds))
       .orderBy(turns.turnNumber)
@@ -297,17 +159,37 @@ export async function buildModelMessages(
       includeOtherParts: options.includeOtherParts,
     };
 
-    // 3. Build messages for each turn in order — step-faithful (no mega-collapse)
+    // 3. Build messages for each turn in order — step-faithful for live turns,
+    //    summary carriers for summary turns.
     for (const turnId of filteredTurnIds) {
       const turn = turnById.get(turnId);
       if (!turn) continue;
+
+      const parts = partsByTurnId.get(turnId) ?? [];
+
+      if ((turn.kind ?? "turn") === "summary") {
+        // Summary rows are reference context: NEVER the handoff prompt (the
+        // row's userContent) and NEVER replayed as an assistant turn. Emit the
+        // full summary text as a single labeled system message when text parts
+        // are enabled and present; otherwise emit nothing (pending/failed rows).
+        if (options.includeTextParts) {
+          const summaryText = parts
+            .filter((p) => p.type === "text")
+            .map((p) => {
+              const d = parsePartData(p.data);
+              return typeof d.content === "string" ? d.content : "";
+            })
+            .join("");
+          if (summaryText) messages.push(summaryCarrier(summaryText, rangeBySummaryTurn.get(turn.id)));
+        }
+        continue;
+      }
 
       messages.push({
         role: "user",
         content: turn.userContent,
       });
 
-      const parts = partsByTurnId.get(turnId) ?? [];
       messages.push(...replayPartsToMessages(parts, replayOpts));
     }
   }

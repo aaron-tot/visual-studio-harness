@@ -5,7 +5,8 @@ import type { ModelMessage as CoreMessage } from "ai";
 import type { Message, MessagePartType } from "../../../../_shared/types";
 import type { TurnSummary, StepSummary, TurnDetail, SessionUsage, TurnStatus, StepPart, TurnRawCapture, TurnStepRawDetail } from "../../../../_shared/types/trace";
 import { listContextTurnIds } from "./db-trace";
-import { buildModelMessages, replayPartsToMessages } from "./message-builder";
+import { buildModelMessages } from "./message-builder";
+import { replayPartsToMessages } from "./replay-parts";
 import { buildSummarizationMessages } from "../sessions/summarizer";
 
 function dbFor(dataDir?: string) {

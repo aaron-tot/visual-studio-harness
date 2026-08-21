@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { eq } from "drizzle-orm";
 import { getDbForDataDir } from "../../db/client";
-import { summaryRanges } from "../../db/schema";
+import { summaryRanges, turns } from "../../db/schema";
 import {
   getNextTurnNumber,
   createTurn,
@@ -231,13 +231,62 @@ describe("buildModelMessages tool parts", () => {
   });
 });
 
-describe("buildModelMessages summary turns as normal context", () => {
-  test("a summary turn in contextTurnIds is built as a user+assistant pair (in order)", async () => {
-    const db = getDbForDataDir(dataDir);
-    const summaryTurnId = createTurn(SESSION_ID, 15, "Summarize conversation turns 20–22", new Date().toISOString(), {}, dataDir);
-    const summaryStepId = createStep(summaryTurnId, SESSION_ID, 0, {}, dataDir);
-    insertStepPart(SESSION_ID, summaryTurnId, summaryStepId, "text", { content: "CHAIN_SUMMARY_NEEDLE" }, 1, "completed", {}, dataDir);
+/** Insert a real summary turn (kind='summary') with a text part and a summary_ranges row. */
+async function makeSummaryTurn(
+  turnNumber: number,
+  promptContent: string,
+  summaryText: string,
+  range: { startTurn: number; endTurn: number },
+): Promise<number> {
+  const db = getDbForDataDir(dataDir);
+  const now = new Date().toISOString();
+  const row = db
+    .insert(turns)
+    .values({
+      sessionId: SESSION_ID,
+      turnNumber,
+      userContent: promptContent,
+      userTimestamp: now,
+      status: "success",
+      success: true,
+      startedAt: now,
+      completedAt: now,
+      kind: "summary",
+      configSnapshotJson: JSON.stringify({
+        kind: "summary",
+        range,
+        initiator: "auto",
+        initiatedAt: now,
+      }),
+    })
+    .returning({ id: turns.id })
+    .get();
+  const stepId = createStep(row!.id, SESSION_ID, 0, {}, dataDir);
+  insertStepPart(SESSION_ID, row!.id, stepId, "text", { content: summaryText }, 1, "completed", {}, dataDir);
+  db.insert(summaryRanges)
+    .values({
+      sessionId: SESSION_ID,
+      summaryTurnId: row!.id,
+      startTurn: range.startTurn,
+      endTurn: range.endTurn,
+      prevRangeId: null,
+      originalTokens: 100,
+      summaryTokens: 10,
+      createdAt: now,
+    })
+    .run();
+  return row!.id;
+}
 
+describe("buildModelMessages summary turns as reference context", () => {
+  test("a summary turn emits ONE labeled system message (full text, no handoff prompt, no pair)", async () => {
+    const db = getDbForDataDir(dataDir);
+    const summaryTurnId = await makeSummaryTurn(
+      15,
+      "# HANDOFF SUMMARY AGENT — pure handoff contract",
+      "SUMMARY_NEEDLE_FULL_TEXT",
+      { startTurn: 20, endTurn: 22 },
+    );
     const t23 = await makeTurn(23, [{ type: "text", data: { content: "twenty three" } }], true);
 
     const { messages } = await buildModelMessages(SESSION_ID, "sys", options({
@@ -247,19 +296,69 @@ describe("buildModelMessages summary turns as normal context", () => {
       currentUserMessage: "current",
     }), dataDir);
 
-    const textMessages = messages
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) =>
-        Array.isArray(m.content) ? (m.content as any[]).map((p) => p.text).join("") : (m.content as string),
-      );
+    // The handoff prompt must NEVER reach the model.
+    expect(JSON.stringify(messages)).not.toContain("HANDOFF ASSISTANT");
+    expect(JSON.stringify(messages)).not.toContain("pure handoff");
+    // Exactly one summary carrier: labeled system message with full text.
+    const carriers = messages.filter((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("◇ Conversation summary"));
+    expect(carriers).toHaveLength(1);
+    expect(carriers[0]!.content).toBe("◇ Conversation summary (turns 20–22):\nSUMMARY_NEEDLE_FULL_TEXT");
+    // No summary user/assistant pair is emitted.
+    expect(messages.some((m) => m.role === "user" && m.content === "# HANDOFF ASSISTANT AGENT — YOU ARE A PURE HANDOFF")).toBe(false);
+    // Live turn after the summary replays unchanged: system, carrier, user(23), assistant, current.
+    expect(roleSequence(messages)).toEqual(["system", "system", "user", "assistant", "user"]);
+    const assistant = messages.find((m) => m.role === "assistant");
+    expect(JSON.stringify(assistant?.content)).toContain("twenty three");
 
-    // The summary's prompt (user) and summary text (assistant) both appear,
-    // followed by the live turn and the current message — treated as a normal
-    // turn at its numeric position.
-    expect(textMessages.some((t) => t.includes("Summarize conversation"))).toBe(true);
-    expect(textMessages.some((t) => t.includes("CHAIN_SUMMARY_NEEDLE"))).toBe(true);
-    expect(textMessages.some((t) => t.includes("twenty three"))).toBe(true);
-    expect(textMessages.some((t) => t.includes("current"))).toBe(true);
+    db.delete(summaryRanges).where(eq(summaryRanges.sessionId, SESSION_ID)).run();
+  });
+
+  test("summary-only window is valid: [system, carrier, current] with no handoff prompt", async () => {
+    const db = getDbForDataDir(dataDir);
+    const summaryTurnId = await makeSummaryTurn(
+      16,
+      "HANDOFF PROMPT — you are a pure handoff summary agent",
+      "ONLY_SUMMARY_TEXT",
+      { startTurn: 1, endTurn: 15 },
+    );
+
+    const { messages } = await buildModelMessages(SESSION_ID, "sys", options({
+      contextTurnIds: [summaryTurnId],
+      currentTurnNumber: 17,
+      currentUserMessage: "current",
+    }), dataDir);
+
+    expect(roleSequence(messages)).toEqual(["system", "system", "user"]);
+    expect(JSON.stringify(messages)).not.toContain("HANDOFF PROMPT");
+    const carriers = messages.filter((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("◇ Conversation summary"));
+    expect(carriers).toHaveLength(1);
+    expect(carriers[0]!.content).toContain("ONLY_SUMMARY_TEXT");
+
+    db.delete(summaryRanges).where(eq(summaryRanges.sessionId, SESSION_ID)).run();
+  });
+
+  test("includeTextParts=false omits the summary carrier for kind=summary rows", async () => {
+    const db = getDbForDataDir(dataDir);
+    const summaryTurnId = await makeSummaryTurn(
+      17,
+      "HANDOFF PROMPT",
+      "TEXT_TURNED_OFF",
+      { startTurn: 16, endTurn: 16 },
+    );
+    const t18 = await makeTurn(18, [{ type: "text", data: { content: "live text" } }], true);
+
+    const { messages } = await buildModelMessages(SESSION_ID, "sys", options({
+      contextTurnIds: [summaryTurnId, t18],
+      includeTextParts: false,
+      currentTurnNumber: 19,
+      currentUserMessage: "current",
+    }), dataDir);
+
+    // No summary carrier and no handoff prompt; live turn prose is also omitted.
+    expect(JSON.stringify(messages)).not.toContain("◇ Conversation summary");
+    expect(JSON.stringify(messages)).not.toContain("HANDOFF PROMPT");
+    expect(JSON.stringify(messages)).not.toContain("TEXT_TURNED_OFF");
+    expect(roleSequence(messages)).toEqual(["system", "user", "user"]);
 
     db.delete(summaryRanges).where(eq(summaryRanges.sessionId, SESSION_ID)).run();
   });

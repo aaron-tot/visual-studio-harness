@@ -1,4 +1,5 @@
 import type { Message } from "../../../../_shared/types";
+import { SUMMARY_CARRIER_PREFIX } from "../chat/message-builder";
 
 export function messagesForModel(sessionMessages: Message[], systemBlock: string): Message[] {
   const history = sessionMessages.filter((m) => m.role !== "system");
@@ -20,11 +21,29 @@ function isAdditionalSystemInfoSystemMessage(m: { role: string; content?: unknow
   return raw.trimStart().startsWith("<additional_system_info>");
 }
 
+/**
+ * True when a system message is a summary context carrier (content starts with
+ * the summary-carrier prefix). Summary turns are reference context — the
+ * summarizer's handoff prompt is never replayed; the carrier is exempt from
+ * the single-system-message rule exactly like additional_system_info tails.
+ */
+function isSummaryCarrierSystemMessage(m: { role: string; content?: unknown } | undefined): boolean {
+  if (m?.role !== "system") return false;
+  const raw = m.content;
+  if (typeof raw !== "string") return false;
+  return raw.trimStart().startsWith(SUMMARY_CARRIER_PREFIX);
+}
+
+/** System messages exempt from the single-system-message invariant. */
+function isExemptSystemMessage(m: { role: string; content?: unknown } | undefined): boolean {
+  return isAdditionalSystemInfoSystemMessage(m) || isSummaryCarrierSystemMessage(m);
+}
+
 export function assertExactlyOneSystemMessage(messages: Array<{ role: string; content?: unknown }>): void {
   const systemIndexes: number[] = [];
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
-    if (m?.role === "system" && !isAdditionalSystemInfoSystemMessage(m)) systemIndexes.push(i);
+    if (m?.role === "system" && !isExemptSystemMessage(m)) systemIndexes.push(i);
   }
   if (systemIndexes.length > 1) throw new Error(`system prompt must appear exactly once before LLM call (found ${systemIndexes.length})`);
   if (systemIndexes.length === 1) {

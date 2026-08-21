@@ -649,7 +649,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
       </div>
 
       {(submitted || inSession) && (
-        <div className="h-full flex flex-col relative z-40 overflow-auto" style={{ transition: "opacity 500ms ease-in-out", opacity: submitted || inSession ? 1 : 0, paddingTop: "52px", paddingBottom: `calc(${cardHeight}px + ${panelHeight}px + 16px)` }}>
+        <div className="h-full flex flex-col relative z-20 overflow-auto" style={{ transition: "opacity 500ms ease-in-out", opacity: submitted || inSession ? 1 : 0, paddingTop: "52px", paddingBottom: `calc(${cardHeight}px + ${panelHeight}px + 24px)` }}>
           {isSubagent && parentId && (
             <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-zinc-800/50 bg-zinc-900/30 text-xs text-zinc-400 shrink-0">
               <button
@@ -687,7 +687,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
         </div>
       )}
 
-      <div ref={cardRef} id="chat-input-card" className="z-50" style={{
+      <div ref={cardRef} id="chat-input-card" className="z-40" style={{
         position: "absolute", left: "50%", transform: "translateX(-50%)",
         width: "100%", maxWidth: submitted || inSession ? "56rem" : "42rem",
         transition: "all 700ms ease-in-out",

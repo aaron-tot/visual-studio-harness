@@ -1,6 +1,6 @@
 {
   "name": "shell",
-  "description": "Manage the interactive shells for THIS conversation's session. Actions: create, list, listOutput, sendText, sendCommand, readOutput, resize, close, closeAll. All actions are scoped to the current session only.",
+  "description": "Manage interactive shells for THIS conversation's session. You may create MULTIPLE shells (one per task/concern) and act on any of them. Each shell is a real terminal shared with the user and rendered live in their GUI, so use them for anything the user should see happening. To act on a shell you MUST pass the specific shell id of the one you want: call `list` (or `listOutput`) first to get each shell's id, then pass that id to sendCommand/sendText/readOutput/resize/close. Actions: create, list, listOutput, sendText, sendCommand, readOutput, resize, close, closeAll. All actions are scoped to the current session only, and every per-shell action targets the shell whose id you pass.",
   "entry": "index.ts",
   "inputSchema": {
     "type": "object",
@@ -30,7 +30,7 @@
       },
       "id": {
         "type": "string",
-        "description": "Shell id (required for most actions)"
+        "description": "The specific shell id to act on (required for sendText/sendCommand/readOutput/resize/close). Get it from `list`/`listOutput`."
       },
       "text": {
         "type": "string",
@@ -45,6 +45,22 @@
         "minimum": 100,
         "maximum": 120000,
         "description": "Reserved for future command-wait (default 30000)"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2097152,
+        "description": "Max chars to return; omit for the full buffer (readOutput/listOutput)"
+      },
+      "tail": {
+        "type": "boolean",
+        "description": "When limit set: true (default) returns the LAST limit chars, false the FIRST"
+      },
+      "lines": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 20000,
+        "description": "Return only the last N lines of output, overriding char slicing"
       },
       "cols": {
         "type": "integer",

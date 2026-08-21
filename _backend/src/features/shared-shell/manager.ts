@@ -3,6 +3,7 @@
  *  host's stdio IPC is broadcast to the frontend via WS and kept in a rolling
  *  buffer so a shell's real transcript is available from the very start.
  */
+import { statSync } from "node:fs";
 import { broadcastToAll } from "../../ws/configPush";
 import { ptyHost } from "./pty-client";
 import type { Shell } from "./types";
@@ -56,9 +57,11 @@ function onHostExit(msg: { id: string; exitCode?: number; signal?: number | null
   m.shell.status = "stopped";
   shellsById.delete(msg.id);
   shellsBySession.get(m.shell.sessionId)?.delete(msg.id);
+  // Real removal: the shell is gone, so tell every client to drop it from the
+  // UI list (a bare status change would leave a dead shell lingering).
   broadcastToAll({
-    type: "shell:updated",
-    payload: { id: msg.id, sessionId: m.shell.sessionId, status: "stopped" },
+    type: "shell:closed",
+    payload: { id: msg.id, sessionId: m.shell.sessionId },
   });
 }
 
@@ -84,7 +87,23 @@ ptyHost.on("error", onHostError);
 
 export async function createShell(opts: { sessionId: string; name?: string; cwd?: string }): Promise<Shell> {
   await ensureHost();
-  const sessionMap = shellsBySession.get(opts.sessionId) ?? new Map();
+
+  const sessionId = opts.sessionId?.trim();
+  if (!sessionId) throw new Error("sessionId is required to create a shell");
+
+  // Resolve the working directory up-front and fail loudly if it cannot be
+  // used — a node-pty spawn with an invalid cwd silently produces an unusable
+  // shell, which is what made shells appear "created" but unreachable.
+  const cwd = opts.cwd?.trim() || process.cwd();
+  try {
+    const st = statSync(cwd);
+    if (!st.isDirectory()) throw new Error("not a directory");
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`cannot create shell in cwd "${cwd}": ${reason}`);
+  }
+
+  const sessionMap = shellsBySession.get(sessionId) ?? new Map();
   if (sessionMap.size >= MAX_SHELLS_PER_SESSION) {
     throw new Error(`Too many shells for this session (max ${MAX_SHELLS_PER_SESSION})`);
   }
@@ -93,20 +112,20 @@ export async function createShell(opts: { sessionId: string; name?: string; cwd?
   const shell: Shell = {
     id,
     name: opts.name ?? `Shell ${sessionMap.size + 1}`,
-    sessionId: opts.sessionId,
+    sessionId,
     status: "starting",
-    cwd: opts.cwd || process.cwd(),
+    cwd,
     createdAt: Date.now(),
   };
 
   shellsById.set(id, { shell, buffer: "" });
   sessionMap.set(id, shellsById.get(id)!);
-  shellsBySession.set(opts.sessionId, sessionMap);
+  shellsBySession.set(sessionId, sessionMap);
 
   ptyHost.create(id, {
     shell: "/bin/bash",
     args: ["-l"],
-    cwd: shell.cwd,
+    cwd,
     cols: 80,
     rows: 24,
   });
@@ -131,6 +150,12 @@ export function closeShell(id: string): void {
   if (m) {
     shellsBySession.get(m.shell.sessionId)?.delete(id);
     shellsById.delete(id);
+    // Tell every client to drop the shell from its UI list (local kill below may
+    // race the host exit event, and onHostExit would early-return once removed).
+    broadcastToAll({
+      type: "shell:closed",
+      payload: { id, sessionId: m.shell.sessionId },
+    });
   }
 }
 
@@ -140,7 +165,31 @@ export function listShells(sessionId: string): Shell[] {
   return [...sessionMap.values()].map((m) => ({ ...m.shell }));
 }
 
-export async function getShellOutput(id: string): Promise<string> {
+export interface ShellOutputOptions {
+  /** Max characters to return (default: full buffer). */
+  limit?: number;
+  /** When limit set: true (default) takes the LAST `limit` chars, false takes the FIRST `limit`. */
+  tail?: boolean;
+  /** Return only the last N lines (newline-delimited), overriding char slicing. */
+  lines?: number;
+}
+
+function sliceOutput(raw: string, opts: ShellOutputOptions | undefined): string {
+  if (!opts) return raw;
+  if (opts.lines !== undefined && opts.lines >= 0) {
+    // Keep the trailing empty segment so a trailing "\n" isn't dropped.
+    const parts = raw.split("\n");
+    return parts.slice(-(Math.min(opts.lines, parts.length - 1) + 1)).join("\n");
+  }
+  if (opts.limit !== undefined && opts.limit >= 0) {
+    const limit = opts.limit;
+    if (limit === 0) return "";
+    return opts.tail === false ? raw.slice(0, limit) : raw.slice(-limit);
+  }
+  return raw;
+}
+
+export async function getShellOutput(id: string, opts?: ShellOutputOptions): Promise<string> {
   const m = shellsById.get(id);
   if (!m) return "";
   // Ask the host for its authoritative buffer, so we include any bytes the
@@ -163,7 +212,7 @@ export async function getShellOutput(id: string): Promise<string> {
       }
     }, 500);
   });
-  return buffer || "";
+  return sliceOutput(buffer || "", opts);
 }
 
 /**
@@ -183,13 +232,23 @@ export function closeAllShellsForSession(sessionId: string): void {
   for (const id of [...sessionMap.keys()]) {
     ptyHost.kill(id);
     shellsById.delete(id);
+    broadcastToAll({
+      type: "shell:closed",
+      payload: { id, sessionId },
+    });
   }
   shellsBySession.delete(sessionId);
 }
 
 export function closeAllShells(): void {
-  for (const id of [...shellsById.keys()]) {
+  const ids = [...shellsById.keys()];
+  for (const id of ids) {
     ptyHost.kill(id);
+    const m = shellsById.get(id);
+    broadcastToAll({
+      type: "shell:closed",
+      payload: { id, sessionId: m?.shell.sessionId },
+    });
   }
   shellsById.clear();
   shellsBySession.clear();

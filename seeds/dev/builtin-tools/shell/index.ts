@@ -33,6 +33,16 @@ export async function execute(args: Record<string, unknown>, ctx: any): Promise<
     return shell.id;
   };
 
+  // Read options shared by readOutput/listOutput so the agent never has to
+  // pull the whole transcript when it only wants a portion.
+  const readOpts = (): Record<string, number | boolean> => {
+    const opts: Record<string, number | boolean> = {};
+    if (args.limit !== undefined) opts.limit = args.limit as number;
+    if (args.tail !== undefined) opts.tail = args.tail as boolean;
+    if (args.lines !== undefined) opts.lines = args.lines as number;
+    return opts;
+  };
+
   try {
     switch (action) {
       case "create": {
@@ -47,7 +57,7 @@ export async function execute(args: Record<string, unknown>, ctx: any): Promise<
       case "listOutput": {
         const outputs: Record<string, string> = {};
         for (const shell of ss.list(sessionId)) {
-          outputs[shell.id] = await ss.getOutput(shell.id);
+          outputs[shell.id] = await ss.getOutput(shell.id, readOpts());
         }
         return result("Shell Buffers", outputs);
       }
@@ -67,7 +77,7 @@ export async function execute(args: Record<string, unknown>, ctx: any): Promise<
       }
       case "readOutput": {
         const id = owned();
-        return result("Shell Output", { id, output: await ss.getOutput(id) });
+        return result("Shell Output", { id, output: await ss.getOutput(id, readOpts()) });
       }
       case "resize": {
         const id = owned();

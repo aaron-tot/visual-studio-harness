@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Terminal as Xterm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -12,6 +12,18 @@ interface ShellTerminalProps {
   shell: Shell;
 }
 
+/** Strip terminal sequences that would blank or relocate the visible screen
+ *  when replaying a captured transcript into a freshly-mounted xterm. Without
+ *  this, navigating back to a terminal re-runs the buffer's own clear/erase
+ *  codes and wipes the view down to a bare blinking cursor. */
+function sanitizeRestore(raw: string): string {
+  return raw
+    .replace(/\x1b\[[0-2?]*J/g, "") // erase display (all/below/above)
+    .replace(/\x1b\[[0-3]*K/g, "") // erase line (keeps layout stable)
+    .replace(/\x1b\[H/g, "") // cursor home would rewrite from line 0
+    .replace(/\x1bc/g, ""); // full terminal reset
+}
+
 /**
  * Real interactive terminal rendered with xterm.js, mirroring VSCode's
  * integrated terminal. Backend PTY output is written into the xterm buffer;
@@ -23,6 +35,24 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Xterm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  // True until the authoritative transcript has been restored. The live store
+  // subscriber holds back while this is set so the async restore and the WS
+  // push cannot double-render the same bytes.
+  const hydratePendingRef = useRef(true);
+
+  // Explicitly forward the xterm's CURRENT geometry to the backend PTY. The PTY
+  // is created at 80x24; if it stays there while the browser xterm is wider,
+  // bash's line editor wraps input at 80 cols but the viewer shows more — so
+  // typing past the wrap column starts overwriting earlier characters.
+  const pushSize = useCallback(() => {
+    const t = xtermRef.current;
+    if (!t) return;
+    const cols = t.cols;
+    const rows = t.rows;
+    if (cols > 0 && rows > 0) {
+      useSharedShellStore.getState().resizeShell(shell.id, cols, rows).catch(() => {});
+    }
+  }, [shell.id]);
 
   // Initialise xterm once per shell mount.
   useEffect(() => {
@@ -46,6 +76,17 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
     xtermRef.current = term;
     fitRef.current = fit;
 
+    // Push the post-fit geometry so the backend PTY matches the viewport from
+    // the very first paint (avoids wrap/overwrite while typing).
+    pushSize();
+
+    // Keep course as the terminal viewport fits again on later lays-outs.
+    const ro = new ResizeObserver(() => {
+      fit.fit();
+      pushSize();
+    });
+    ro.observe(el);
+
     // Forward keystrokes and resize events to the backend PTY.
     const dataSub = term.onData((data) => {
       useSharedShellStore.getState().writeShell(shell.id, data).catch(() => {});
@@ -55,25 +96,43 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
     });
 
     // On shell switch (this xterm just mounted), the live WS stream only carried
-    // output that arrived while this shell was displayed. The backend PTY holds
-    // the authoritative full transcript — fetch and render it. Also clear the
-    // store buffer for this shell so the live subscription doesn't re-write the
-    // same bytes (store and backend buffers mirror each other).
-    setTimeout(() => {
-      getShellOutputApi(shell.id)
-        .then(({ output }) => {
-          if (!output) return;
-          const live = xtermRef.current;
-          if (live) live.write(output);
-        })
-        .catch(() => {});
-    }, 0);
-    useSharedShellStore.setState((s) => {
-      if (!s.outputByShell[shell.id]) return s;
-      return { outputByShell: { ...s.outputByShell, [shell.id]: "" } };
-    });
+    // output that arrived while this shell was mounted. The backend PTY holds the
+    // authoritative full transcript — fetch and render it. We sanitize the replay
+    // (clearing/erase codes would blank the fresh view), then hand back to live
+    // output by draining the store buffered so no bytes are lost or doubled.
+    let cancelled = false;
+    (async () => {
+      let output = "";
+      try {
+        const res = await getShellOutputApi(shell.id);
+        output = res?.output ?? "";
+      } catch {
+        output = "";
+      }
+      if (cancelled) return;
+      const live = xtermRef.current;
+      if (!live) return;
+      if (output) live.write(sanitizeRestore(output));
+      // After rendering the authoritative buffer, release any bytes the live WS
+      // push accumulated during the refetch, then hand control to the subscriber.
+      const pending = useSharedShellStore.getState().outputByShell[shell.id];
+      if (pending) {
+        live.write(pending);
+        useSharedShellStore.setState((s) => ({
+          outputByShell: { ...s.outputByShell, [shell.id]: "" },
+        }));
+      }
+      hydratePendingRef.current = false;
+      // Ensure the backend PTY geometry matches the viewport after restore, and
+      // restore focus so the user can type immediately (agent-created or not).
+      pushSize();
+      live.focus();
+    })();
 
     return () => {
+      cancelled = true;
+      hydratePendingRef.current = true;
+      ro.disconnect();
       dataSub.dispose();
       resizeSub.dispose();
       term.dispose();
@@ -84,11 +143,14 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
   }, [shell.id]);
 
   // Live output push: subscribe to this shell's output buffer and write any new
-  // deltas into xterm, then clear them.
+  // deltas into xterm, then clear them. Held back while the authoritative
+  // transcript is still being restored (hydratePendingRef) to avoid double-
+  // rendering the same bytes.
   useEffect(() => {
     const unsub = useSharedShellStore.subscribe((state) => {
       const term = xtermRef.current;
       if (!term) return;
+      if (hydratePendingRef.current) return;
       const data = state.outputByShell[shell.id];
       if (!data) return;
       term.write(data);

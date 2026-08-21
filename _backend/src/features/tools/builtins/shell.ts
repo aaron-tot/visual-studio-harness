@@ -15,6 +15,7 @@ import {
   closeShell,
   closeAllShellsForSession,
 } from "../../shared-shell/manager";
+import type { ShellOutputOptions } from "../../shared-shell/manager";
 
 const ShellActionSchema = z
   .object({
@@ -33,7 +34,12 @@ const ShellActionSchema = z
     name: z.string().optional().describe("Shell name for create"),
     cwd: z.string().optional().describe("Working directory for create"),
     // targeting
-    id: z.string().optional().describe("Shell id (required for most actions)"),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        "The specific shell id to act on (required for sendText/sendCommand/readOutput/resize/close). Get it from list/listOutput.",
+      ),
     // send
     text: z.string().optional().describe("Raw text to write (sendText)"),
     command: z.string().optional().describe("Command line to execute (sendCommand)"),
@@ -44,6 +50,25 @@ const ShellActionSchema = z
       .max(120000)
       .optional()
       .describe("Reserved for future command-wait (default 30000)"),
+    // read (readOutput/listOutput)
+    limit: z
+      .number()
+      .int()
+      .min(0)
+      .max(2 * 1024 * 1024)
+      .optional()
+      .describe("Max chars to return; omit for the full buffer (readOutput/listOutput)"),
+    tail: z
+      .boolean()
+      .optional()
+      .describe("When limit set: true (default) returns the LAST limit chars, false the FIRST"),
+    lines: z
+      .number()
+      .int()
+      .min(0)
+      .max(20000)
+      .optional()
+      .describe("Return only the last N lines of output, overriding char slicing"),
     // resize
     cols: z.number().int().positive().optional(),
     rows: z.number().int().positive().optional(),
@@ -84,9 +109,13 @@ async function execute(args: ShellActionInput, ctx: BaseToolContext): Promise<To
       }
 
       case "listOutput": {
+        const readArgs: ShellOutputOptions = {};
+        if (args.limit !== undefined) readArgs.limit = args.limit;
+        if (args.tail !== undefined) readArgs.tail = args.tail;
+        if (args.lines !== undefined) readArgs.lines = args.lines;
         const outputs: Record<string, string> = {};
         for (const shell of listShells(sessionId)) {
-          outputs[shell.id] = await getShellOutput(shell.id);
+          outputs[shell.id] = await getShellOutput(shell.id, readArgs);
         }
         return ok("Shell Buffers", outputs);
       }
@@ -107,7 +136,14 @@ async function execute(args: ShellActionInput, ctx: BaseToolContext): Promise<To
 
       case "readOutput": {
         const id = owned();
-        return ok("Shell Output", { id, output: await getShellOutput(id) });
+        return ok("Shell Output", {
+          id,
+          output: await getShellOutput(id, {
+            limit: args.limit,
+            tail: args.tail,
+            lines: args.lines,
+          }),
+        });
       }
 
       case "resize": {
@@ -136,7 +172,7 @@ async function execute(args: ShellActionInput, ctx: BaseToolContext): Promise<To
 export const shellTool: ToolDef = {
   name: "shell",
   description:
-    "Manage the integrated shells for THIS conversation's session. Actions: create, list, listOutput, sendText, sendCommand, readOutput, resize, close, closeAll. All actions are scoped to the current session only.",
+    "Manage interactive shells for THIS conversation's session. You may create MULTIPLE shells (one per task/concern) and act on any of them. Each shell is a real terminal shared with the user and rendered live in their GUI, so use them for anything the user should see happening. To act on a shell you MUST pass the specific shell id of the one you want: call `list` (or `listOutput`) first to get each shell's id, then pass that id to sendCommand/sendText/readOutput/resize/close. Actions: create, list, listOutput, sendText, sendCommand, readOutput, resize, close, closeAll. All actions are scoped to the current session only, and every per-shell action targets the shell whose id you pass.",
   permissionDefault: "allow",
   inputSchema: ShellActionSchema,
   execute,

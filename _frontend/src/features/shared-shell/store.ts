@@ -39,7 +39,7 @@ interface SharedShellState {
 
 interface ShellMsg {
   type: string;
-  payload?: { id?: string; sessionId?: string; data?: string; shell?: Shell };
+  payload?: { id?: string; sessionId?: string; data?: string; status?: ShellStatus; shell?: Shell };
 }
 
 function isShellMsg(data: unknown): data is ShellMsg {
@@ -79,13 +79,27 @@ export function initSharedShellWs(): () => void {
   };
   const onClosed = (data: unknown) => {
     if (!isShellMsg(data)) return;
-    if (data.type !== "shell:closed" && data.type !== "shell:updated") return;
     const id = data.payload?.id;
     const sessionId = data.payload?.sessionId;
     if (!id || !sessionId) return;
+    if (data.type === "shell:closed") {
+      // The shell is really gone: drop it from the list entirely so users
+      // don't click a dead "stopped" entry.
+      useSharedShellStore.setState((s) => {
+        const shells = (s.bySession[sessionId] ?? []).filter((sh) => sh.id !== id);
+        const activeBySession = { ...s.activeBySession };
+        if (activeBySession[sessionId] === id) activeBySession[sessionId] = null;
+        const outputByShell = { ...s.outputByShell };
+        delete outputByShell[id];
+        return { bySession: { ...s.bySession, [sessionId]: shells }, activeBySession, outputByShell };
+      });
+      return;
+    }
+    // shell:updated — reflect a status change but keep the shell in the list.
+    if (data.type !== "shell:updated") return;
     useSharedShellStore.setState((s) => {
       const shells = (s.bySession[sessionId] ?? []).map((sh) =>
-        sh.id === id ? { ...sh, status: "stopped" as ShellStatus } : sh
+        sh.id === id ? { ...sh, status: (data.payload?.status as ShellStatus) ?? sh.status } : sh
       );
       return { bySession: { ...s.bySession, [sessionId]: shells } };
     });

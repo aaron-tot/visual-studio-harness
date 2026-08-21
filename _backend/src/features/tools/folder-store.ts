@@ -318,7 +318,10 @@ export interface ToolServices {
   sharedShell: {
     create: (sessionId: string, opts?: { name?: string; cwd?: string }) => Promise<import("../shared-shell/types").Shell>;
     list: (sessionId: string) => import("../shared-shell/types").Shell[];
-    getOutput: (id: string) => Promise<string>;
+    getOutput: (
+      id: string,
+      opts?: import("../shared-shell/manager").ShellOutputOptions,
+    ) => Promise<string>;
     findForSession: (sessionId: string, id: string) => import("../shared-shell/types").Shell | undefined;
     write: (id: string, data: string) => void;
     resize: (id: string, cols: number, rows: number) => void;
@@ -503,7 +506,7 @@ export function resolveToolCtx(
       sharedShell: {
         create: (sessionId, opts) => createShell({ sessionId, name: opts?.name, cwd: opts?.cwd }),
         list: (sessionId) => listShells(sessionId),
-        getOutput: (id) => getShellOutput(id),
+        getOutput: (id, opts) => getShellOutput(id, opts),
         findForSession: (sessionId, id) => getShellForSession(sessionId, id),
         write: (id, data) => writeToShell(id, data),
         resize: (id, cols, rows) => resizeShell(id, cols, rows),

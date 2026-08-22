@@ -1,6 +1,6 @@
 {
   "name": "VISUAL STUDIO HARNESS",
-  "version": "0.0.38-alpha",
+  "version": "0.0.39-alpha",
   "private": true,
   "type": "module",
   "workspaces": ["_backend", "_frontend", "_shared"],

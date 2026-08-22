@@ -8,7 +8,6 @@ import "@xterm/xterm/css/xterm.css";
 import { useSharedShellStore } from "../store";
 import { getShellSnapshotApi, putShellSnapshotApi } from "../api";
 import { SHELL_THEME } from "../theme";
-import { cleanSnapshot } from "../snapshot-clean";
 import type { Shell, ShellSnapshot } from "../types";
 
 interface ShellTerminalProps {
@@ -21,20 +20,7 @@ interface ShellTerminalProps {
 
 const PERSIST_DEBOUNCE_MS = 300;
 
-/**
- * Real interactive terminal rendered with xterm.js, mirroring VSCode's
- * integrated terminal. Backend PTY output is written into the xterm buffer;
- * keystrokes are forwarded back to the PTY so colours, job control and
- * full-screen apps behave natively.
- *
- * Restore model: instead of replaying a raw PTY byte log (which re-runs every
- * escape sequence against the current geometry and corrupts layout/colour), the
- * xterm's already-rendered state is captured with @xterm/addon-serialize and
- * persisted to the backend. On mount (refresh) the snapshot is written back via
- * term.write() for an exact pixel-for-pixel restore, then live WS output takes
- * over. The first time a terminal is made visible it hydrates from the
- * snapshot; hidden shells stay live but are only rendered once shown.
- */
+/** Interactive xterm. Restore hydrates from the PTY-host headless snapshot. */
 export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Xterm | null>(null);
@@ -86,14 +72,9 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
       return;
     }
     if (!serialized) return;
-    putShellSnapshotApi(shell.id, dims.cols, dims.rows, cleanSnapshot(serialized)).catch(() => {});
+    putShellSnapshotApi(shell.id, dims.cols, dims.rows, serialized).catch(() => {});
   }, [shell.id]);
 
-  // Debounce-schedule a snapshot persist (avoids a POST per keystroke/byte).
-  // TRAILING edge: every new write resets the timer, so the snapshot is captured
-  // from the settled final frame — not from a fixed offset after the FIRST write
-  // of a burst (which could drop a late-arriving output line like `echo` → its
-  // result → prompt).
   const schedulePersist = useCallback(() => {
     dirtyRef.current = true;
     if (persistTimerRef.current !== null) {
@@ -143,10 +124,6 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
     fitRef.current = fit;
     serializeRef.current = serializeAddon;
 
-    // Keep course as the terminal viewport fits again on later layouts. Only
-    // refit a VISIBLE terminal — a hidden one must keep its last real size (and
-    // the 0×0 it would get from fitting a display:none container) so its buffer
-    // and persisted snapshot stay intact.
     const ro = new ResizeObserver(() => {
       if (!activeRef.current) return;
       fit.fit();
@@ -253,7 +230,7 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
         // content (exact colour/cursor restore), then refit to this viewport.
         if (snapshot && snapshot.serialized && snapshot.cols > 0 && snapshot.rows > 0) {
           term.resize(snapshot.cols, snapshot.rows);
-          term.write(cleanSnapshot(snapshot.serialized));
+          term.write(snapshot.serialized);
         }
 
         hydratedRef.current = true;

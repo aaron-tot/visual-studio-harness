@@ -99,7 +99,7 @@ export function registerSharedShellRoutes(app: FastifyInstance): void {
     if (!id) {
       return { error: "id is required" };
     }
-    return { snapshot: getShellSnapshot(id) };
+    return { snapshot: await getShellSnapshot(id) };
   });
 
   app.post("/api/shared-shell/close", async (req) => {

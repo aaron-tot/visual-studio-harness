@@ -7,6 +7,11 @@ import { statSync } from "node:fs";
 import { broadcastToAll } from "../../ws/configPush";
 import { ptyHost } from "./pty-client";
 import type { Shell, ShellSnapshot } from "./types";
+import { validateSnapshot, fetchHostSnapshot, formatShellOutput } from "./snapshot";
+import type { ShellOutputOptions } from "./snapshot";
+import { runShellCommandOn } from "./command";
+import type { ShellCommandResult } from "./command";
+export type { ShellCommandResult, ShellOutputOptions };
 
 const OUTPUT_MAX_BYTES = 2 * 1024 * 1024; // rolling buffer cap
 const MAX_SHELLS_PER_SESSION = 20;
@@ -177,166 +182,29 @@ export function listShells(sessionId: string): Shell[] {
   return [...sessionMap.values()].map((m) => ({ ...m.shell }));
 }
 
-/** Strip ANSI escape/control sequences and CR chars from captured output. */
-function stripAnsi(s: string): string {
-  return s
-    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "") // colour/SGR + cursor CSI sequences
-    // OSC strings (title, OSC-8/OSC-3008 json marks). Stop at ESC or BEL so a
-    // ST-terminated OSC (`ESC \`) can never swallow later command output.
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
-    .replace(/\r/g, "");
-}
-
-/** Result of an agent-driven command execution. */
-export interface ShellCommandResult {
-  output: string;
-  timedOut: boolean;
-}
-
-/**
- * Run `command` in the live shell and wait for its output.
- *
- * Writes ONLY the command. No second echo, no printf, no OSC. Extra typed
- * text after the command is what wrapped/overwrote the prompt. Completion is
- * "the buffer grew, then ended on a prompt and stayed still for one poll".
- */
 export async function runShellCommand(
   id: string,
   command: string,
   { timeoutMs = 30000 }: { timeoutMs?: number } = {}
 ): Promise<ShellCommandResult> {
-  const m = shellsById.get(id);
-  if (!m) throw new Error(`Shell ${id} not running`);
-
-  // Agent create + first sendCommand often races the frontend fit. PTY starts
-  // at 80x24; xterm then resizes to ~89x8. If we write while still 80x24,
-  // bash wraps the long tests-path prompt, then SIGWINCH reprints it — the
-  // wrap leftovers land in the snapshot. User shells are already fitted
-  // before anyone types. Wait until the PTY is no longer the spawn default
-  // (or 400ms) so the command runs at the real geometry.
-  if (m.cols === 80 && m.rows === 24) {
-    const until = Date.now() + 400;
-    while (Date.now() < until) {
-      const cur = shellsById.get(id);
-      if (!cur) break;
-      if (cur.cols !== 80 || cur.rows !== 24) break;
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  }
-
-  const live = shellsById.get(id);
-  if (!live) throw new Error(`Shell ${id} not running`);
-  const startIndex = live.buffer.length;
-  writeToShell(id, `${command}\n`);
-
-  return new Promise((resolve) => {
-    const deadline = Date.now() + timeoutMs;
-    let lastLen = startIndex;
-    let stillAt = 0;
-    const poll = setInterval(() => {
-      const mm = shellsById.get(id);
-      const buffer = mm?.buffer ?? "";
-      if (buffer.length !== lastLen) {
-        lastLen = buffer.length;
-        stillAt = Date.now();
-      }
-      const settled = Date.now() - stillAt >= 150;
-      const grew = buffer.length > startIndex;
-      if (grew && settled && bufferEndsOnPrompt(buffer)) {
-        clearInterval(poll);
-        resolve({ output: extractCommandOutput(buffer, startIndex), timedOut: false });
-        return;
-      }
-      if (Date.now() > deadline) {
-        clearInterval(poll);
-        resolve({ output: extractCommandOutput(buffer, startIndex), timedOut: true });
-      }
-    }, 50);
-  });
-}
-
-function bufferEndsOnPrompt(buffer: string): boolean {
-  const text = stripAnsi(buffer).replace(/\r/g, "");
-  const last = text.split("\n").pop() ?? "";
-  return /[$#]\s*$/.test(last);
-}
-
-/** Bytes after the echoed command line, excluding the trailing prompt line. */
-function extractCommandOutput(buffer: string, startIndex: number): string {
-  const raw = stripAnsi(buffer.slice(startIndex)).replace(/\r/g, "");
-  const nl = raw.indexOf("\n");
-  const afterEcho = nl === -1 ? "" : raw.slice(nl + 1);
-  const lines = afterEcho.split("\n");
-  if (lines.length > 0 && /[$#]\s*$/.test(lines[lines.length - 1] ?? "")) {
-    lines.pop();
-  }
-  return lines.join("\n").trim();
-}
-
-export interface ShellOutputOptions {
-  /** Max characters to return (default: full buffer). */
-  limit?: number;
-  /** When limit set: true (default) takes the LAST `limit` chars, false takes the FIRST `limit`. */
-  tail?: boolean;
-  /** Return only the last N lines (newline-delimited), overriding char slicing. */
-  lines?: number;
-}
-
-function sliceOutput(raw: string, opts: ShellOutputOptions | undefined): string {
-  if (!opts) return raw;
-  if (opts.lines !== undefined && opts.lines >= 0) {
-    // Keep the trailing empty segment so a trailing "\n" isn't dropped.
-    const parts = raw.split("\n");
-    return parts.slice(-(Math.min(opts.lines, parts.length - 1) + 1)).join("\n");
-  }
-  if (opts.limit !== undefined && opts.limit >= 0) {
-    const limit = opts.limit;
-    if (limit === 0) return "";
-    return opts.tail === false ? raw.slice(0, limit) : raw.slice(-limit);
-  }
-  return raw;
-}
-
-/** Fetch a shell's authoritative PTY buffer from the host (falls back to the
- *  in-memory rolling buffer if the host never answers). Raw bytes, ANSI intact. */
-async function fetchShellBuffer(id: string): Promise<string> {
-  const m = shellsById.get(id);
-  if (!m) return "";
-  // Ask the host for its authoritative buffer, so we include any bytes the
-  // host captured before a reconnect or a frontend refresh.
-  const buffer = await new Promise<string>((resolve) => {
-    let done = false;
-    const handler = (reply: { id: string; type: string; data?: string }) => {
-      if (reply.id === id && reply.type === "buffer") {
-        done = true;
-        ptyHost.off("buffer", handler);
-        resolve(reply.data ?? "");
-      }
-    };
-    ptyHost.on("buffer", handler);
-    ptyHost.requestBuffer(id);
-    setTimeout(() => {
-      if (!done) {
-        ptyHost.off("buffer", handler);
-        resolve(m.buffer);
-      }
-    }, 500);
-  });
-  return buffer || "";
+  return runShellCommandOn(
+    { get: (sid) => shellsById.get(sid), write: writeToShell },
+    id,
+    command,
+    timeoutMs
+  );
 }
 
 export async function getShellOutput(id: string, opts?: ShellOutputOptions): Promise<string> {
-  // Return clean terminal text — strip ANSI/OSC control sequences (title
-  // sequences, OSC-8/OSC-3008 json marks, colour codes, \r) so the agent sees
-  // roughly what the terminal shows rather than raw escape junk.
-  return sliceOutput(stripAnsi(await fetchShellBuffer(id)), opts);
+  const m = shellsById.get(id);
+  if (!m) return "";
+  return formatShellOutput(id, m.buffer, opts, false);
 }
 
-/** Like `getShellOutput` but returns the RAW PTY bytes (ANSI/colour codes
- *  intact). Used by the terminal frontend only as a fallback when no snapshot
- *  exists yet; never hand this to the agent. */
 export async function getShellOutputRaw(id: string, opts?: ShellOutputOptions): Promise<string> {
-  return sliceOutput(await fetchShellBuffer(id), opts);
+  const m = shellsById.get(id);
+  if (!m) return "";
+  return formatShellOutput(id, m.buffer, opts, true);
 }
 
 /** Store the last rendered xterm snapshot for a shell so a later frontend
@@ -345,17 +213,14 @@ export async function getShellOutputRaw(id: string, opts?: ShellOutputOptions): 
 export function setShellSnapshot(id: string, snap: ShellSnapshot): void {
   const m = shellsById.get(id);
   if (!m) throw new Error(`Shell ${id} not running`);
-  if (!Number.isInteger(snap.cols) || snap.cols < 1) throw new Error("snapshot cols must be a positive integer");
-  if (!Number.isInteger(snap.rows) || snap.rows < 1) throw new Error("snapshot rows must be a positive integer");
-  if (typeof snap.serialized !== "string" || snap.serialized.length === 0) {
-    throw new Error("snapshot serialized content must be a non-empty string");
-  }
-  m.snapshot = { cols: snap.cols, rows: snap.rows, serialized: snap.serialized, updatedAt: Date.now() };
+  m.snapshot = validateSnapshot(snap);
 }
 
-/** Fetch a shell's saved snapshot (or null if none has been written yet). */
-export function getShellSnapshot(id: string): ShellSnapshot | null {
-  return shellsById.get(id)?.snapshot ?? null;
+/** Headless xterm snapshot from the PTY host. Frontend persist is fallback only. */
+export async function getShellSnapshot(id: string): Promise<ShellSnapshot | null> {
+  const m = shellsById.get(id);
+  if (!m) return null;
+  return (await fetchHostSnapshot(id)) ?? m.snapshot ?? null;
 }
 
 /** Look up a shell by id, but only if it belongs to `sessionId`. Returns undefined

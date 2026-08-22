@@ -16,9 +16,11 @@ import { PTY_RUNTIME_EMBED } from "../../generated/pty-runtime-embed";
 
 interface PtyHostMessage {
   id: string;
-  type: "created" | "data" | "exit" | "error" | "buffer";
+  type: "created" | "data" | "exit" | "error" | "buffer" | "snapshot";
   pid?: number;
   data?: string;
+  cols?: number;
+  rows?: number;
   exitCode?: number;
   signal?: number | null;
   message?: string;
@@ -197,6 +199,9 @@ class PtyHostClient extends EventEmitter {
   }
   requestBuffer(id: string): void {
     this.send({ id, type: "buffer" });
+  }
+  requestSnapshot(id: string): void {
+    this.send({ id, type: "snapshot" });
   }
 
   close(): void {

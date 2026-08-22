@@ -57,25 +57,29 @@ function onHostData(msg: { id: string; data?: string }): void {
   }
 
   // During a command capture we filter out any line containing the injected
-  // completion marker (both the echoed `echo '<marker>'` command and its output
+  // completion marker (both the echoed `echo '<marker>'` command AND its output
   // line), so the user sees a clean, real terminal: command echo, output, and
   // the next prompt. Everything else streams unchanged. Line-based filtering is
   // robust across arbitrary PTY chunk boundaries.
+  //
+  // Do NOT stop early on the first sighting: the marker's endTag appears first
+  // inside the echoed `echo '<marker>'` line while its own output line arrives
+  // in a later chunk. The filter must keep stripping every marker-bearing line
+  // until capture is cleared, or the marker leaks to the terminal + snapshot.
   let visible = msg.data;
-  if (m.capture && !m.capture.done) {
+  if (m.capture) {
     const c = m.capture;
     const text = c.partial + msg.data;
-    const nl = text.lastIndexOf("\n");
-    const complete = nl === -1 ? "" : text.slice(0, nl + 1);
-    c.partial = nl === -1 ? text : text.slice(nl + 1);
-    visible = complete
-      .split("\n")
+    const lines = text.split("\n");
+    const tail = lines.pop() ?? "";
+    // Once the marker has been fully seen in a complete line, drop any stale
+    // partial (a marker split across chunks) so it can't surface later.
+    const sawMarker = text.indexOf(c.endTag) !== -1;
+    c.partial = sawMarker ? "" : tail;
+    visible = lines
       .filter((l) => l.indexOf(c.endTag) === -1)
       .join("\n");
-    // Filtering is linear and stateless per line; mark done once we've seen the
-    // marker so we stop paying the cost (the marker itself will have been in
-    // some complete line).
-    if (text.indexOf(c.endTag) !== -1) c.done = true;
+    if (sawMarker) c.done = true;
   }
 
   broadcastToAll({

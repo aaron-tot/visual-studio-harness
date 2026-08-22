@@ -21,8 +21,10 @@ interface ManagedShell {
    *  so it renders like a real shell: the command echo, its output, and the
    *  next prompt all stream normally. Only lines containing the injected
    *  completion marker are filtered from the GUI broadcast. `partial` buffers
-   *  a trailing incomplete line across stream chunks. */
-  capture?: { endTag: string; done: boolean; partial: string };
+   *  a trailing incomplete line ONLY while it could still become the marker
+   *  (a strict prefix split across chunks). `seenMarker` flips once the marker
+   *  has been fully observed so no later marker-bearing line can surface. */
+  capture?: { endTag: string; done: boolean; partial: string; seenMarker: boolean };
 }
 
 const shellsById = new Map<string, ManagedShell>();
@@ -59,27 +61,33 @@ function onHostData(msg: { id: string; data?: string }): void {
   // During a command capture we filter out any line containing the injected
   // completion marker (both the echoed `echo '<marker>'` command AND its output
   // line), so the user sees a clean, real terminal: command echo, output, and
-  // the next prompt. Everything else streams unchanged. Line-based filtering is
-  // robust across arbitrary PTY chunk boundaries.
+  // the next prompt. Everything else streams unchanged, in order.
   //
-  // Do NOT stop early on the first sighting: the marker's endTag appears first
-  // inside the echoed `echo '<marker>'` line while its own output line arrives
-  // in a later chunk. The filter must keep stripping every marker-bearing line
-  // until capture is cleared, or the marker leaks to the terminal + snapshot.
+  // The marker's endTag appears twice — first inside the echoed `echo '...'`
+  // line, then again as its own output line, possibly in different chunks. So
+  // we keep stripping marker-bearing lines until capture is cleared, and we
+  // buffer a partial tail only while it could still grow into the marker (a
+  // strict prefix split across chunks). Anything else — including the shell's
+  // trailing prompt, which has no newline until the user types — passes through
+  // immediately rather than being swallowed waiting for a newline.
   let visible = msg.data;
-  if (m.capture) {
-    const c = m.capture;
+  const c = m.capture;
+  if (c) {
     const text = c.partial + msg.data;
-    const lines = text.split("\n");
-    const tail = lines.pop() ?? "";
-    // Once the marker has been fully seen in a complete line, drop any stale
-    // partial (a marker split across chunks) so it can't surface later.
-    const sawMarker = text.indexOf(c.endTag) !== -1;
-    c.partial = sawMarker ? "" : tail;
-    visible = lines
-      .filter((l) => l.indexOf(c.endTag) === -1)
-      .join("\n");
-    if (sawMarker) c.done = true;
+    const parts = text.split("\n");
+    const tail = parts.pop() ?? ""; // last, possibly-unterminated line
+    let out = "";
+    for (const line of parts) {
+      if (line.indexOf(c.endTag) === -1) {
+        out += line + "\n";
+      } else {
+        c.seenMarker = true;
+      }
+    }
+    const holdTail = tail !== "" && !c.seenMarker && c.endTag.startsWith(tail);
+    c.partial = holdTail ? tail : "";
+    c.done = c.seenMarker;
+    visible = out + (holdTail || tail === "" ? "" : tail);
   }
 
   broadcastToAll({
@@ -239,7 +247,7 @@ export async function runShellCommand(
   const endTag = `__VSH_DONE_${Date.now()}_${Math.random().toString(36).slice(2, 10)}__`;
 
   // The terminal is left untouched; just run the command and append a marker.
-  m.capture = { endTag, done: false, partial: "" };
+  m.capture = { endTag, done: false, partial: "", seenMarker: false };
   writeToShell(id, `${command}\n`);
   writeToShell(id, `echo '${endTag}'\n`);
 
@@ -268,7 +276,7 @@ export async function runShellCommand(
       const markerStart = markerPos === -1 ? -1 : markerPos + endTag.length;
       if (markerPos !== -1 && markerStart >= markerPos) {
         clearInterval(poll);
-        const out = extractStdout(buffer, startIndex, markerStart, markerPos);
+        const out = extractStdout(buffer, startIndex, markerStart, markerPos, endTag);
         finish();
         resolve({ output: stripAnsi(out).trim(), timedOut: false });
         return;
@@ -283,10 +291,10 @@ export async function runShellCommand(
   });
 }
 
-/** Extract the command's stdout: after the echoed command line, before the marker. */
-function extractStdout(buffer: string, startIndex: number, markerEnd: number, markerPos: number): string {
-  // The echoed command line is `<prompt> <command>`. Locate the command within
-  // it and take everything after that line's newline up to the marker's line.
+/** Extract the command's stdout: after the echoed command line, before the
+ *  marker's output line. The injected `echo '<marker>'` command (which the PTY
+ *  echoes verbatim in between) is filtered out so it never reaches the tool. */
+function extractStdout(buffer: string, startIndex: number, markerEnd: number, markerPos: number, endTag: string): string {
   const raw = buffer.slice(startIndex);
   // The marker's output line begins at the newline before markerPos.
   const markerLineStart = buffer.lastIndexOf("\n", markerPos) + 1;
@@ -295,8 +303,14 @@ function extractStdout(buffer: string, startIndex: number, markerEnd: number, ma
   const outStart = cmdLineEnd === -1 ? 0 : cmdLineEnd + 1;
   // Clip to the marker line start (relative to this slice).
   const outEnd = markerLineStart - startIndex;
-  if (outEnd <= outStart) return raw.slice(0, Math.max(0, outEnd)).replace(/^\s+/, "");
-  return raw.slice(outStart, outEnd);
+  const slice = outEnd <= outStart ? raw.slice(0, Math.max(0, outEnd)) : raw.slice(outStart, outEnd);
+  // Drop the echoed `echo '<marker>'` command line (it contains the endTag) so
+  // only genuine command output is returned to the agent.
+  return slice
+    .split("\n")
+    .filter((line) => line.indexOf(endTag) === -1)
+    .join("\n")
+    .replace(/^\s+/, "");
 }
 
 export interface ShellOutputOptions {

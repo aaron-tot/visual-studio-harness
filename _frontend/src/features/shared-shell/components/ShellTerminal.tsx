@@ -30,12 +30,17 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
   const activeRef = useRef(active);
   activeRef.current = active;
 
+  const lastPushedRef = useRef<{ cols: number; rows: number } | null>(null);
+  const hydratingRef = useRef(false);
+
   const pushSize = useCallback(() => {
     const t = xtermRef.current;
-    if (!t) return;
-    if (t.cols > 0 && t.rows > 0) {
-      useSharedShellStore.getState().resizeShell(shell.id, t.cols, t.rows).catch(() => {});
-    }
+    if (!t || hydratingRef.current) return;
+    if (t.cols < 1 || t.rows < 1) return;
+    const prev = lastPushedRef.current;
+    if (prev && prev.cols === t.cols && prev.rows === t.rows) return;
+    lastPushedRef.current = { cols: t.cols, rows: t.rows };
+    useSharedShellStore.getState().resizeShell(shell.id, t.cols, t.rows).catch(() => {});
   }, [shell.id]);
 
   useEffect(() => {
@@ -84,6 +89,10 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
     el.addEventListener("pointerdown", onPointerDown);
 
     const resizeSub = term.onResize(({ cols, rows }) => {
+      if (hydratingRef.current) return;
+      const prev = lastPushedRef.current;
+      if (prev && prev.cols === cols && prev.rows === rows) return;
+      lastPushedRef.current = { cols, rows };
       useSharedShellStore.getState().resizeShell(shell.id, cols, rows).catch(() => {});
     });
 
@@ -125,6 +134,7 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
       if (!term || !fit) return;
 
       if (!hydratedRef.current) {
+        hydratingRef.current = true;
         let snapshot: ShellSnapshot | null = null;
         try {
           const res = await getShellSnapshotApi(shell.id);
@@ -132,13 +142,20 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
         } catch {
           snapshot = null;
         }
-        if (cancelled) return;
+        if (cancelled) {
+          hydratingRef.current = false;
+          return;
+        }
 
         if (snapshot && snapshot.serialized && snapshot.cols > 0 && snapshot.rows > 0) {
+          lastPushedRef.current = { cols: snapshot.cols, rows: snapshot.rows };
           term.resize(snapshot.cols, snapshot.rows);
           await writeDone(term, snapshot.serialized);
         }
-        if (cancelled) return;
+        if (cancelled) {
+          hydratingRef.current = false;
+          return;
+        }
 
         hydratedRef.current = true;
         const pending = useSharedShellStore.getState().outputByShell[shell.id];
@@ -148,8 +165,11 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
             outputByShell: { ...s.outputByShell, [shell.id]: "" },
           }));
         }
+        hydratingRef.current = false;
       }
       if (cancelled) return;
+      // Fit the view only. Do not SIGWINCH the PTY if size already matches
+      // the snapshot — bash would reprint PS1 over the restored buffer.
       fit.fit();
       pushSize();
       term.focus();
@@ -162,7 +182,10 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
   }, [active, shell.id, pushSize]);
 
   useEffect(() => {
-    const id = requestAnimationFrame(() => fitRef.current?.fit());
+    const id = requestAnimationFrame(() => {
+      if (hydratingRef.current) return;
+      fitRef.current?.fit();
+    });
     return () => cancelAnimationFrame(id);
   }, []);
 

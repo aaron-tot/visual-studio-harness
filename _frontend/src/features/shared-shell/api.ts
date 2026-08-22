@@ -1,4 +1,4 @@
-import type { Shell } from "./types";
+import type { Shell, ShellSnapshot } from "./types";
 
 const BASE = "/api/shared-shell";
 
@@ -36,6 +36,31 @@ export async function resizeShellApi(id: string, cols: number, rows: number): Pr
 
 export async function getShellOutputApi(id: string): Promise<{ output: string }> {
   const res = await fetch(`${BASE}/output`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  return res.json();
+}
+
+/** Persist a shell's rendered xterm snapshot for exact restore on refresh. */
+export async function putShellSnapshotApi(
+  id: string,
+  cols: number,
+  rows: number,
+  serialized: string
+): Promise<{ ok?: boolean; error?: string }> {
+  const res = await fetch(`${BASE}/snapshot`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, cols, rows, serialized }),
+  });
+  return res.json();
+}
+
+/** Fetch a shell's saved snapshot (null if none written yet). */
+export async function getShellSnapshotApi(id: string): Promise<{ snapshot: ShellSnapshot | null }> {
+  const res = await fetch(`${BASE}/snapshot/get`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id }),

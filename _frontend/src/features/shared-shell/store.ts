@@ -6,7 +6,6 @@ import {
   writeShellApi,
   resizeShellApi,
   closeShellApi,
-  getShellOutputApi,
   closeSessionShellsApi,
 } from "./api";
 import type { Shell, ShellStatus } from "./types";
@@ -124,19 +123,13 @@ export const useSharedShellStore = create<SharedShellState>((set, get) => ({
 
   listShells: async (sessionId) => {
     const { shells } = await listShellsApi(sessionId);
-    // Pull each shell's real accumulated buffer so the terminal shows output
-    // from the very start, not just whatever arrives over WS after subscribing.
-    const outputs: Record<string, string> = {};
-    for (const sh of shells) {
-      try {
-        outputs[sh.id] = (await getShellOutputApi(sh.id)).output;
-      } catch {
-        /* backend shell may have vanished */
-      }
-    }
+    // NOTE: no per-shell output prefetch here. Each mounted ShellTerminal
+    // restores its own snapshot (getShellSnapshotApi) on first show, and live WS
+    // deltas land in outputByShell as they arrive. Prefetching the full PTY log
+    // into outputByShell would replay it raw (with all colour/control escapes)
+    // on top of a proper snapshot restore.
     set((s) => ({
       bySession: { ...s.bySession, [sessionId]: shells },
-      outputByShell: { ...s.outputByShell, ...outputs },
     }));
   },
 
@@ -145,21 +138,15 @@ export const useSharedShellStore = create<SharedShellState>((set, get) => ({
     if (!res.ok || !res.shell) {
       throw new Error(res.error || "Failed to create shell");
     }
-    // shell:created WS normally adds; but add locally here for reliability.
+    // shell:created WS normally adds; add locally here for reliability.
     const shell = res.shell;
-    let output = "";
-    try {
-      output = (await getShellOutputApi(shell.id)).output;
-    } catch {
-      /* none yet */
-    }
     set((s) => ({
       bySession: {
         ...s.bySession,
         [sessionId]: [...(s.bySession[sessionId] ?? []).filter((x) => x.id !== shell.id), shell],
       },
       activeBySession: { ...s.activeBySession, [sessionId]: shell.id },
-      outputByShell: { ...s.outputByShell, [shell.id]: output },
+      outputByShell: { ...s.outputByShell, [shell.id]: "" },
     }));
     return shell;
   },

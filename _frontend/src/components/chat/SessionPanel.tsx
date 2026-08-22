@@ -273,14 +273,23 @@ export function SessionPanel({ sessionId, onHeightChange }: SessionPanelProps) {
       <div className="grid" style={{ gridTemplateRows: open ? `${bodyHeight}px` : "0fr" }}>
         <div className="overflow-hidden min-h-0">
           <div id="session-panel-body" className="flex h-full px-3 pb-2">
-            {/* Left: active shell for this session */}
-            <div className="flex-1 min-w-0 min-h-0">
-              {activeShell ? (
-                <ShellTerminal key={activeShell.id} shell={activeShell} />
-              ) : (
+            {/* Left: shells for this session. Every shell stays mounted (xterm
+                instance kept alive) so its live-rendered colour/state is
+                preserved; only the active one is shown. Switching shells just
+                toggles visibility instead of recreating + replaying the PTY. */}
+            <div className="flex-1 min-w-0 min-h-0 relative">
+              {shells.length === 0 ? (
                 <div className="h-full rounded-lg border border-dashed border-zinc-800 flex items-center justify-center text-xs text-zinc-600">
                   No shells — press + to create one
                 </div>
+              ) : (
+                shells.map((sh) => (
+                  <ShellTerminal
+                    key={sh.id}
+                    shell={sh}
+                    active={activeShell?.id === sh.id}
+                  />
+                ))
               )}
             </div>
 

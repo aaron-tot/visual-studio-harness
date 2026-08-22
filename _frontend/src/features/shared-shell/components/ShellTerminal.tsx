@@ -2,77 +2,116 @@ import { useCallback, useEffect, useRef } from "react";
 import { Terminal as Xterm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { Terminal } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { useSharedShellStore } from "../store";
-import { getShellOutputApi } from "../api";
-import type { Shell } from "../types";
+import { getShellSnapshotApi, putShellSnapshotApi } from "../api";
+import { SHELL_THEME } from "../theme";
+import type { Shell, ShellSnapshot } from "../types";
 
 interface ShellTerminalProps {
   shell: Shell;
+  /** Whether this terminal is the currently-visible one in the panel. When
+   *  false the xterm instance is kept alive but hidden, so its exact
+   *  live-rendered colour/state is preserved across shell switches. */
+  active?: boolean;
 }
 
-/**
- * Render a captured PTY buffer as clean, stable output for restore.
- *
- * Replaying the whole raw buffer into a fresh xterm re-runs every escape
- * sequence, which causes column drift, stray blank lines and colour glitches.
- * This reduces the buffer to its visible text, KEEPING SGR colour codes
- * (`\x1b[...m` — the green prompt etc.) so the restore matches the live render,
- * while stripping cursor/erase/OSC/private-mode sequences that only relocate
- * text or print control junk.
- */
-function sanitizeRestore(raw: string): string {
-  let s = raw
-    // Keep SGR (final byte `m`) colour codes; drop every other CSI sequence.
-    .replace(
-      /\x1b\[[0-9;?]*[\x40-\x7e]/g,
-      (seq) => (seq.endsWith("m") ? seq : "")
-    )
-    // OSC strings (title, hyperlink, shell-integration JSON) — strip wholesale.
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
-    // DCS / APC / PM strings.
-    .replace(/\x1b[P\]^][\s\S]*?\x1b\\/g, "")
-    // Charset / reset / single-ESC controls.
-    .replace(/\x1b[\x00-\x1fXbc()]/g, "")
-    .replace(/\x1b/g, "")
-    // CRLF → LF; lone CR → LF (carriage-return to col 0 + newline).
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
-  // Collapse runs of blank lines. PTY control chatter leaves stray empty lines;
-  // real transcripts don't need several in a row.
-  return s.replace(/\n{2,}/g, "\n");
-}
+const PERSIST_DEBOUNCE_MS = 300;
 
 /**
  * Real interactive terminal rendered with xterm.js, mirroring VSCode's
  * integrated terminal. Backend PTY output is written into the xterm buffer;
  * keystrokes are forwarded back to the PTY so colours, job control and
- * full-screen apps behave natively. Mounted per shell via a `key` so each shell
- * owns a single xterm instance.
+ * full-screen apps behave natively.
+ *
+ * Restore model: instead of replaying a raw PTY byte log (which re-runs every
+ * escape sequence against the current geometry and corrupts layout/colour), the
+ * xterm's already-rendered state is captured with @xterm/addon-serialize and
+ * persisted to the backend. On mount (refresh) the snapshot is written back via
+ * term.write() for an exact pixel-for-pixel restore, then live WS output takes
+ * over. The first time a terminal is made visible it hydrates from the
+ * snapshot; hidden shells stay live but are only rendered once shown.
  */
-export function ShellTerminal({ shell }: ShellTerminalProps) {
+export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Xterm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
-  // True until the authoritative transcript has been restored. The live store
-  // subscriber holds back while this is set so the async restore and the WS
-  // push cannot double-render the same bytes.
-  const hydratePendingRef = useRef(true);
+  const serializeRef = useRef<SerializeAddon | null>(null);
+  // True until this terminal's snapshot has been restored. The live store
+  // subscriber holds back while set; once hydrated we drain buffered output.
+  const hydratedRef = useRef(false);
+  const persistTimerRef = useRef<number | null>(null);
+  const dirtyRef = useRef(false);
+  // Synchronised with `active` so the mount-time ResizeObserver and serializers
+  // can tell whether this terminal is actually visible (a hidden terminal must
+  // NOT be fit to 0×0 — that destroys its layout and stops snapshot persistence).
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  // The last known non-zero terminal size. Hidden terminals never fit, so their
+  // xterm keeps this real dimension.
+  const lastDimsRef = useRef<{ cols: number; rows: number } | null>(null);
 
   // Explicitly forward the xterm's CURRENT geometry to the backend PTY. The PTY
   // is created at 80x24; if it stays there while the browser xterm is wider,
-  // bash's line editor wraps input at 80 cols but the viewer shows more — so
-  // typing past the wrap column starts overwriting earlier characters.
+  // bash's line editor wraps at 80 cols but the viewer shows more.
   const pushSize = useCallback(() => {
     const t = xtermRef.current;
     if (!t) return;
     const cols = t.cols;
     const rows = t.rows;
     if (cols > 0 && rows > 0) {
+      lastDimsRef.current = { cols, rows };
       useSharedShellStore.getState().resizeShell(shell.id, cols, rows).catch(() => {});
     }
   }, [shell.id]);
+
+  // Serialize the current rendered terminal and persist it to the backend so a
+  // refresh restores the exact view (colours + cursor + layout).
+  const persistSnapshot = useCallback(() => {
+    const t = xtermRef.current;
+    const s = serializeRef.current;
+    if (!t || !s) return;
+    // Use the last known real size: a hidden terminal's xterm still holds its
+    // full rendered buffer (colour + cursor) even though it isn't fit, so it
+    // must keep serializing with its last valid dimensions.
+    const dims = lastDimsRef.current;
+    if (!dims) return;
+    let serialized = "";
+    try {
+      serialized = s.serialize();
+    } catch {
+      return;
+    }
+    if (!serialized) return;
+    putShellSnapshotApi(shell.id, dims.cols, dims.rows, serialized).catch(() => {});
+  }, [shell.id]);
+
+  // Debounce-schedule a snapshot persist (avoids a POST per keystroke/byte).
+  const schedulePersist = useCallback(() => {
+    dirtyRef.current = true;
+    if (persistTimerRef.current !== null) return;
+    persistTimerRef.current = window.setTimeout(() => {
+      persistTimerRef.current = null;
+      if (dirtyRef.current) {
+        dirtyRef.current = false;
+        persistSnapshot();
+      }
+    }, PERSIST_DEBOUNCE_MS);
+  }, [persistSnapshot]);
+
+  // Flush any pending snapshot immediately (unload, hidden); no debounce.
+  const flushPersist = useCallback(() => {
+    if (persistTimerRef.current !== null) {
+      window.clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+    if (dirtyRef.current) {
+      dirtyRef.current = false;
+      persistSnapshot();
+    }
+  }, [persistSnapshot]);
 
   // Initialise xterm once per shell mount.
   useEffect(() => {
@@ -83,52 +122,37 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
       fontSize: 13,
       fontFamily: "JetBrains Mono, Fira Code, Menlo, Monaco, Consolas, monospace",
       cursorBlink: true,
-      theme: { background: "#0e0e11" },
+      theme: SHELL_THEME,
       scrollback: 5000,
     });
     const fit = new FitAddon();
+    const serializeAddon = new SerializeAddon();
     term.loadAddon(fit);
+    term.loadAddon(serializeAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(el);
-    fit.fit();
-    term.focus();
 
     xtermRef.current = term;
     fitRef.current = fit;
+    serializeRef.current = serializeAddon;
 
-    // Push the post-fit geometry so the backend PTY matches the viewport from
-    // the very first paint (avoids wrap/overwrite while typing).
-    pushSize();
-
-    // Keep course as the terminal viewport fits again on later lays-outs.
+    // Keep course as the terminal viewport fits again on later layouts. Only
+    // refit a VISIBLE terminal — a hidden one must keep its last real size (and
+    // the 0×0 it would get from fitting a display:none container) so its buffer
+    // and persisted snapshot stay intact.
     const ro = new ResizeObserver(() => {
+      if (!activeRef.current) return;
       fit.fit();
       pushSize();
     });
     ro.observe(el);
 
-
-    // Forward keystrokes (including Ctrl+C/Ctrl+X which arrive as \x03/\x18
-    // control bytes, and Ctrl+V paste content) to the backend PTY.
+    // Forward keystrokes to the backend PTY.
     const dataSub = term.onData((data) => {
       useSharedShellStore.getState().writeShell(shell.id, data).catch(() => {});
     });
 
-    const writeBytes = (bytes: string) => {
-      useSharedShellStore.getState().writeShell(shell.id, bytes).catch(() => {});
-    };
-
     // Ensure Ctrl+C / Ctrl+V / Ctrl+X behave like a real terminal.
-    //
-    // xterm.js delegates copy/paste/control-key handling to the embedder:
-    // returning `true` lets xterm process the key (Ctrl+C/Ctrl+X become the
-    // \x03/\x18 control bytes on onData), returning `false` tells xterm to skip
-    // it and hand off to the browser (which fires a native copy/paste event on
-    // the focused textarea that xterm then re-emits as onData).
-    //
-    // So: Ctrl+V → return false so the browser's native paste runs (this is
-    // why Ctrl+Shift+V already pastes); Ctrl+C / Ctrl+X → copy/cut when there
-    // is a selection, otherwise let xterm send the interrupt/cancel byte.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
       const mod = e.ctrlKey || e.metaKey;
@@ -141,18 +165,12 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
       if (key === "c" || key === "x") {
         // If terminal text is selected, give the browser plain copy/cut.
         if (term.hasSelection()) return false;
-        // Otherwise let xterm send the control byte to the shell. NOTE: for
-        // reasons not yet diagnosed, Ctrl+X does not reliably fire here (the
-        // browser often swallows it or it routes to "cut" regardless). Copy
-        // (Ctrl+C) and paste (Ctrl+V) work; CTRL+X IS A KNOWN NON-WORKING CASE
-        // — revisit later. Not urgent since copy/paste work.
         return true;
       }
       return true;
     });
 
-    // Clicking anywhere gives xterm's textarea focus so keydown/native paste
-    // events actually reach it.
+    // Clicking anywhere gives xterm's textarea focus so keydown/paste reach it.
     const onPointerDown = () => {
       term.focus();
     };
@@ -162,43 +180,8 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
       useSharedShellStore.getState().resizeShell(shell.id, cols, rows).catch(() => {});
     });
 
-    // On shell switch (this xterm just mounted), the live WS stream only carried
-    // output that arrived while this shell was mounted. The backend PTY holds the
-    // authoritative full transcript — fetch and render it. We sanitize the replay
-    // (clearing/erase codes would blank the fresh view), then hand back to live
-    // output by draining the store buffered so no bytes are lost or doubled.
-    let cancelled = false;
-    (async () => {
-      let output = "";
-      try {
-        const res = await getShellOutputApi(shell.id);
-        output = res?.output ?? "";
-      } catch {
-        output = "";
-      }
-      if (cancelled) return;
-      const live = xtermRef.current;
-      if (!live) return;
-      if (output) live.write(sanitizeRestore(output).replace(/\n/g, "\r\n"));
-      // After rendering the authoritative buffer, release any bytes the live WS
-      // push accumulated during the refetch, then hand control to the subscriber.
-      const pending = useSharedShellStore.getState().outputByShell[shell.id];
-      if (pending) {
-        live.write(pending);
-        useSharedShellStore.setState((s) => ({
-          outputByShell: { ...s.outputByShell, [shell.id]: "" },
-        }));
-      }
-      hydratePendingRef.current = false;
-      // Ensure the backend PTY geometry matches the viewport after restore, and
-      // restore focus so the user can type immediately (agent-created or not).
-      pushSize();
-      live.focus();
-    })();
-
     return () => {
-      cancelled = true;
-      hydratePendingRef.current = true;
+      flushPersist();
       ro.disconnect();
       el.removeEventListener("pointerdown", onPointerDown);
       dataSub.dispose();
@@ -206,30 +189,85 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
       term.dispose();
       xtermRef.current = null;
       fitRef.current = null;
+      serializeRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shell.id]);
 
   // Live output push: subscribe to this shell's output buffer and write any new
-  // deltas into xterm, then clear them. Held back while the authoritative
-  // transcript is still being restored (hydratePendingRef) to avoid double-
-  // rendering the same bytes.
+  // deltas into xterm, then clear them + persist a snapshot. Held back until the
+  // terminal has been hydrated so a snapshot restore and the WS push don't
+  // double-render the same bytes.
   useEffect(() => {
     const unsub = useSharedShellStore.subscribe((state) => {
       const term = xtermRef.current;
       if (!term) return;
-      if (hydratePendingRef.current) return;
+      if (!hydratedRef.current) return;
       const data = state.outputByShell[shell.id];
       if (!data) return;
       term.write(data);
       useSharedShellStore.setState((s) => ({
         outputByShell: { ...s.outputByShell, [shell.id]: "" },
       }));
+      schedulePersist();
     });
     return () => {
       unsub();
     };
-  }, [shell.id]);
+  }, [shell.id, schedulePersist]);
+
+  // When this terminal becomes visible: hydrate from the persisted snapshot the
+  // first time (refresh / first show), then fit + sync geometry + focus. Hidden
+  // shells keep their xterm alive and only get rendered once shown.
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+
+    const id = requestAnimationFrame(async () => {
+      const term = xtermRef.current;
+      const fit = fitRef.current;
+      const serializeAddon = serializeRef.current;
+      if (!term || !fit || !serializeAddon) return;
+
+      if (!hydratedRef.current) {
+        let snapshot: ShellSnapshot | null = null;
+        try {
+          const res = await getShellSnapshotApi(shell.id);
+          snapshot = res?.snapshot ?? null;
+        } catch {
+          snapshot = null;
+        }
+        if (cancelled) return;
+
+        // Lay out at the snapshot's original geometry, write the serialized
+        // content (exact colour/cursor restore), then refit to this viewport.
+        if (snapshot && snapshot.serialized && snapshot.cols > 0 && snapshot.rows > 0) {
+          term.resize(snapshot.cols, snapshot.rows);
+          term.write(snapshot.serialized);
+        }
+
+        hydratedRef.current = true;
+
+        // Drain any live bytes that accumulated in the store while gated.
+        const pending = useSharedShellStore.getState().outputByShell[shell.id];
+        if (pending) {
+          term.write(pending);
+          useSharedShellStore.setState((s) => ({
+            outputByShell: { ...s.outputByShell, [shell.id]: "" },
+          }));
+        }
+      }
+
+      fit.fit();
+      pushSize();
+      term.focus();
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [active, shell.id, pushSize]);
 
   // Best-effort fit after initial layout.
   useEffect(() => {
@@ -237,8 +275,30 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
     return () => cancelAnimationFrame(id);
   }, []);
 
+  // Flush a snapshot on unload / tab hide so a refresh has the freshest state.
+  useEffect(() => {
+    const onHide = () => flushPersist();
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onHide);
+
+    // Keep ticking so a long-lived hidden terminal's tail is captured even when
+    // not actually unfocused (safety net for state that never flushes).
+    const interval = window.setInterval(() => {
+      if (dirtyRef.current) persistSnapshot();
+    }, 2000);
+
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onHide);
+      window.clearInterval(interval);
+    };
+  }, [flushPersist, persistSnapshot]);
+
   return (
-    <div className="h-full flex flex-col rounded-lg border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+    <div
+      className="h-full flex flex-col rounded-lg border border-zinc-800 bg-zinc-900/40 overflow-hidden"
+      style={{ display: active ? undefined : "none" }}
+    >
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/70 text-xs text-zinc-400">
         <Terminal size={13} className="text-zinc-500" />
         <span className="truncate">{shell.name}</span>

@@ -1,4 +1,4 @@
-export type { Shell, ShellStatus, ShellUpdate } from "./types";
+export type { Shell, ShellStatus, ShellUpdate, ShellSnapshot } from "./types";
 export {
   createShell,
   writeToShell,
@@ -6,6 +6,8 @@ export {
   closeShell,
   listShells,
   getShellOutput,
+  setShellSnapshot,
+  getShellSnapshot,
   getShellForSession,
   closeAllShellsForSession,
   closeAllShells,

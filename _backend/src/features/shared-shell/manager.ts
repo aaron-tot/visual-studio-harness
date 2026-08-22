@@ -4,9 +4,10 @@
  *  buffer so a shell's real transcript is available from the very start.
  */
 import { statSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { broadcastToAll } from "../../ws/configPush";
 import { ptyHost } from "./pty-client";
-import type { Shell } from "./types";
+import type { Shell, ShellSnapshot } from "./types";
 
 const OUTPUT_MAX_BYTES = 2 * 1024 * 1024; // rolling buffer cap
 const MAX_SHELLS_PER_SESSION = 20;
@@ -14,6 +15,8 @@ const MAX_SHELLS_PER_SESSION = 20;
 interface ManagedShell {
   shell: Shell;
   buffer: string;
+  /** Last snapshot of the rendered xterm state, persisted by the frontend. */
+  snapshot?: ShellSnapshot;
   /** Active command capture. The terminal is NOT altered (no stty/PS1 changes)
    *  so it renders like a real shell: the command echo, its output, and the
    *  next prompt all stream normally. Only lines containing the injected
@@ -316,7 +319,9 @@ function sliceOutput(raw: string, opts: ShellOutputOptions | undefined): string 
   return raw;
 }
 
-export async function getShellOutput(id: string, opts?: ShellOutputOptions): Promise<string> {
+/** Fetch a shell's authoritative PTY buffer from the host (falls back to the
+ *  in-memory rolling buffer if the host never answers). Raw bytes, ANSI intact. */
+async function fetchShellBuffer(id: string): Promise<string> {
   const m = shellsById.get(id);
   if (!m) return "";
   // Ask the host for its authoritative buffer, so we include any bytes the
@@ -339,14 +344,60 @@ export async function getShellOutput(id: string, opts?: ShellOutputOptions): Pro
       }
     }, 500);
   });
+  return buffer || "";
+}
+
+export async function getShellOutput(id: string, opts?: ShellOutputOptions): Promise<string> {
   // Return clean terminal text — strip ANSI/OSC control sequences (title
   // sequences, OSC-8/OSC-3008 json marks, colour codes, \r) so the agent sees
   // roughly what the terminal shows rather than raw escape junk.
-  return sliceOutput(stripAnsi(buffer || ""), opts);
+  return sliceOutput(stripAnsi(await fetchShellBuffer(id)), opts);
 }
 
-/**
- * Look up a shell by id, but only if it belongs to `sessionId`. Returns undefined
+/** Like `getShellOutput` but returns the RAW PTY bytes (ANSI/colour codes
+ *  intact). Used by the terminal frontend only as a fallback when no snapshot
+ *  exists yet; never hand this to the agent. */
+export async function getShellOutputRaw(id: string, opts?: ShellOutputOptions): Promise<string> {
+  return sliceOutput(await fetchShellBuffer(id), opts);
+}
+
+/** Store the last rendered xterm snapshot for a shell so a later frontend
+ *  refresh can restore the exact coloured view. Fails loudly on invalid
+ *  geometry or empty serialized payload. */
+export function setShellSnapshot(id: string, snap: ShellSnapshot): void {
+  const m = shellsById.get(id);
+  if (!m) throw new Error(`Shell ${id} not running`);
+  if (!Number.isInteger(snap.cols) || snap.cols < 1) throw new Error("snapshot cols must be a positive integer");
+  if (!Number.isInteger(snap.rows) || snap.rows < 1) throw new Error("snapshot rows must be a positive integer");
+  if (typeof snap.serialized !== "string" || snap.serialized.length === 0) {
+    throw new Error("snapshot serialized content must be a non-empty string");
+  }
+  // TEMP DEBUG - remove after diagnosing color loss on refresh
+  try {
+    mkdirSync("/tmp/vsh-debug", { recursive: true });
+    appendFileSync(
+      "/tmp/vsh-debug/snapshots.log",
+      `${new Date().toISOString()} SET ${id} ${snap.cols}x${snap.rows} len=${snap.serialized.length} esc=${(snap.serialized.match(/\x1b/g) || []).length} first=${JSON.stringify(snap.serialized.slice(0, 80))}\n`
+    );
+  } catch {}
+  m.snapshot = { cols: snap.cols, rows: snap.rows, serialized: snap.serialized, updatedAt: Date.now() };
+}
+
+/** Fetch a shell's saved snapshot (or null if none has been written yet). */
+export function getShellSnapshot(id: string): ShellSnapshot | null {
+  const snap = shellsById.get(id)?.snapshot ?? null;
+  // TEMP DEBUG - remove after diagnosing color loss on refresh
+  try {
+    mkdirSync("/tmp/vsh-debug", { recursive: true });
+    appendFileSync(
+      "/tmp/vsh-debug/snapshots.log",
+      `${new Date().toISOString()} GET ${id} -> ${snap ? `len=${snap.serialized.length} esc=${(snap.serialized.match(/\x1b/g) || []).length} first=${JSON.stringify(snap.serialized.slice(0, 80))}` : "null"}\n`
+    );
+  } catch {}
+  return snap;
+}
+
+/** Look up a shell by id, but only if it belongs to `sessionId`. Returns undefined
  * when the shell does not exist OR belongs to a different session — used by the
  * agent tool to enforce per-session scoping.
  */

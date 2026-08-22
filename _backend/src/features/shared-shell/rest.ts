@@ -7,6 +7,8 @@ import {
   resizeShell,
   closeShell,
   getShellOutput,
+  setShellSnapshot,
+  getShellSnapshot,
   closeAllShellsForSession,
 } from "./manager";
 
@@ -66,6 +68,38 @@ export function registerSharedShellRoutes(app: FastifyInstance): void {
       return { error: "id is required" };
     }
     return { output: await getShellOutput(id) };
+  });
+
+  // Persist a shell's rendered xterm snapshot so a later frontend refresh can
+  // restore the exact coloured view (not a fragile raw-buffer replay).
+  app.post("/api/shared-shell/snapshot", async (req) => {
+    const body = req.body as
+      | { id?: string; cols?: number; rows?: number; serialized?: string }
+      | undefined;
+    const { id, cols, rows, serialized } = body ?? {};
+    if (!id) {
+      return { error: "id is required" };
+    }
+    try {
+      setShellSnapshot(id, {
+        cols: Number(cols),
+        rows: Number(rows),
+        serialized: typeof serialized === "string" ? serialized : "",
+        updatedAt: Date.now(),
+      });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  app.post("/api/shared-shell/snapshot/get", async (req) => {
+    const body = req.body as { id?: string } | undefined;
+    const id = body?.id;
+    if (!id) {
+      return { error: "id is required" };
+    }
+    return { snapshot: getShellSnapshot(id) };
   });
 
   app.post("/api/shared-shell/close", async (req) => {

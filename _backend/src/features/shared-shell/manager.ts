@@ -24,7 +24,7 @@ interface ManagedShell {
    *  a trailing incomplete line ONLY while it could still become the marker
    *  (a strict prefix split across chunks). `seenMarker` flips once the marker
    *  has been fully observed so no later marker-bearing line can surface. */
-  capture?: { endTag: string; done: boolean; partial: string; seenMarker: boolean };
+  capture?: { endTag: string };
 }
 
 const shellsById = new Map<string, ManagedShell>();
@@ -58,37 +58,15 @@ function onHostData(msg: { id: string; data?: string }): void {
     m.buffer = m.buffer.slice(-OUTPUT_MAX_BYTES);
   }
 
-  // During a command capture we filter out any line containing the injected
-  // completion marker (both the echoed `echo '<marker>'` command AND its output
-  // line), so the user sees a clean, real terminal: command echo, output, and
-  // the next prompt. Everything else streams unchanged, in order.
-  //
-  // The marker's endTag appears twice — first inside the echoed `echo '...'`
-  // line, then again as its own output line, possibly in different chunks. So
-  // we keep stripping marker-bearing lines until capture is cleared, and we
-  // buffer a partial tail only while it could still grow into the marker (a
-  // strict prefix split across chunks). Anything else — including the shell's
-  // trailing prompt, which has no newline until the user types — passes through
-  // immediately rather than being swallowed waiting for a newline.
-  let visible = msg.data;
-  const c = m.capture;
-  if (c) {
-    const text = c.partial + msg.data;
-    const parts = text.split("\n");
-    const tail = parts.pop() ?? ""; // last, possibly-unterminated line
-    let out = "";
-    for (const line of parts) {
-      if (line.indexOf(c.endTag) === -1) {
-        out += line + "\n";
-      } else {
-        c.seenMarker = true;
-      }
-    }
-    const holdTail = tail !== "" && !c.seenMarker && c.endTag.startsWith(tail);
-    c.partial = holdTail ? tail : "";
-    c.done = c.seenMarker;
-    visible = out + (holdTail || tail === "" ? "" : tail);
-  }
+  // Completion is an invisible OSC string (`ESC ] 9 ; 4 ; VSH:<tag> BEL`).
+  // Strip it from the GUI stream so the user never sees the marker, while
+  // leaving every real command byte (echo, stdout, next prompt) untouched.
+  // OSC is never a visible line, so this cannot wrap or overwrite the prompt.
+  const visible = m.capture
+    ? msg.data
+        .replace(/\x1b\]9;4;VSH:[^\x07]*\x07/g, "")
+        .replace(/; builtin printf '\\033\]9;4;VSH:[^']*'\\007'/g, "")
+    : msg.data;
 
   broadcastToAll({
     type: "shell:output",
@@ -229,11 +207,11 @@ export interface ShellCommandResult {
 /**
  * Run `command` in the live shell and wait for its output.
  *
- * The command is written normally (so the terminal shows the real echo +
- * output + prompt), followed by an invisible completion marker. The buffer is
- * polled until the marker's echo appears (or `timeoutMs` elapses). Only the
- * command's own stdout (everything after the echoed command line and up to the
- * marker) is returned, stripped of ANSI.
+ * Writes the command normally (real echo + stdout + next prompt). Completion
+ * is signalled with an invisible OSC (`printf '\033]9;4;VSH:<tag>\007'`) so
+ * bash never draws a second command line. Filtering that OSC cannot wrap or
+ * overwrite the prompt — the previous `echo '<marker>'` second command was
+ * the root cause of leftover prompt fragments after sendCommand.
  */
 export async function runShellCommand(
   id: string,
@@ -244,24 +222,21 @@ export async function runShellCommand(
   if (!m) throw new Error(`Shell ${id} not running`);
 
   const startIndex = m.buffer.length;
-  const endTag = `__VSH_DONE_${Date.now()}_${Math.random().toString(36).slice(2, 10)}__`;
+  const endTag = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const oscNeedle = `]9;4;VSH:${endTag}`;
 
-  // The terminal is left untouched; just run the command and append a marker.
-  m.capture = { endTag, done: false, partial: "", seenMarker: false };
-  writeToShell(id, `${command}\n`);
-  writeToShell(id, `echo '${endTag}'\n`);
+  m.capture = { endTag };
+  // One write: the user command, then (same line, after `;`) an invisible OSC
+  // completion. `builtin printf` is not a second typed command, so bash does
+  // not draw a second prompt / wrap leftovers. The OSC is stripped from the
+  // GUI stream and from the persisted buffer.
+  writeToShell(id, `${command}; builtin printf '\\033]9;4;VSH:${endTag}\\007'\n`);
 
   const finish = () => {
     const mm = shellsById.get(id);
     if (mm) {
       mm.capture = undefined;
-      // Remove the injected marker lines (the echoed `echo '<marker>'` command
-      // and its `marker` output) from the persisted buffer so a later
-      // navigate-back / getShellOutput replay stays clean and real-looking.
-      mm.buffer = mm.buffer
-        .split("\n")
-        .filter((line) => line.indexOf(endTag) === -1)
-        .join("\n");
+      mm.buffer = mm.buffer.replace(/\x1b\]9;4;VSH:[^\x07]*\x07/g, "");
     }
   };
 
@@ -270,13 +245,10 @@ export async function runShellCommand(
     const poll = setInterval(() => {
       const mm = shellsById.get(id);
       const buffer = mm?.buffer ?? "";
-      // Marker appears twice: in the echoed `echo '<endTag>'` command line and
-      // once as its output. The LAST occurrence is the output marker.
-      const markerPos = buffer.lastIndexOf(endTag);
-      const markerStart = markerPos === -1 ? -1 : markerPos + endTag.length;
-      if (markerPos !== -1 && markerStart >= markerPos) {
+      const markerPos = buffer.lastIndexOf(oscNeedle);
+      if (markerPos !== -1) {
         clearInterval(poll);
-        const out = extractStdout(buffer, startIndex, markerStart, markerPos, endTag);
+        const out = extractStdout(buffer, startIndex, markerPos);
         finish();
         resolve({ output: stripAnsi(out).trim(), timedOut: false });
         return;
@@ -291,25 +263,19 @@ export async function runShellCommand(
   });
 }
 
-/** Extract the command's stdout: after the echoed command line, before the
- *  marker's output line. The injected `echo '<marker>'` command (which the PTY
- *  echoes verbatim in between) is filtered out so it never reaches the tool. */
-function extractStdout(buffer: string, startIndex: number, markerEnd: number, markerPos: number, endTag: string): string {
+/** Command stdout: after the echoed command line, before the OSC marker. */
+function extractStdout(buffer: string, startIndex: number, markerPos: number): string {
   const raw = buffer.slice(startIndex);
-  // The marker's output line begins at the newline before markerPos.
-  const markerLineStart = buffer.lastIndexOf("\n", markerPos) + 1;
-  // The command echo line is the first line in `raw` (starts at startIndex).
-  const cmdLineEnd = raw.indexOf("\n");
-  const outStart = cmdLineEnd === -1 ? 0 : cmdLineEnd + 1;
-  // Clip to the marker line start (relative to this slice).
-  const outEnd = markerLineStart - startIndex;
-  const slice = outEnd <= outStart ? raw.slice(0, Math.max(0, outEnd)) : raw.slice(outStart, outEnd);
-  // Drop the echoed `echo '<marker>'` command line (it contains the endTag) so
-  // only genuine command output is returned to the agent.
-  return slice
+  const markerRel = markerPos - startIndex;
+  const before = markerRel > 0 ? raw.slice(0, markerRel) : raw;
+  const cmdLineEnd = before.indexOf("\n");
+  const body = cmdLineEnd === -1 ? before : before.slice(cmdLineEnd + 1);
+  // Drop the injected `printf '...'` command echo if bash printed it.
+  return body
     .split("\n")
-    .filter((line) => line.indexOf(endTag) === -1)
+    .filter((line) => line.indexOf("]9;4;VSH:") === -1)
     .join("\n")
+    .replace(/; builtin printf '\\033\]9;4;VSH:[^']*'\\007'/g, "")
     .replace(/^\s+/, "");
 }
 

@@ -184,6 +184,9 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
 
     const resizeSub = term.onResize(({ cols, rows }) => {
       useSharedShellStore.getState().resizeShell(shell.id, cols, rows).catch(() => {});
+      // SIGWINCH makes bash reprint the prompt; wait for that reprint to
+      // settle before snapshotting or we persist wrap leftovers.
+      schedulePersist();
     });
 
     return () => {

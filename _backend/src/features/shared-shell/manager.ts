@@ -14,6 +14,8 @@ const MAX_SHELLS_PER_SESSION = 20;
 interface ManagedShell {
   shell: Shell;
   buffer: string;
+  cols: number;
+  rows: number;
   /** Last snapshot of the rendered xterm state, persisted by the frontend. */
   snapshot?: ShellSnapshot;
 }
@@ -122,7 +124,7 @@ export async function createShell(opts: { sessionId: string; name?: string; cwd?
     createdAt: Date.now(),
   };
 
-  shellsById.set(id, { shell, buffer: "" });
+  shellsById.set(id, { shell, buffer: "", cols: 80, rows: 24 });
   sessionMap.set(id, shellsById.get(id)!);
   shellsBySession.set(sessionId, sessionMap);
 
@@ -144,7 +146,13 @@ export function writeToShell(id: string, data: string): void {
 }
 
 export function resizeShell(id: string, cols: number, rows: number): void {
-  if (!shellsById.has(id)) throw new Error(`Shell ${id} not running`);
+  const m = shellsById.get(id);
+  if (!m) throw new Error(`Shell ${id} not running`);
+  if (!Number.isInteger(cols) || cols < 1 || !Number.isInteger(rows) || rows < 1) {
+    throw new Error("cols and rows must be positive integers");
+  }
+  m.cols = cols;
+  m.rows = rows;
   ptyHost.resize(id, cols, rows);
 }
 
@@ -200,7 +208,25 @@ export async function runShellCommand(
   const m = shellsById.get(id);
   if (!m) throw new Error(`Shell ${id} not running`);
 
-  const startIndex = m.buffer.length;
+  // Agent create + first sendCommand often races the frontend fit. PTY starts
+  // at 80x24; xterm then resizes to ~89x8. If we write while still 80x24,
+  // bash wraps the long tests-path prompt, then SIGWINCH reprints it — the
+  // wrap leftovers land in the snapshot. User shells are already fitted
+  // before anyone types. Wait until the PTY is no longer the spawn default
+  // (or 400ms) so the command runs at the real geometry.
+  if (m.cols === 80 && m.rows === 24) {
+    const until = Date.now() + 400;
+    while (Date.now() < until) {
+      const cur = shellsById.get(id);
+      if (!cur) break;
+      if (cur.cols !== 80 || cur.rows !== 24) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+
+  const live = shellsById.get(id);
+  if (!live) throw new Error(`Shell ${id} not running`);
+  const startIndex = live.buffer.length;
   writeToShell(id, `${command}\n`);
 
   return new Promise((resolve) => {

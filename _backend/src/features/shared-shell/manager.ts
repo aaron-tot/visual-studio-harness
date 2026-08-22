@@ -4,7 +4,6 @@
  *  buffer so a shell's real transcript is available from the very start.
  */
 import { statSync } from "node:fs";
-import { appendFileSync, mkdirSync } from "node:fs";
 import { broadcastToAll } from "../../ws/configPush";
 import { ptyHost } from "./pty-client";
 import type { Shell, ShellSnapshot } from "./types";
@@ -17,14 +16,6 @@ interface ManagedShell {
   buffer: string;
   /** Last snapshot of the rendered xterm state, persisted by the frontend. */
   snapshot?: ShellSnapshot;
-  /** Active command capture. The terminal is NOT altered (no stty/PS1 changes)
-   *  so it renders like a real shell: the command echo, its output, and the
-   *  next prompt all stream normally. Only lines containing the injected
-   *  completion marker are filtered from the GUI broadcast. `partial` buffers
-   *  a trailing incomplete line ONLY while it could still become the marker
-   *  (a strict prefix split across chunks). `seenMarker` flips once the marker
-   *  has been fully observed so no later marker-bearing line can surface. */
-  capture?: { endTag: string };
 }
 
 const shellsById = new Map<string, ManagedShell>();
@@ -58,19 +49,9 @@ function onHostData(msg: { id: string; data?: string }): void {
     m.buffer = m.buffer.slice(-OUTPUT_MAX_BYTES);
   }
 
-  // Completion is an invisible OSC string (`ESC ] 9 ; 4 ; VSH:<tag> BEL`).
-  // Strip it from the GUI stream so the user never sees the marker, while
-  // leaving every real command byte (echo, stdout, next prompt) untouched.
-  // OSC is never a visible line, so this cannot wrap or overwrite the prompt.
-  const visible = m.capture
-    ? msg.data
-        .replace(/\x1b\]9;4;VSH:[^\x07]*\x07/g, "")
-        .replace(/; builtin printf '\\033\]9;4;VSH:[^']*'\\007'/g, "")
-    : msg.data;
-
   broadcastToAll({
     type: "shell:output",
-    payload: { id: msg.id, sessionId: m.shell.sessionId, data: visible },
+    payload: { id: msg.id, sessionId: m.shell.sessionId, data: msg.data },
   });
 }
 
@@ -207,11 +188,9 @@ export interface ShellCommandResult {
 /**
  * Run `command` in the live shell and wait for its output.
  *
- * Writes the command normally (real echo + stdout + next prompt). Completion
- * is signalled with an invisible OSC (`printf '\033]9;4;VSH:<tag>\007'`) so
- * bash never draws a second command line. Filtering that OSC cannot wrap or
- * overwrite the prompt — the previous `echo '<marker>'` second command was
- * the root cause of leftover prompt fragments after sendCommand.
+ * Writes ONLY the command. No second echo, no printf, no OSC. Extra typed
+ * text after the command is what wrapped/overwrote the prompt. Completion is
+ * "the buffer grew, then ended on a prompt and stayed still for one poll".
  */
 export async function runShellCommand(
   id: string,
@@ -222,61 +201,50 @@ export async function runShellCommand(
   if (!m) throw new Error(`Shell ${id} not running`);
 
   const startIndex = m.buffer.length;
-  const endTag = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  const oscNeedle = `]9;4;VSH:${endTag}`;
-
-  m.capture = { endTag };
-  // One write: the user command, then (same line, after `;`) an invisible OSC
-  // completion. `builtin printf` is not a second typed command, so bash does
-  // not draw a second prompt / wrap leftovers. The OSC is stripped from the
-  // GUI stream and from the persisted buffer.
-  writeToShell(id, `${command}; builtin printf '\\033]9;4;VSH:${endTag}\\007'\n`);
-
-  const finish = () => {
-    const mm = shellsById.get(id);
-    if (mm) {
-      mm.capture = undefined;
-      mm.buffer = mm.buffer.replace(/\x1b\]9;4;VSH:[^\x07]*\x07/g, "");
-    }
-  };
+  writeToShell(id, `${command}\n`);
 
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
+    let lastLen = startIndex;
+    let stillAt = 0;
     const poll = setInterval(() => {
       const mm = shellsById.get(id);
       const buffer = mm?.buffer ?? "";
-      const markerPos = buffer.lastIndexOf(oscNeedle);
-      if (markerPos !== -1) {
+      if (buffer.length !== lastLen) {
+        lastLen = buffer.length;
+        stillAt = Date.now();
+      }
+      const settled = Date.now() - stillAt >= 150;
+      const grew = buffer.length > startIndex;
+      if (grew && settled && bufferEndsOnPrompt(buffer)) {
         clearInterval(poll);
-        const out = extractStdout(buffer, startIndex, markerPos);
-        finish();
-        resolve({ output: stripAnsi(out).trim(), timedOut: false });
+        resolve({ output: extractCommandOutput(buffer, startIndex), timedOut: false });
         return;
       }
       if (Date.now() > deadline) {
         clearInterval(poll);
-        finish();
-        resolve({ output: stripAnsi(buffer.slice(startIndex)).trim(), timedOut: true });
-        return;
+        resolve({ output: extractCommandOutput(buffer, startIndex), timedOut: true });
       }
-    }, 100);
+    }, 50);
   });
 }
 
-/** Command stdout: after the echoed command line, before the OSC marker. */
-function extractStdout(buffer: string, startIndex: number, markerPos: number): string {
-  const raw = buffer.slice(startIndex);
-  const markerRel = markerPos - startIndex;
-  const before = markerRel > 0 ? raw.slice(0, markerRel) : raw;
-  const cmdLineEnd = before.indexOf("\n");
-  const body = cmdLineEnd === -1 ? before : before.slice(cmdLineEnd + 1);
-  // Drop the injected `printf '...'` command echo if bash printed it.
-  return body
-    .split("\n")
-    .filter((line) => line.indexOf("]9;4;VSH:") === -1)
-    .join("\n")
-    .replace(/; builtin printf '\\033\]9;4;VSH:[^']*'\\007'/g, "")
-    .replace(/^\s+/, "");
+function bufferEndsOnPrompt(buffer: string): boolean {
+  const text = stripAnsi(buffer).replace(/\r/g, "");
+  const last = text.split("\n").pop() ?? "";
+  return /[$#]\s*$/.test(last);
+}
+
+/** Bytes after the echoed command line, excluding the trailing prompt line. */
+function extractCommandOutput(buffer: string, startIndex: number): string {
+  const raw = stripAnsi(buffer.slice(startIndex)).replace(/\r/g, "");
+  const nl = raw.indexOf("\n");
+  const afterEcho = nl === -1 ? "" : raw.slice(nl + 1);
+  const lines = afterEcho.split("\n");
+  if (lines.length > 0 && /[$#]\s*$/.test(lines[lines.length - 1] ?? "")) {
+    lines.pop();
+  }
+  return lines.join("\n").trim();
 }
 
 export interface ShellOutputOptions {
@@ -356,29 +324,12 @@ export function setShellSnapshot(id: string, snap: ShellSnapshot): void {
   if (typeof snap.serialized !== "string" || snap.serialized.length === 0) {
     throw new Error("snapshot serialized content must be a non-empty string");
   }
-  // TEMP DEBUG - remove after diagnosing color loss on refresh
-  try {
-    mkdirSync("/tmp/vsh-debug", { recursive: true });
-    appendFileSync(
-      "/tmp/vsh-debug/snapshots.log",
-      `${new Date().toISOString()} SET ${id} ${snap.cols}x${snap.rows} len=${snap.serialized.length} esc=${(snap.serialized.match(/\x1b/g) || []).length} first=${JSON.stringify(snap.serialized.slice(0, 80))}\n`
-    );
-  } catch {}
   m.snapshot = { cols: snap.cols, rows: snap.rows, serialized: snap.serialized, updatedAt: Date.now() };
 }
 
 /** Fetch a shell's saved snapshot (or null if none has been written yet). */
 export function getShellSnapshot(id: string): ShellSnapshot | null {
-  const snap = shellsById.get(id)?.snapshot ?? null;
-  // TEMP DEBUG - remove after diagnosing color loss on refresh
-  try {
-    mkdirSync("/tmp/vsh-debug", { recursive: true });
-    appendFileSync(
-      "/tmp/vsh-debug/snapshots.log",
-      `${new Date().toISOString()} GET ${id} -> ${snap ? `len=${snap.serialized.length} esc=${(snap.serialized.match(/\x1b/g) || []).length} first=${JSON.stringify(snap.serialized.slice(0, 80))}` : "null"}\n`
-    );
-  } catch {}
-  return snap;
+  return shellsById.get(id)?.snapshot ?? null;
 }
 
 /** Look up a shell by id, but only if it belongs to `sessionId`. Returns undefined

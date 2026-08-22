@@ -13,35 +13,39 @@ interface ShellTerminalProps {
 }
 
 /**
- * Strip terminal sequences that would blank, relocate, restyle, or emit junk
- * when replaying a captured transcript into a freshly-mounted xterm.
+ * Render a captured PTY buffer as clean, stable plain text for restore.
  *
- * On navigate-back we write the whole raw buffer into a new xterm, which
- * re-runs every escape sequence the shell emitted — the OSC title/shell-status
- * JSON (`\x1b]0;...`, `\x1b]3008;...`), the bracketed-paste enable/disable
- * (`\x1b[?2004h/l`), and cursor-position/erase codes. That is what makes the
- * shell look garbled (text jumping position, stray styling/colour flashes)
- * after switching shells. Keep colour (SGR `\x1b[...m`) so the terminal still
- * looks right, but drop everything else that mutates layout or prints noise.
+ * The live stream already rendered correctly on screen; the problem is
+ * *replaying* the whole raw buffer into a fresh xterm on navigate-back, which
+ * re-runs every escape/control sequence and causes column drift, colour gaps
+ * and stray blank lines. Instead we reduce the buffer to its visible plain-text
+ * lines and write those, so a restored shell looks exactly like it did live
+ * (geometry-stable, no colour/position jumps).
  */
 function sanitizeRestore(raw: string): string {
-  return raw
-    // Erase display (would wipe the freshly-mounted view).
-    .replace(/\x1b\[[0-9?]*J/g, "")
-    // DEC private-mode SET/RESET (e.g. `?2004h/l` bracketed paste, `?1049h`
-    // alt-screen disables would leave the terminal in a stuck mode).
-    .replace(/\x1b\[\??[0-9;]*h/g, "")
-    .replace(/\x1b\[\??[0-9;]*l/g, "")
-    // Cursor movement/home (A,B,C,D,E,F,G,H) — replaying these relocates text.
-    .replace(/\x1b\[\d*[A-GH]/g, "")
-    // cursor char abs / toggle / set scroll-region — noisy to replay.
-    .replace(/\x1b\[[0-9?;:]*[cfr]/g, "")
-    // OSC strings (title, hyperlink, shell-integration JSON) — strip.
+  let s = raw
+    // Erase display/line + cursor movement/home (relocates/clears the view).
+    .replace(/\x1b\[[0-9?;]*[A-JK]/g, "")
+    // DEC private-mode SET/RESET (bracketed paste ?2004h/l, alt-screen ?1049h,
+    // etc.) — leaving these on would stick the fresh terminal in a weird mode.
+    .replace(/\x1b\[\??[0-9;]*[hl]/g, "")
+    // Cursor position / char-abs / scroll-region / modes — strip all CSI.
+    .replace(/\x1b\[[0-9?;:]*[bcdfghlnst]/g, "")
+    // SGR colour + all other CSI final-bytes (control noise; we want plain).
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
+    // OSC strings (title, hyperlink, shell-integration JSON) — strip wholesale.
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
-    // ESC + assorted single-char controls (no-op, reset, charset).
-    .replace(/\x1b[\x00-\x1fXbc]/g, "");
-  // NOTE: do NOT strip `\r`. In VT output `\r\n` is what returns the cursor to
-  // column 0 + advances; leaving `\r` intact keeps columns aligned on restore.
+    // Remaining ESC + control, DCS, APC, reset/charset.
+    .replace(/\x1b[^a-zA-Z]*[A-Za-z]/g, "")
+    .replace(/\x1b/g, "")
+    // CRLF → LF (return-to-col-0 + advance), lone CR → LF.
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+  // Collapse runs of blank lines to a single line break. Real transcripts
+  // don't need multiple consecutive empty lines, and PTY control sequences
+  // (bracketed-paste toggles, OSC hits) leave stray newlines behind — this
+  // removes that noise so the restore matches the live render.
+  return s.replace(/\n{2,}/g, "\n");
 }
 
 /**
@@ -179,7 +183,7 @@ export function ShellTerminal({ shell }: ShellTerminalProps) {
       if (cancelled) return;
       const live = xtermRef.current;
       if (!live) return;
-      if (output) live.write(sanitizeRestore(output));
+      if (output) live.write(sanitizeRestore(output).replace(/\n/g, "\r\n"));
       // After rendering the authoritative buffer, release any bytes the live WS
       // push accumulated during the refetch, then hand control to the subscriber.
       const pending = useSharedShellStore.getState().outputByShell[shell.id];

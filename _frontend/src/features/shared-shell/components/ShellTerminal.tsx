@@ -89,9 +89,15 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
   }, [shell.id]);
 
   // Debounce-schedule a snapshot persist (avoids a POST per keystroke/byte).
+  // TRAILING edge: every new write resets the timer, so the snapshot is captured
+  // from the settled final frame — not from a fixed offset after the FIRST write
+  // of a burst (which could drop a late-arriving output line like `echo` → its
+  // result → prompt).
   const schedulePersist = useCallback(() => {
     dirtyRef.current = true;
-    if (persistTimerRef.current !== null) return;
+    if (persistTimerRef.current !== null) {
+      window.clearTimeout(persistTimerRef.current);
+    }
     persistTimerRef.current = window.setTimeout(() => {
       persistTimerRef.current = null;
       if (dirtyRef.current) {

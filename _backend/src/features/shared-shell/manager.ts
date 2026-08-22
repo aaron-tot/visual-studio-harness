@@ -14,10 +14,12 @@ const MAX_SHELLS_PER_SESSION = 20;
 interface ManagedShell {
   shell: Shell;
   buffer: string;
-  /** Active command capture: suppress wrapper/sentinel noise from the WS
-   *  broadcast while a runShellCommand is in flight, so the user's terminal
-   *  only shows the command's real output. */
-  capture?: { startTag: string; endTag: string; done: boolean };
+  /** Active command capture. The terminal is NOT altered (no stty/PS1 changes)
+   *  so it renders like a real shell: the command echo, its output, and the
+   *  next prompt all stream normally. Only lines containing the injected
+   *  completion marker are filtered from the GUI broadcast. `partial` buffers
+   *  a trailing incomplete line across stream chunks. */
+  capture?: { endTag: string; done: boolean; partial: string };
 }
 
 const shellsById = new Map<string, ManagedShell>();
@@ -51,36 +53,26 @@ function onHostData(msg: { id: string; data?: string }): void {
     m.buffer = m.buffer.slice(-OUTPUT_MAX_BYTES);
   }
 
-  // Suppress capture-wrapper noise (the `stty -echo; PS1=...` preface, the
-  // sentinel echoes, and the post-command reset) from what the user sees, while
-  // keeping the full transcript in `buffer` for runShellCommand parsing. The
-  // user then sees only the command's own output during a capture.
+  // During a command capture we filter out any line containing the injected
+  // completion marker (both the echoed `echo '<marker>'` command and its output
+  // line), so the user sees a clean, real terminal: command echo, output, and
+  // the next prompt. Everything else streams unchanged. Line-based filtering is
+  // robust across arbitrary PTY chunk boundaries.
   let visible = msg.data;
   if (m.capture && !m.capture.done) {
     const c = m.capture;
-    const curLen = m.buffer.length;
-    // The tag appears twice when a preface command echoes the tag text: once in
-    // the echoed command line and again as the actual `echo` output. We always
-    // key off the LAST occurrence (the echo output).
-    const startPos = m.buffer.lastIndexOf(c.startTag);
-    const endPos = m.buffer.lastIndexOf(c.endTag);
-
-    let visStart = -1;
-    if (startPos !== -1) {
-      const nl = m.buffer.indexOf("\n", startPos + c.startTag.length);
-      visStart = nl === -1 ? startPos + c.startTag.length : nl + 1;
-    }
-    let visEnd = curLen;
-    if (endPos !== -1) {
-      const lineStart = m.buffer.lastIndexOf("\n", endPos) + 1;
-      visEnd = lineStart;
-      if (endPos + c.endTag.length <= curLen) c.done = true;
-    }
-
-    // Broadcast only the intersection of the visible region with this chunk.
-    const from = Math.max(prevLen, visStart);
-    const to = Math.min(curLen, visEnd);
-    visible = to > from ? msg.data.slice(from - prevLen, to - prevLen) : "";
+    const text = c.partial + msg.data;
+    const nl = text.lastIndexOf("\n");
+    const complete = nl === -1 ? "" : text.slice(0, nl + 1);
+    c.partial = nl === -1 ? text : text.slice(nl + 1);
+    visible = complete
+      .split("\n")
+      .filter((l) => l.indexOf(c.endTag) === -1)
+      .join("\n");
+    // Filtering is linear and stateless per line; mark done once we've seen the
+    // marker so we stop paying the cost (the marker itself will have been in
+    // some complete line).
+    if (text.indexOf(c.endTag) !== -1) c.done = true;
   }
 
   broadcastToAll({
@@ -222,16 +214,11 @@ export interface ShellCommandResult {
 /**
  * Run `command` in the live shell and wait for its output.
  *
- * The command + a unique completion marker are written to the PTY, then the
- * shell's buffer is polled until the marker appears (or `timeoutMs` elapses).
- * Everything written after the command began and up to the marker is returned
- * (with ANSI codes stripped). This lets `sendCommand` come back with the actual
- * command output rather than "command sent" — waiting as long as needed.
- *
- * Note: output is captured from the shared rolling buffer, so it is also
- * streamed live to the GUI as usual. Because the shell is interactive, this
- * waits for the marker to print; interactive/long-running commands will hit the
- * timeout and return whatever was produced so far.
+ * The command is written normally (so the terminal shows the real echo +
+ * output + prompt), followed by an invisible completion marker. The buffer is
+ * polled until the marker's echo appears (or `timeoutMs` elapses). Only the
+ * command's own stdout (everything after the echoed command line and up to the
+ * marker) is returned, stripped of ANSI.
  */
 export async function runShellCommand(
   id: string,
@@ -242,19 +229,12 @@ export async function runShellCommand(
   if (!m) throw new Error(`Shell ${id} not running`);
 
   const startIndex = m.buffer.length;
-  const token = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  const startTag = `VSH_OUT_START_${token}`;
-  const endTag = `VSH_OUT_END_${token}`;
+  const endTag = `__VSH_DONE_${Date.now()}_${Math.random().toString(36).slice(2, 10)}__`;
 
-  // Disable input echo + clear PS1 for the duration of the capture so the
-  // returned text is ONLY the command's actual output — not the echoed command
-  // line or the prompt. The command runs between two unique sentinel echoes.
-  // The capture flag also makes onHostData hide this wrapper noise from the
-  // user's GUI terminal (only the real output is broadcast).
-  m.capture = { startTag, endTag, done: false };
-  writeToShell(id, `stty -echo; PS1=''; echo ${startTag}\n`);
+  // The terminal is left untouched; just run the command and append a marker.
+  m.capture = { endTag, done: false, partial: "" };
   writeToShell(id, `${command}\n`);
-  writeToShell(id, `echo ${endTag}; stty echo; PS1='\\u@\\h:\\w\\$ '\n`);
+  writeToShell(id, `echo '${endTag}'\n`);
 
   const finish = () => {
     const mm = shellsById.get(id);
@@ -266,24 +246,41 @@ export async function runShellCommand(
     const poll = setInterval(() => {
       const mm = shellsById.get(id);
       const buffer = mm?.buffer ?? "";
-      const startPos = buffer.lastIndexOf(startTag);
-      const endPos = buffer.lastIndexOf(endTag);
-      if (startPos !== -1 && endPos > startPos) {
+      // Marker appears twice: in the echoed `echo '<endTag>'` command line and
+      // once as its output. The LAST occurrence is the output marker.
+      const markerPos = buffer.lastIndexOf(endTag);
+      const markerStart = markerPos === -1 ? -1 : markerPos + endTag.length;
+      if (markerPos !== -1 && markerStart >= markerPos) {
         clearInterval(poll);
-        const out = buffer.slice(startPos + startTag.length, endPos);
+        const out = extractStdout(buffer, startIndex, markerStart, markerPos);
         finish();
         resolve({ output: stripAnsi(out).trim(), timedOut: false });
         return;
       }
       if (Date.now() > deadline) {
         clearInterval(poll);
-        const out = buffer.slice(startIndex);
         finish();
-        resolve({ output: stripAnsi(out).trim(), timedOut: true });
+        resolve({ output: stripAnsi(buffer.slice(startIndex)).trim(), timedOut: true });
         return;
       }
     }, 100);
   });
+}
+
+/** Extract the command's stdout: after the echoed command line, before the marker. */
+function extractStdout(buffer: string, startIndex: number, markerEnd: number, markerPos: number): string {
+  // The echoed command line is `<prompt> <command>`. Locate the command within
+  // it and take everything after that line's newline up to the marker's line.
+  const raw = buffer.slice(startIndex);
+  // The marker's output line begins at the newline before markerPos.
+  const markerLineStart = buffer.lastIndexOf("\n", markerPos) + 1;
+  // The command echo line is the first line in `raw` (starts at startIndex).
+  const cmdLineEnd = raw.indexOf("\n");
+  const outStart = cmdLineEnd === -1 ? 0 : cmdLineEnd + 1;
+  // Clip to the marker line start (relative to this slice).
+  const outEnd = markerLineStart - startIndex;
+  if (outEnd <= outStart) return raw.slice(0, Math.max(0, outEnd)).replace(/^\s+/, "");
+  return raw.slice(outStart, outEnd);
 }
 
 export interface ShellOutputOptions {

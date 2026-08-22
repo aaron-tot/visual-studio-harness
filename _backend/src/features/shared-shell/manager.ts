@@ -238,7 +238,16 @@ export async function runShellCommand(
 
   const finish = () => {
     const mm = shellsById.get(id);
-    if (mm) mm.capture = undefined;
+    if (mm) {
+      mm.capture = undefined;
+      // Remove the injected marker lines (the echoed `echo '<marker>'` command
+      // and its `marker` output) from the persisted buffer so a later
+      // navigate-back / getShellOutput replay stays clean and real-looking.
+      mm.buffer = mm.buffer
+        .split("\n")
+        .filter((line) => line.indexOf(endTag) === -1)
+        .join("\n");
+    }
   };
 
   return new Promise((resolve) => {

@@ -13,38 +13,34 @@ interface ShellTerminalProps {
 }
 
 /**
- * Render a captured PTY buffer as clean, stable plain text for restore.
+ * Render a captured PTY buffer as clean, stable output for restore.
  *
- * The live stream already rendered correctly on screen; the problem is
- * *replaying* the whole raw buffer into a fresh xterm on navigate-back, which
- * re-runs every escape/control sequence and causes column drift, colour gaps
- * and stray blank lines. Instead we reduce the buffer to its visible plain-text
- * lines and write those, so a restored shell looks exactly like it did live
- * (geometry-stable, no colour/position jumps).
+ * Replaying the whole raw buffer into a fresh xterm re-runs every escape
+ * sequence, which causes column drift, stray blank lines and colour glitches.
+ * This reduces the buffer to its visible text, KEEPING SGR colour codes
+ * (`\x1b[...m` — the green prompt etc.) so the restore matches the live render,
+ * while stripping cursor/erase/OSC/private-mode sequences that only relocate
+ * text or print control junk.
  */
 function sanitizeRestore(raw: string): string {
   let s = raw
-    // Erase display/line + cursor movement/home (relocates/clears the view).
-    .replace(/\x1b\[[0-9?;]*[A-JK]/g, "")
-    // DEC private-mode SET/RESET (bracketed paste ?2004h/l, alt-screen ?1049h,
-    // etc.) — leaving these on would stick the fresh terminal in a weird mode.
-    .replace(/\x1b\[\??[0-9;]*[hl]/g, "")
-    // Cursor position / char-abs / scroll-region / modes — strip all CSI.
-    .replace(/\x1b\[[0-9?;:]*[bcdfghlnst]/g, "")
-    // SGR colour + all other CSI final-bytes (control noise; we want plain).
-    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
+    // Keep SGR (final byte `m`) colour codes; drop every other CSI sequence.
+    .replace(
+      /\x1b\[[0-9;?]*[\x40-\x7e]/g,
+      (seq) => (seq.endsWith("m") ? seq : "")
+    )
     // OSC strings (title, hyperlink, shell-integration JSON) — strip wholesale.
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
-    // Remaining ESC + control, DCS, APC, reset/charset.
-    .replace(/\x1b[^a-zA-Z]*[A-Za-z]/g, "")
+    // DCS / APC / PM strings.
+    .replace(/\x1b[P\]^][\s\S]*?\x1b\\/g, "")
+    // Charset / reset / single-ESC controls.
+    .replace(/\x1b[\x00-\x1fXbc()]/g, "")
     .replace(/\x1b/g, "")
-    // CRLF → LF (return-to-col-0 + advance), lone CR → LF.
+    // CRLF → LF; lone CR → LF (carriage-return to col 0 + newline).
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n");
-  // Collapse runs of blank lines to a single line break. Real transcripts
-  // don't need multiple consecutive empty lines, and PTY control sequences
-  // (bracketed-paste toggles, OSC hits) leave stray newlines behind — this
-  // removes that noise so the restore matches the live render.
+  // Collapse runs of blank lines. PTY control chatter leaves stray empty lines;
+  // real transcripts don't need several in a row.
   return s.replace(/\n{2,}/g, "\n");
 }
 

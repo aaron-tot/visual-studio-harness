@@ -8,6 +8,7 @@ import "@xterm/xterm/css/xterm.css";
 import { useSharedShellStore } from "../store";
 import { getShellSnapshotApi, putShellSnapshotApi } from "../api";
 import { SHELL_THEME } from "../theme";
+import { cleanSnapshot } from "../snapshot-clean";
 import type { Shell, ShellSnapshot } from "../types";
 
 interface ShellTerminalProps {
@@ -85,7 +86,7 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
       return;
     }
     if (!serialized) return;
-    putShellSnapshotApi(shell.id, dims.cols, dims.rows, serialized).catch(() => {});
+    putShellSnapshotApi(shell.id, dims.cols, dims.rows, cleanSnapshot(serialized)).catch(() => {});
   }, [shell.id]);
 
   // Debounce-schedule a snapshot persist (avoids a POST per keystroke/byte).
@@ -252,7 +253,7 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
         // content (exact colour/cursor restore), then refit to this viewport.
         if (snapshot && snapshot.serialized && snapshot.cols > 0 && snapshot.rows > 0) {
           term.resize(snapshot.cols, snapshot.rows);
-          term.write(snapshot.serialized);
+          term.write(cleanSnapshot(snapshot.serialized));
         }
 
         hydratedRef.current = true;

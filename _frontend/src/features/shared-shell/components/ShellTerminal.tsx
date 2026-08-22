@@ -12,16 +12,36 @@ interface ShellTerminalProps {
   shell: Shell;
 }
 
-/** Strip terminal sequences that would blank or relocate the visible screen
- *  when replaying a captured transcript into a freshly-mounted xterm. Without
- *  this, navigating back to a terminal re-runs the buffer's own clear/erase
- *  codes and wipes the view down to a bare blinking cursor. */
+/**
+ * Strip terminal sequences that would blank, relocate, restyle, or emit junk
+ * when replaying a captured transcript into a freshly-mounted xterm.
+ *
+ * On navigate-back we write the whole raw buffer into a new xterm, which
+ * re-runs every escape sequence the shell emitted — the OSC title/shell-status
+ * JSON (`\x1b]0;...`, `\x1b]3008;...`), the bracketed-paste enable/disable
+ * (`\x1b[?2004h/l`), and cursor-position/erase codes. That is what makes the
+ * shell look garbled (text jumping position, stray styling/colour flashes)
+ * after switching shells. Keep colour (SGR `\x1b[...m`) so the terminal still
+ * looks right, but drop everything else that mutates layout or prints noise.
+ */
 function sanitizeRestore(raw: string): string {
   return raw
-    .replace(/\x1b\[[0-2?]*J/g, "") // erase display (all/below/above)
-    .replace(/\x1b\[[0-3]*K/g, "") // erase line (keeps layout stable)
-    .replace(/\x1b\[H/g, "") // cursor home would rewrite from line 0
-    .replace(/\x1bc/g, ""); // full terminal reset
+    // Erase display (would wipe the freshly-mounted view).
+    .replace(/\x1b\[[0-9?]*J/g, "")
+    // DEC private-mode SET/RESET (e.g. `?2004h/l` bracketed paste, `?1049h`
+    // alt-screen disables would leave the terminal in a stuck mode).
+    .replace(/\x1b\[\??[0-9;]*h/g, "")
+    .replace(/\x1b\[\??[0-9;]*l/g, "")
+    // Cursor movement/home (A,B,C,D,E,F,G,H) — replaying these relocates text.
+    .replace(/\x1b\[\d*[A-GH]/g, "")
+    // cursor char abs / toggle / set scroll-region — noisy to replay.
+    .replace(/\x1b\[[0-9?;:]*[cfr]/g, "")
+    // OSC strings (title, hyperlink, shell-integration JSON) — strip.
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+    // ESC + assorted single-char controls (no-op, reset, charset).
+    .replace(/\x1b[\x00-\x1fXbc]/g, "");
+  // NOTE: do NOT strip `\r`. In VT output `\r\n` is what returns the cursor to
+  // column 0 + advances; leaving `\r` intact keeps columns aligned on restore.
 }
 
 /**

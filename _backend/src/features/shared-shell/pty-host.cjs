@@ -96,7 +96,7 @@ function emitSnapshot(id) {
         type: "snapshot",
         cols: entry.term.cols,
         rows: entry.term.rows,
-        data: entry.serialize.serialize({ excludeModes: true }) || "",
+        data: entry.serialize.serialize() || "",
       });
     } catch (err) {
       emit({ id, type: "error", message: err instanceof Error ? err.message : String(err) });

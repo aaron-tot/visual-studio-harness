@@ -168,10 +168,13 @@ export function ShellTerminal({ shell, active = false }: ShellTerminalProps) {
         hydratingRef.current = false;
       }
       if (cancelled) return;
-      // Fit the view only. Do not SIGWINCH the PTY if size already matches
-      // the snapshot — bash would reprint PS1 over the restored buffer.
+      // Fit only if the viewport size differs. fit() after a same-size
+      // restore moves the blinking cursor off the prompt.
+      const before = { cols: term.cols, rows: term.rows };
       fit.fit();
-      pushSize();
+      if (term.cols !== before.cols || term.rows !== before.rows) {
+        pushSize();
+      }
       term.focus();
     });
 

@@ -3,6 +3,7 @@ import { Archive, Info, CheckCircle2, Star, Trash2, Palette, AlertTriangle, Plus
 import { SortableTree } from "../testing/sortable-tree";
 import { useSessionStore } from "../../../sessions/store";
 import { useChatStore } from "../../../chat/store";
+import { useMobilePanelStore } from "../../../../stores/mobilePanel";
 import type { TreeItems } from "../testing/sortable-tree/types";
 import {
   buildWorkspaceTree,
@@ -82,7 +83,7 @@ function SessionActions({ id, isDragOverlay, onSessionClick }: { id: string; isD
         <>
           <div
             className="flex-1 min-w-0"
-            onClick={(e) => { e.stopPropagation(); setActive(id); onSessionClick?.(id); }}
+            onClick={(e) => { e.stopPropagation(); setActive(id); onSessionClick?.(id); useMobilePanelStore.getState().close("left"); }}
             onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}
           >
             <p className={`text-sm truncate ${active ? "text-zinc-300" : "text-zinc-400"}`}>

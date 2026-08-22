@@ -70,7 +70,7 @@ export function ChatArea({ onOpenSettings }: ChatAreaProps) {
   }, [sessionId, config.defaultAgent, config.agents, setSelectedAgent]);
 
   return (
-    <main className="flex-1 flex flex-col h-full relative min-w-0">
+    <main className="flex-1 flex flex-col h-full relative min-w-0 min-h-0">
       {showBanner && (
         <div className={disconnectedBanner}>
           Disconnected from server — reconnecting...

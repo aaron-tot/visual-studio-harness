@@ -643,7 +643,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
       menuPos={snippetMenu.menuPos}
       snippets={snippets}
     />
-    <div className="flex-1 h-full relative">
+    <div className="flex-1 h-full relative min-h-0">
       <div className="fixed inset-0 pointer-events-none">
         <div className={dotGrid} style={dotGridStyle} />
       </div>

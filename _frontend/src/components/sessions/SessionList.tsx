@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Archive, Info, CheckCircle2, Star, Trash2 } from "lucide-react";
 import { SortableTree } from "../../features/info-panel/components/testing/sortable-tree";
 import { useSessionStore } from "../../features/sessions/store";
+import { useMobilePanelStore } from "../../stores/mobilePanel";
 import type { TreeItems } from "../../features/info-panel/components/testing/sortable-tree/types";
 import type { SessionMeta } from "../../../../_shared/types";
 
@@ -55,7 +56,7 @@ function SessionActions({ id }: { id: string }) {
         <>
           <span
             className={`flex-1 min-w-0 truncate text-sm cursor-pointer ${active ? "text-zinc-300" : "text-zinc-400"}`}
-            onClick={(e) => { e.stopPropagation(); setActive(id); }}
+            onClick={(e) => { e.stopPropagation(); setActive(id); useMobilePanelStore.getState().close("left"); }}
             onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}
           >
             {meta?.title || id.slice(0, 8)}

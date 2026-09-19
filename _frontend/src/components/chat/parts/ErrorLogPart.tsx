@@ -41,6 +41,24 @@ export function isRecovered(retries?: RetryEntry[]): boolean {
   return retries[retries.length - 1].status === "succeeded";
 }
 
+/** Title label for an error part. Local "network" errors are client-side
+ * (watchdog timeout / backend unreachable) and must not be mislabeled as an
+ * upstream provider error. */
+export function errorPartTitle(opts: {
+  recovered: boolean;
+  nRetries: number;
+  category?: string;
+  providerName?: string;
+}): string {
+  if (opts.recovered) {
+    return `Recovered after ${opts.nRetries} retr${opts.nRetries === 1 ? "y" : "ies"}`;
+  }
+  if (opts.category === "network") return "Connection / Timeout Error";
+  return opts.providerName
+    ? `Upstream Provider (${opts.providerName}) Error`
+    : "Upstream Provider Error";
+}
+
 const OUTCOME_META: Record<RetryEntry["status"], { label: string; cls: string }> = {
   succeeded: { label: "succeeded", cls: "text-emerald-400/90" },
   failed: { label: "failed", cls: "text-red-400/90" },
@@ -48,15 +66,14 @@ const OUTCOME_META: Record<RetryEntry["status"], { label: string; cls: string }>
   aborted: { label: "aborted", cls: "text-zinc-400/80" },
 };
 
-export function ErrorLogPart({ message, raw, isCustom, timestamp, retries, providerName }: ErrorLogPartProps) {
+export function ErrorLogPart({ message, raw, isCustom, timestamp, retries, providerName, category }: ErrorLogPartProps) {
   const [open, setOpen] = useState(true);
   const [showRaw, setShowRaw] = useState(false);
   const recovered = isRecovered(retries);
   const nRetries = retries?.length ?? 0;
   const canToggle = !!(isCustom && raw && raw.trim() && raw.trim() !== message.trim());
   const display = canToggle && showRaw ? raw! : message;
-  const providerLabel = providerName ? `Upstream Provider (${providerName}) Error` : "Upstream Provider Error";
-const title = recovered ? `Recovered after ${nRetries} retr${nRetries === 1 ? "y" : "ies"}` : providerLabel;
+  const title = errorPartTitle({ recovered, nRetries, category, providerName });
   const border = recovered ? "border-amber-500/40 bg-amber-950/30" : "border-red-500/40 bg-red-950/30";
   const text = recovered ? "text-amber-200" : "text-red-200";
   const icon = recovered ? "text-amber-400" : "text-red-400";

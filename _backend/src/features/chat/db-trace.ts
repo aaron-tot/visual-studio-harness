@@ -750,6 +750,69 @@ export function persistRetryLogPart(
   );
 }
 
+export interface AutoContinueCapNote {
+  sessionId: string;
+  turnId: number;
+  kind: "tool_end" | "thinking_end";
+  maxAttempts: number;
+  windowValue: number;
+  windowUnit: string;
+}
+
+/**
+ * Persist a human-readable note when an auto-continue loop stopped because the
+ * per-window retry cap was hit (the agent was left stopped on a tool).
+ *
+ * Written as a custom "system" step part attached to the given turn's last step
+ * (or a synthetic step when the turn has none), mirroring persistRetryLogPart.
+ * Best-effort: any persistence error is swallowed so the note never breaks the
+ * turn flow. Idempotent: no-op when a cap note already exists for the turn.
+ */
+export function persistAutoContinueCapNote(note: AutoContinueCapNote, dataDir?: string): void {
+  const db = dbFor(dataDir);
+
+  const existing = db
+    .select({ id: stepParts.id })
+    .from(stepParts)
+    .where(and(eq(stepParts.turnId, note.turnId), eq(stepParts.type, "system")))
+    .limit(1)
+    .get();
+  if (existing) return;
+
+  let stepId = getLastStepId(note.turnId, dataDir);
+  if (stepId == null) {
+    stepId = createStep(note.turnId, note.sessionId, 0, undefined, dataDir);
+    finalizeStep(stepId, { finishReason: "stop" }, dataDir);
+  }
+
+  const seqRow = db
+    .select({ m: max(stepParts.seq) })
+    .from(stepParts)
+    .where(eq(stepParts.turnId, note.turnId))
+    .get();
+  const seq = Number(seqRow?.m ?? 0) + 1;
+
+  const detected = note.kind === "tool_end" ? "tool call" : "reasoning block";
+  insertStepPart(
+    note.sessionId,
+    note.turnId,
+    stepId,
+    "system",
+    {
+      message: `Auto-continue detected the agent stopped on a ${detected}, but the retry cap of ${note.maxAttempts} within ${note.windowValue} ${note.windowUnit} was hit. No further auto-continuation was attempted.`,
+      kind: "auto_continue_cap",
+      detected: note.kind,
+      maxAttempts: note.maxAttempts,
+      windowValue: note.windowValue,
+      windowUnit: note.windowUnit,
+    },
+    seq,
+    "completed",
+    undefined,
+    dataDir,
+  );
+}
+
 /**
  * Abort all turns with `status = "streaming"` across all sessions.
  * Called at backend startup to clean up orphaned turns from a prior crash.

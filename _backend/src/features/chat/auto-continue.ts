@@ -103,6 +103,13 @@ export interface AutoContinueLoopOptions {
   runTurn: (content: string) => Promise<TurnResult | null>;
   /** Returns true when the user explicitly stopped the turn (e.g. pressed Stop). */
   isCancelled?: () => boolean;
+  /**
+   * Called exactly when the loop stops because the per-window attempt cap was
+   * reached (canAutoContinue returned false) — NOT on normal resolution,
+   * user cancel, or a failed runTurn. Receives the last successful result
+   * (which still ends on a tool/reasoning block).
+   */
+  onCapExhausted?: (lastResult: TurnResult) => void;
 }
 
 /**
@@ -112,14 +119,19 @@ export interface AutoContinueLoopOptions {
  */
 export async function runAutoContinue(opts: AutoContinueLoopOptions): Promise<TurnResult> {
   let contResult = opts.initialResult;
+  let capExhausted = false;
   while (opts.shouldContinue(contResult)) {
     if (opts.isCancelled?.()) break;
-    if (!canAutoContinue(opts.attempts, opts.sessionId, opts.maxAttempts, opts.windowValue, opts.windowUnit)) break;
+    if (!canAutoContinue(opts.attempts, opts.sessionId, opts.maxAttempts, opts.windowValue, opts.windowUnit)) {
+      capExhausted = true;
+      break;
+    }
     recordAutoContinue(opts.attempts, opts.sessionId);
     const next = await opts.runTurn(opts.prompt);
     if (!next) break;
     contResult = next;
   }
+  if (capExhausted) opts.onCapExhausted?.(contResult);
   return contResult;
 }
 

@@ -17,7 +17,7 @@ import {
   pendingDeltas,
 } from "./session-hydrate";
 import { consolidateTextParts, textContentFromParts, maxSeqOf, partsFromSnapshot } from "./parts-util";
-import { touchStreamTimeout } from "./store";
+import { touchStreamTimeout, clearStreamTimeout } from "./store";
 
 // ── rAF batching for streaming deltas ─────────────────────────────────────
 // Coalesces per-token Zustand set() calls into one React render per animation
@@ -126,9 +126,10 @@ wsClient.on("done", (data: any) => {
   const store = useChatStore.getState();
 
   // Accept done events that match the current session, OR "new" session
-  // when no session is established yet (pre-bind turn).
+  // (pre-bind turn / when the client hasn't been told the real id yet).
   const sessionOk =
     data.sessionId === store.sessionId ||
+    data.sessionId === "new" ||
     (!store.sessionId && data.sessionId === "new");
   if (!sessionOk) {
     chatDebug("done", "ignored: session mismatch", { eventSession: data.sessionId, storeSession: store.sessionId });
@@ -163,7 +164,11 @@ wsClient.on("done", (data: any) => {
     return;
   }
   if (!store.streaming) {
-    chatDebug("done", "ignored: store.streaming is false (no active turn)", { turnId: data.turnId });
+    // Idempotent un-stick: even if streaming is already false (e.g. a duplicate
+    // done, or an earlier path settled the turn), clear any lingering timer so
+    // the watchdog cannot fire a phantom timeout over a finished message.
+    clearStreamTimeout();
+    chatDebug("done", "applied (idempotent clear, streaming was false)", { turnId: data.turnId });
     return;
   }
   touchStreamTimeout();
@@ -185,9 +190,17 @@ wsClient.on("error", (data: any) => {
     return;
   }
   touchStreamTimeout();
-  chatDebug("error", "applied" + (!store.streaming ? " (streaming was false)" : ""), { error: data?.error, turnId: data.turnId, category: data?.category });
-  console.error("chat error", data?.error, data?.rawError);
-  store.failStreaming(data?.error || "Unknown error", { modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, status: data.status, category: data?.category, retries: data?.retries, errorTime: data?.errorTime });
+  // Guard: a backend 'error' arriving after the turn already settled (streaming
+  // false) is a race (error-delivery sends error+done, sometimes duplicated).
+  // The turn is committed — log it, don't overwrite the finished message.
+  if (store.streaming) {
+    chatDebug("error", "applied", { error: data?.error, turnId: data.turnId, category: data?.category });
+    console.error("chat error", data?.error, data?.rawError);
+    store.failStreaming(data?.error || "Unknown error", { modelName: data.modelName, providerName: data.providerName, durationMs: data.durationMs, turnId: data.turnId, agentName: data.agentName, rawError: data?.rawError, errorIsCustom: data?.errorIsCustom, status: data.status, category: data?.category, retries: data?.retries, errorTime: data?.errorTime });
+  } else {
+    clearStreamTimeout();
+    chatDebug("error", "ignored: streaming false (turn settled)", { error: data?.error, turnId: data.turnId });
+  }
 });
 
 wsClient.on("turn_started", (data: any) => {
@@ -521,6 +534,9 @@ wsClient.onDisconnect(() => {
     if (wsClient.connected) return;
     const { streaming, messages, sessionId } = useChatStore.getState();
     if (streaming) {
+      // Turn ended (forced) — clear the watchdog so it can't fire a phantom
+      // timeout over the "Connection lost" notice.
+      clearStreamTimeout();
       useChatStore.setState({
         messages: [...messages, { role: "assistant", content: "Connection lost. Backend may have stopped.", timestamp: new Date().toISOString() } as any],
         streaming: false,

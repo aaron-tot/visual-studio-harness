@@ -80,11 +80,15 @@ export function touchStreamTimeout(): void {
       touchStreamTimeout();
       return;
     }
+    // Guard: only force-stop an ACTIVE stream. If streaming is already false the
+    // turn resolved — do not surface a phantom timeout over a finished message.
+    const { streaming, streamingTurnId, sessionId } = store;
+    if (!streaming) return;
     chatDebug("stream-timeout", "force-stopping after inactivity", {
       inactiveMs,
-      streaming: store.streaming,
-      streamingTurnId: store.streamingTurnId,
-      sessionId: store.sessionId,
+      streaming,
+      streamingTurnId,
+      sessionId,
       lastBackendActivity: store.lastBackendActivity,
     });
     store.failStreaming("Request timed out — no response from server. Please check the backend and try again.", { category: "network" });
@@ -92,7 +96,7 @@ export function touchStreamTimeout(): void {
 }
 
 /** Clear the streaming timeout when streaming ends. */
-function clearStreamTimeout(): void {
+export function clearStreamTimeout(): void {
   if (_streamTimeoutId) {
     clearTimeout(_streamTimeoutId);
     _streamTimeoutId = null;
@@ -559,13 +563,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
   failStreaming: (error, meta) => {
     clearStreamTimeout();
     return set((state) => {
+      // Guard: never mutate a committed turn. If streaming is already false, the
+      // turn resolved (done) or another path settled it — a late timeout/race
+      // must not overwrite the final assistant message. Category 'network'
+      // timeouts are the classic late-arrival case; keep the finished turn.
+      if (!state.streaming) {
+        chatDebug("store", "failStreaming ignored: streaming is false (turn already settled)", { turnId: meta?.turnId });
+        return {};
+      }
+      // Defensive: never rewrite an already-committed successful assistant
+      // message even if a race left streaming true.
+      const lastCommittedMsg = state.messages[state.messages.length - 1];
+      if (lastCommittedMsg?.role === "assistant" && (lastCommittedMsg as any).success === true) {
+        chatDebug("store", "failStreaming ignored: last assistant already success (will not rewrite)", { turnId: meta?.turnId });
+        return { streaming: false, stopping: false, streamingContent: "", streamingParts: [], streamingOutputTps: null, streamingTurnId: null, lastSeq: 0, _reasonIdx: 0, _pendingContinueMessage: null, streamingStartTime: null, retryCountdown: null };
+      }
       const errText = (error || "Unknown error").trim() || "Unknown error";
       const raw = meta?.rawError?.trim();
       const isCustom = meta?.errorIsCustom === true && !!raw && raw !== errText;
       const category = meta?.category;
       const errLine = `[Error: ${errText}]`;
       const msgs = [...state.messages];
-      let parts = state.streamingParts.length > 0 ? sortParts(state.streamingParts) : [];
+
+      // Get streamed parts from either active streamingParts OR the last assistant message
+      // (which may have been created by a previous failStreaming call).
+      // This prevents losing content if failStreaming is called multiple times
+      // (e.g., backend error + frontend timeout race).
+      let parts: MessagePartType[] = [];
+      const lastMsg = msgs[msgs.length - 1];
+      if (state.streamingParts.length > 0) {
+        parts = sortParts(state.streamingParts);
+      } else if (lastMsg?.role === "assistant" && lastMsg.parts?.length) {
+        parts = sortParts(lastMsg.parts);
+      }
       // Merge the backend retry log into the matching error part(s) by errorKey.
       // If backendRetries have errorKey info, match by that; otherwise fall back
       // to the first error part (legacy behavior).
@@ -607,14 +637,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       } else if (parts.some((p) => p.type === "error")) {
         // No backend retries — settle any pending retries in existing error parts
+        // Also update the error part with new meta if it provides more detail (e.g., providerName)
         parts = parts.map((p) => {
-          if (p.type !== "error" || !p.retries || p.retries.length === 0) return p;
-          return {
-            ...p,
-            retries: p.retries.map((r) =>
+          if (p.type !== "error") return p;
+          const updated: typeof p = { ...p };
+          // Settle pending retries
+          if (updated.retries && updated.retries.length > 0) {
+            updated.retries = updated.retries.map((r) =>
               r.status === "pending" ? { ...r, status: "failed" as const } : r
-            ),
-          };
+            );
+          }
+          // Enhance with new meta if available and not already set
+          if (meta?.providerName && !updated.providerName) {
+            updated.providerName = meta.providerName;
+          }
+          if (meta?.modelName && !updated.modelName) {
+            updated.modelName = meta.modelName;
+          }
+          if (meta?.errorTime && !updated.timestamp) {
+            updated.timestamp = meta.errorTime;
+          }
+          // Update message if the new error text is more specific
+          if (meta?.category && updated.category !== meta.category && meta.category !== "network") {
+            // Prefer non-network category (backend error over frontend timeout)
+            updated.category = meta.category;
+            updated.message = errText;
+            if (isCustom && raw) updated.raw = raw;
+            updated.isCustom = isCustom;
+          }
+          return updated;
         });
       } else {
         // No error parts at all — create one for the final error

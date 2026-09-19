@@ -7,6 +7,13 @@
 type Scope = "global" | "project" | "session";
 type Feature = "designs" | "notes" | "audits" | "knowledge";
 
+// Silent singular→plural aliases (not advertised) to reduce tool calls.
+const FEATURE_ALIASES: Record<string, Feature | undefined> = {
+  design: "designs",
+  note: "notes",
+  audit: "audits",
+};
+
 const SCOPES: Scope[] = ["global", "project", "session"];
 
 interface ScopeResult {
@@ -39,7 +46,8 @@ export async function execute(
   ctx: any
 ): Promise<{ title: string; output: string; metadata?: Record<string, unknown> }> {
   const explicitScope = args.scope as Scope | undefined;
-  const feature = args.feature as Feature | undefined;
+  const rawFeature = args.feature as string | undefined;
+  const feature = (FEATURE_ALIASES[rawFeature ?? ""] ?? rawFeature) as Feature | undefined;
   const configs = Array.isArray(args.configs)
     ? (args.configs as Array<{
         extension?: string;
@@ -117,6 +125,10 @@ export async function execute(
           }
           return lines;
         }
+        default:
+          throw new Error(
+            `list: unknown feature "${String(feat)}". Expected one of: designs, notes, audits, knowledge.`
+          );
       }
     }, explicitScope);
 

@@ -261,6 +261,76 @@ describe("runAutoContinue", () => {
     expect(res.assistantMessage?.parts?.[0].type).toBe("tool");
   });
 
+  test("fires onCapExhausted exactly when the attempt cap is hit", async () => {
+    const runTurn = mock((): Promise<TurnResult | null> =>
+      Promise.resolve(mkResult({ parts: [{ type: "tool" }] }))
+    );
+    const onCapExhausted = mock(() => {});
+    const res = await runAutoContinue({
+      sessionId: "s1",
+      initialResult: mkResult({ parts: [{ type: "tool" }] }),
+      attempts: new Map(),
+      shouldContinue: shouldAutoContinueOnTool,
+      maxAttempts: 2,
+      windowValue: 1,
+      windowUnit: "minutes",
+      prompt: "continue",
+      runTurn,
+      onCapExhausted,
+    });
+    expect(onCapExhausted).toHaveBeenCalledTimes(1);
+    // The callback receives the last result, which still ends on a tool.
+    const last = onCapExhausted.mock.calls[0][0];
+    expect(last.assistantMessage?.parts?.[0].type).toBe("tool");
+    expect(res.assistantMessage?.parts?.[0].type).toBe("tool");
+  });
+
+  test("does NOT fire onCapExhausted when the turn resolves", async () => {
+    let calls = 0;
+    const runTurn = mock((): Promise<TurnResult | null> => {
+      calls++;
+      // first continuation still ends on a tool, second resolves to text
+      return Promise.resolve(
+        mkResult({ parts: calls === 1 ? [{ type: "tool" }] : [{ type: "text", content: "done" }] })
+      );
+    });
+    const onCapExhausted = mock(() => {});
+    await runAutoContinue({
+      sessionId: "s1",
+      initialResult: mkResult({ parts: [{ type: "tool" }] }),
+      attempts: new Map(),
+      shouldContinue: shouldAutoContinueOnTool,
+      maxAttempts: 5,
+      windowValue: 1,
+      windowUnit: "minutes",
+      prompt: "continue",
+      runTurn,
+      onCapExhausted,
+    });
+    expect(onCapExhausted).not.toHaveBeenCalled();
+  });
+
+  test("does NOT fire onCapExhausted when cancelled", async () => {
+    const runTurn = mock((): Promise<TurnResult | null> =>
+      Promise.resolve(mkResult({ parts: [{ type: "tool" }] }))
+    );
+    const onCapExhausted = mock(() => {});
+    await runAutoContinue({
+      sessionId: "s1",
+      initialResult: mkResult({ parts: [{ type: "tool" }] }),
+      attempts: new Map(),
+      shouldContinue: shouldAutoContinueOnTool,
+      maxAttempts: 0,
+      windowValue: 1,
+      windowUnit: "minutes",
+      prompt: "continue",
+      runTurn,
+      isCancelled: () => true,
+      onCapExhausted,
+    });
+    expect(onCapExhausted).not.toHaveBeenCalled();
+  });
+
   test("stops immediately if initial does not need continue", async () => {
     const runTurn = mock((): Promise<TurnResult | null> =>
       Promise.resolve(mkResult({ parts: [{ type: "text" }] }))

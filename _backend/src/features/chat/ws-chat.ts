@@ -30,6 +30,7 @@ import {
   runAutoContinue,
   runContinuationTurn,
 } from "./auto-continue";
+import { persistAutoContinueCapNote } from "./db-trace";
 import { emitErrorAndDone, emitDoneOnly, classifyError } from "./error-delivery";
 import { getSessionAborts, cancelSession, consumePendingContinue, clearPendingContinue, wasUserCancelled, clearUserCancelled } from "./session-abort";
 import { chatDebug } from "./debug";
@@ -215,21 +216,10 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
       onSlotWaitEnd: (info) => { sendToSession(sessionId, { type: "slot_wait_ended", sessionId, requestId: info.requestId }); },
     });
 
-    // Always deliver done directly to the originating socket so the frontend
-    // never hangs on "Thinking". Only deliver the error event when there is
-    // actually an error — sending an empty {type:"error"} would cause the
-    // frontend to show "Unknown error" for successful turns.
-    if (result.error) {
-      emitErrorAndDone(socket, result.sessionId, {
-        error: result.error,
-        rawError: result.rawError,
-        errorIsCustom: result.errorIsCustom,
-        category: "streaming",
-      }, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs, result.retries);
-    } else {
-      emitDoneOnly(socket, result.sessionId, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs);
-    }
-
+    // NOTE: done/error is deliberately NOT emitted here. It must wait until the
+    // auto-continue loops (and any pending continue) below have fully settled,
+    // so the frontend keeps `streaming=true` for the whole turn chain and never
+    // flips the Send button back mid-stream or drops continuation tokens.
     if (!socketClosed && !wasUserCancelled(sessionId) && config.autoContinueOnToolEnd) {
       result = await runAutoContinue({
         sessionId,
@@ -243,6 +233,18 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
         runTurn: (content) =>
           runContinuationTurn({ dataDir, config, sessionId, content, streamHandlers: handlers, sessionAborts, cancelSession, socket }),
         isCancelled: () => wasUserCancelled(sessionId),
+        onCapExhausted: (last) => {
+          if (last.turnId != null) {
+            persistAutoContinueCapNote({
+              sessionId,
+              turnId: last.turnId,
+              kind: "tool_end",
+              maxAttempts: config.autoContinueOnToolEndMaxAttempts ?? 5,
+              windowValue: config.autoContinueOnToolEndWindowValue ?? 1,
+              windowUnit: config.autoContinueOnToolEndWindowUnit ?? "minutes",
+            }, dataDir);
+          }
+        },
       });
     }
 
@@ -259,11 +261,42 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
         runTurn: (content) =>
           runContinuationTurn({ dataDir, config, sessionId, content, streamHandlers: handlers, sessionAborts, cancelSession, socket }),
         isCancelled: () => wasUserCancelled(sessionId),
+        onCapExhausted: (last) => {
+          if (last.turnId != null) {
+            persistAutoContinueCapNote({
+              sessionId,
+              turnId: last.turnId,
+              kind: "thinking_end",
+              maxAttempts: config.autoContinueOnThinkingEndMaxAttempts ?? 5,
+              windowValue: config.autoContinueOnThinkingEndWindowValue ?? 1,
+              windowUnit: config.autoContinueOnThinkingEndWindowUnit ?? "minutes",
+            }, dataDir);
+          }
+        },
       });
     }
 
     const continued = consumePendingContinue(sessionId);
-    if (continued && !socketClosed && !wasUserCancelled(sessionId)) await runContinuationTurn({ dataDir, config, sessionId, content: continued.content, agentName: continued.agentName, streamHandlers: handlers, sessionAborts, cancelSession, socket });
+    if (continued && !socketClosed && !wasUserCancelled(sessionId)) {
+      const continuedResult = await runContinuationTurn({ dataDir, config, sessionId, content: continued.content, agentName: continued.agentName, streamHandlers: handlers, sessionAborts, cancelSession, socket });
+      if (continuedResult) result = continuedResult;
+    }
+
+    // Turn chain fully settled — now emit the terminal done/error once so the
+    // frontend flips back to Send exactly once, and continuation-held tokens
+    // are never dropped mid-stream.
+    if (!socketClosed) {
+      if (result.error) {
+        emitErrorAndDone(socket, result.sessionId, {
+          error: result.error,
+          rawError: result.rawError,
+          errorIsCustom: result.errorIsCustom,
+          category: "streaming",
+        }, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs, result.retries);
+      } else {
+        emitDoneOnly(socket, result.sessionId, result.turnId, result.agentName, result.modelName, result.providerName, result.durationMs);
+      }
+    }
   } catch (err: unknown) {
     streamSuccess = false;
     const effectiveSessionId = sessionId || msg.sessionId || "new";

@@ -137,6 +137,18 @@ describe("list designs — missing meta.version", () => {
     expect(res.isError).toBeUndefined();
     expect(res.output).toContain("demo");
   });
+
+  it("list accepts singular feature alias design->designs silently", async () => {
+    const res = await listTool.execute({ feature: "design", scope: "project" }, ctx());
+    expect(res.isError).toBeUndefined();
+    expect(res.output).toContain("proj-design");
+  });
+
+  it("list rejects unknown feature loudly instead of crashing on sr.lines", async () => {
+    await expect(listTool.execute({ feature: "bogus", scope: "project" }, ctx())).rejects.toThrow(
+      'unknown feature "bogus"',
+    );
+  });
 });
 
 describe("audit edit — resolve scope from existing doc", () => {

@@ -21,6 +21,7 @@ import {
   shouldAutoContinueOnTool,
   shouldAutoContinueOnThinking,
 } from "../chat/auto-continue";
+import { persistAutoContinueCapNote } from "../chat/db-trace";
 
 const SUMMARY_MAX = 12_000;
 
@@ -276,6 +277,19 @@ export async function runSubagentTurn(
           windowUnit: config.autoContinueOnToolEndWindowUnit ?? "minutes",
           prompt: config.autoContinueOnToolEndPrompt ?? AUTO_CONTINUE_MSG,
           runTurn: runCont,
+          isCancelled: () => ctx.abortSignal.aborted,
+          onCapExhausted: (last) => {
+            if (last.turnId != null) {
+              persistAutoContinueCapNote({
+                sessionId: childId,
+                turnId: last.turnId,
+                kind: "tool_end",
+                maxAttempts: config.autoContinueOnToolEndMaxAttempts ?? 5,
+                windowValue: config.autoContinueOnToolEndWindowValue ?? 1,
+                windowUnit: config.autoContinueOnToolEndWindowUnit ?? "minutes",
+              }, ctx.dataDir);
+            }
+          },
         });
       }
       if (config.autoContinueOnThinkingEnd) {
@@ -289,6 +303,19 @@ export async function runSubagentTurn(
           windowUnit: config.autoContinueOnThinkingEndWindowUnit ?? "minutes",
           prompt: config.autoContinueOnThinkingEndPrompt ?? AUTO_CONTINUE_THINKING_MSG,
           runTurn: runCont,
+          isCancelled: () => ctx.abortSignal.aborted,
+          onCapExhausted: (last) => {
+            if (last.turnId != null) {
+              persistAutoContinueCapNote({
+                sessionId: childId,
+                turnId: last.turnId,
+                kind: "thinking_end",
+                maxAttempts: config.autoContinueOnThinkingEndMaxAttempts ?? 5,
+                windowValue: config.autoContinueOnThinkingEndWindowValue ?? 1,
+                windowUnit: config.autoContinueOnThinkingEndWindowUnit ?? "minutes",
+              }, ctx.dataDir);
+            }
+          },
         });
       }
       result = finalResult;

@@ -28,6 +28,7 @@ import {
   getActiveTraceTurn,
   sessionHasTurns,
   persistRetryLogPart,
+  persistAutoContinueCapNote,
 } from "./db-trace";
 import { createStepStreamWriter } from "./persist-stream";
 import { createSession } from "../sessions/db";
@@ -488,5 +489,51 @@ describe("persistRetryLogPart (custom error part)", () => {
     expect(stepsForTurn).toHaveLength(1);
     expect(stepsForTurn[0].status).toBe("completed");
     expect(errParts[0].stepId).toBe(stepsForTurn[0].id);
+  });
+});
+
+describe("persistAutoContinueCapNote (cap-hit system note)", () => {
+  test("writes a system part with cap details, idempotent", () => {
+    const tId = createTurn(SESSION_ID, 510, "cap note", new Date().toISOString(), {}, dataDir);
+    const stepId = createStep(tId, SESSION_ID, 0, undefined, dataDir);
+    finalizeStep(stepId, { finishReason: "stop" }, dataDir);
+    insertStepPart(SESSION_ID, tId, stepId, "text", { content: "hi" }, 1, "completed", undefined, dataDir);
+
+    persistAutoContinueCapNote(
+      { sessionId: SESSION_ID, turnId: tId, kind: "tool_end", maxAttempts: 5, windowValue: 1, windowUnit: "minutes" },
+      dataDir
+    );
+    persistAutoContinueCapNote(
+      { sessionId: SESSION_ID, turnId: tId, kind: "tool_end", maxAttempts: 5, windowValue: 1, windowUnit: "minutes" },
+      dataDir
+    ); // idempotent
+
+    const sysParts = listStepPartsForTurn(tId, dataDir).filter((p) => p.type === "system");
+    expect(sysParts).toHaveLength(1);
+    const data = JSON.parse(sysParts[0].data);
+    expect(data.kind).toBe("auto_continue_cap");
+    expect(data.detected).toBe("tool_end");
+    expect(data.maxAttempts).toBe(5);
+    expect(data.windowValue).toBe(1);
+    expect(data.windowUnit).toBe("minutes");
+    expect(data.message).toContain("retry cap of 5 within 1 minutes");
+    expect(sysParts[0].seq).toBe(2); // maxSeq(1) + 1
+    expect(sysParts[0].stepId).toBe(stepId);
+  });
+
+  test("creates a synthetic completed step when the turn has none", () => {
+    const tId = createTurn(SESSION_ID, 511, "cap note no step", new Date().toISOString(), {}, dataDir);
+    persistAutoContinueCapNote(
+      { sessionId: SESSION_ID, turnId: tId, kind: "thinking_end", maxAttempts: 3, windowValue: 1, windowUnit: "minutes" },
+      dataDir
+    );
+
+    const sysParts = listStepPartsForTurn(tId, dataDir).filter((p) => p.type === "system");
+    expect(sysParts).toHaveLength(1);
+    expect(JSON.parse(sysParts[0].data).detected).toBe("thinking_end");
+    const stepsForTurn = listStepsForTurn(tId, dataDir);
+    expect(stepsForTurn).toHaveLength(1);
+    expect(stepsForTurn[0].status).toBe("completed");
+    expect(sysParts[0].stepId).toBe(stepsForTurn[0].id);
   });
 });

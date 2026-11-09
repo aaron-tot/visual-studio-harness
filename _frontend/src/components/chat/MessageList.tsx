@@ -171,7 +171,6 @@ export function MessageList() {
       if (
         st.historyHasMore &&
         !st.historyLoading &&
-        !st.streaming &&
         st.messages.length > 0 &&
         el.scrollHeight > el.clientHeight + PIN_EPSILON &&
         el.scrollTop < TOP_LOAD_PX

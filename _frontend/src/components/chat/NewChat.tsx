@@ -451,7 +451,19 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
     document.addEventListener("VISUAL STUDIO HARNESS:stage-input", handler as EventListener);
     return () => document.removeEventListener("VISUAL STUDIO HARNESS:stage-input", handler as EventListener);
   }, []);
-  useEffect(() => { if (cardRef.current) setCardHeight(cardRef.current.offsetHeight); }, [isSubagent]);
+  // Track the input card's height LIVE (textarea growth, controls, context
+  // indicator, etc.). A one-shot measurement went stale and let the floating
+  // card cover the last messages. The card excludes the collapsible SessionPanel
+  // (measured separately via panelHeight), so both contribute to the reserved
+  // bottom padding.
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    setCardHeight(el.offsetHeight);
+    const ro = new ResizeObserver(() => setCardHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!isSubagent || !parentId) { setParentTitle(null); return; }
@@ -687,7 +699,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
         </div>
       )}
 
-      <div ref={cardRef} id="chat-input-card" className="z-40" style={{
+      <div id="chat-input-card" className="z-40" style={{
         position: "absolute", left: "50%", transform: "translateX(-50%)",
         width: "100%", maxWidth: submitted || inSession ? "56rem" : "42rem",
         transition: "all 700ms ease-in-out",
@@ -695,7 +707,7 @@ export function NewChat({ agents, selectedAgent, setSelectedAgent, setCfgOpen }:
         bottom: submitted || inSession ? "16px" : "auto",
       }}>
         <div className="flex flex-col w-full gap-2">
-          <div className={glassCard} style={{ boxShadow: isEmptyComposer
+          <div ref={cardRef} className={glassCard} style={{ boxShadow: isEmptyComposer
             ? (hovered ? glassCardShadowHover : glassCardShadow)
             : (hovered ? glassCardShadowHoverHalf : glassCardShadowHalf) }}
             onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>

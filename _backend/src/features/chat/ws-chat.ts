@@ -181,7 +181,11 @@ export async function handleChatMessage(socket: WebSocket, msg: any, dataDir: st
         if (created || !active || active === id) setActiveSession(socket, id);
         chatDebug("handleChatMessage", "session ready", { id, created, hadActive: active, activeNow: getActiveSession(socket) });
         if (created && socket.readyState === 1) socket.send(JSON.stringify({ type: "session_created", session: meta }));
-        if (getActiveSession(socket) === id) sendSessionState(socket, id);
+        // Push initial state only for a freshly created session. For an existing
+        // session starting a turn, do NOT re-send full state: that would replace
+        // the client's windowed history and wipe paging (historyHasMore), which
+        // blocked load-older while streaming. The client already holds its window.
+        if (created && getActiveSession(socket) === id) sendSessionState(socket, id);
       },
       ...handlers,
       askPermission: async (toolName, args, callId) => {

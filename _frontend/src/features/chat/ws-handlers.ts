@@ -1,5 +1,5 @@
 import { wsClient } from "../../lib/ws";
-import type { RetryEntry } from "../../../../_shared/types";
+import type { Message, RetryEntry } from "../../../../_shared/types";
 import { useChatStore } from "./store";
 import { useSessionViewStore } from "../../stores/sessionView";
 import { useSessionStore } from "../../stores/sessions";
@@ -455,7 +455,7 @@ wsClient.on("session_state", (data: any) => {
         const { streamingParts, streamingContent, partSeq } = partsFromSnapshot(lastAssistant.parts || []);
         const upTo = snapshotSeq ?? partSeq;
         const wsRoot = data.meta?.workspaceRoot;
-        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, streamingOutputTps: null, contextTokens: persistCtx !== undefined ? persistCtx : useChatStore.getState().contextTokens, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
+        useChatStore.setState({ messages: msgs, sessionId: data.sessionId, sessionMeta: data.meta ?? null, workspaceRoot: wsRoot ?? useChatStore.getState().workspaceRoot, streaming: true, streamingContent, streamingParts, streamingOutputTps: null, contextTokens: persistCtx !== undefined ? persistCtx : useChatStore.getState().contextTokens, historyHasMore: data.historyHasMore === true, historyCursor: typeof data.historyCursor === "number" ? data.historyCursor : null, historyLoading: false, lastSeq: upTo, _partSeq: upTo, _reasonIdx: 0 });
         touchStreamTimeout();
       } else {
         const upTo = snapshotSeq ?? maxSeqOf(msgs.flatMap((m: any) => m.parts || []));
@@ -480,6 +480,9 @@ wsClient.on("session_state", (data: any) => {
           streamingParts: isStreaming ? cur.streamingParts : [],
           streamingOutputTps: null,
           contextTokens: persistCtx !== undefined ? persistCtx : cur.contextTokens,
+          historyHasMore: data.historyHasMore === true,
+          historyCursor: typeof data.historyCursor === "number" ? data.historyCursor : null,
+          historyLoading: false,
           lastSeq: upTo,
           _partSeq: upTo,
           _reasonIdx: 0,
@@ -493,6 +496,24 @@ wsClient.on("session_state", (data: any) => {
       replayPendingDeltas(data.sessionId, appliedSeq);
     }
   }
+});
+
+wsClient.on("session_history", (data: any) => {
+  const st = useChatStore.getState();
+  if (data.sessionId !== st.sessionId) return;
+  if (!st.historyLoading) return;
+  // Drop stale pages: requestId was the cursor at request time; if the list was
+  // reset/replaced since (cursor changed) this page no longer applies.
+  if (typeof data.requestId === "number" && data.requestId !== st.historyCursor) return;
+  const incoming: Message[] = Array.isArray(data.messages) ? data.messages : [];
+  const existingIds = new Set(st.messages.map((m) => m.id).filter((id): id is number => id != null));
+  const fresh = incoming.filter((m) => m.id == null || !existingIds.has(m.id));
+  useChatStore.setState({
+    messages: fresh.length > 0 ? [...fresh, ...st.messages] : st.messages,
+    historyCursor: typeof data.historyCursor === "number" ? data.historyCursor : st.historyCursor,
+    historyHasMore: data.historyHasMore === true,
+    historyLoading: false,
+  });
 });
 
 wsClient.on("session_updated", (data: any) => {

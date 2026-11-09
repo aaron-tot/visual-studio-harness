@@ -1,5 +1,5 @@
-import { useEffect, useRef, useMemo, useCallback, useState } from "react";
-import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useMemo, useCallback, useState } from "react";
+import { ChevronDown, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { useChatStore } from "../../stores/chat";
 import { MessageRow } from "./MessageRow";
 import { ContextHistoryLine } from "./ContextHistoryLine";
@@ -10,6 +10,8 @@ import type { MessagePartType } from "../../../../_shared/types";
 const PIN_EPSILON = 4;
 const PIN_FALLBACK_PX = 96;
 const SCROLL_STOP_MS = 150;
+/** Distance from the top (px) within which an upward scroll requests older bubbles. */
+const TOP_LOAD_PX = 120;
 
 function sortParts(parts: MessagePartType[]): MessagePartType[] {
   return [...parts].sort((a, b) => {
@@ -84,13 +86,15 @@ function groupSummaryTurns(messages: Message[]): (Message | SummaryTurnGroup)[] 
 }
 
 export function MessageList() {
-  const { messages, streaming, streamingContent, streamingParts, sessionId, streamingTurnId, sessionMeta, _pendingAgentName, _pendingModelName, _pendingProviderName } = useChatStore();
+  const { messages, streaming, streamingContent, streamingParts, sessionId, streamingTurnId, sessionMeta, _pendingAgentName, _pendingModelName, _pendingProviderName, historyHasMore, historyLoading } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
   const isScrollingRef = useRef(false);
   const scrollTimerRef = useRef<number | null>(null);
   const pendingScrollRef = useRef(false);
+  // Distance-from-bottom to preserve when older bubbles are prepended on load-older.
+  const prependAnchorRef = useRef<number | null>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
 
   // Expanded state for summary turns (keyed by turnId) - default collapsed
@@ -160,6 +164,22 @@ export function MessageList() {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
       }
     }, SCROLL_STOP_MS);
+    // Near the top: request the next older page of bubbles (load-older).
+    const el = scrollRef.current;
+    if (el) {
+      const st = useChatStore.getState();
+      if (
+        st.historyHasMore &&
+        !st.historyLoading &&
+        !st.streaming &&
+        st.messages.length > 0 &&
+        el.scrollHeight > el.clientHeight + PIN_EPSILON &&
+        el.scrollTop < TOP_LOAD_PX
+      ) {
+        prependAnchorRef.current = el.scrollHeight - el.scrollTop;
+        st.loadOlderMessages();
+      }
+    }
     checkPinned();
   }, [checkPinned]);
 
@@ -187,6 +207,16 @@ export function MessageList() {
     };
   }, []);
 
+  // Preserve the viewport when older bubbles are prepended: keep the same
+  // content anchored at the same on-screen position (no jump on load-older).
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const anchor = prependAnchorRef.current;
+    if (!el || anchor == null) return;
+    prependAnchorRef.current = null;
+    el.scrollTop = el.scrollHeight - anchor;
+  }, [messages]);
+
   const scrollToBottom = () => {
     if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     isScrollingRef.current = false;
@@ -197,6 +227,14 @@ export function MessageList() {
     pinnedRef.current = true;
     setShowScrollDown(false);
   };
+
+  // Manual "load earlier" (top button): capture the anchor so the viewport holds
+  // steady when older bubbles prepend.
+  const handleLoadEarlier = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) prependAnchorRef.current = el.scrollHeight - el.scrollTop;
+    useChatStore.getState().loadOlderMessages();
+  }, []);
 
   // Backend owns order via durable _seq; streamingParts is the full log
   // (text + tools + reasoning). No client-side invent/flush of text.
@@ -228,6 +266,27 @@ export function MessageList() {
         style={frozen ? { visibility: "hidden" } : undefined}
         data-scroll
       >
+      {sessionId && historyHasMore && (
+        <div className="flex justify-center py-1">
+          {historyLoading ? (
+            <span
+              className="inline-flex items-center gap-2 text-xs text-zinc-500"
+              data-testid="history-loading-top"
+            >
+              <Loader2 size={14} className="animate-spin" />
+              Loading earlier messages…
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLoadEarlier}
+              className="rounded-full border border-zinc-700 bg-zinc-800/60 px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+            >
+              ↑ Load earlier messages
+            </button>
+          )}
+        </div>
+      )}
       {groupedMessages.map((item) => {
         if (typeof item === "object" && "userMsg" in item) {
           // Summary turn group

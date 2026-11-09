@@ -19,7 +19,14 @@ import {
   putSessionDraftInput,
 } from "../../lib/api";
 import type { SessionConfig } from "../../../../_shared/types";
+import { resolveHistoryPageSize } from "../../../../_shared/chat-history";
+import { useConfigStore } from "../../stores/config";
 import { chatDebug } from "./debug";
+
+/** Current page size (initial load + per scroll-up increment) from user config. */
+function historyPageSize(): number {
+  return resolveHistoryPageSize(useConfigStore.getState().config.chatHistoryPageSize);
+}
 
 import {
   pendingPermToolNames,
@@ -105,6 +112,9 @@ export function clearStreamTimeout(): void {
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
+  historyHasMore: false,
+  historyCursor: null,
+  historyLoading: false,
   streaming: false,
   stopping: false,
   streamingContent: "",
@@ -265,6 +275,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       sessionId: id,
       messages: [],
+      historyHasMore: false,
+      historyCursor: null,
+      historyLoading: false,
       streaming: false,
       stopping: false,
       streamingContent: "",
@@ -281,7 +294,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       retryCountdown: null,
     });
 
-    wsClient.send({ type: "request_session_state", sessionId: id, requestId });
+    wsClient.send({ type: "request_session_state", sessionId: id, requestId, limit: historyPageSize() });
 
     try {
       const meta = await getSession(id);
@@ -314,6 +327,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         contextConfigWindowSize: ctxCfg.windowSize ?? 10,
       });
     } catch { /* ignore */ }
+  },
+
+  loadOlderMessages: () => {
+    const { sessionId, historyCursor, historyHasMore, historyLoading, messages } = get();
+    if (!sessionId || !historyHasMore || historyLoading) return;
+    // Fall back to the oldest loaded turn when the cursor wasn't supplied by the
+    // (windowed) session_state payload — keeps load-older working end-to-end.
+    let cursor = historyCursor;
+    if (cursor == null) {
+      const turnIds = messages.map((m) => m.turnId).filter((t): t is number => typeof t === "number");
+      if (turnIds.length === 0) return;
+      cursor = Math.min(...turnIds);
+    }
+    // Persist the resolved cursor so the echoed requestId matches on response.
+    set({ historyCursor: cursor, historyLoading: true });
+    wsClient.send({ type: "request_session_history", sessionId, requestId: cursor, beforeTurnNumber: cursor, limit: historyPageSize() });
   },
 
   clearNewChatDraft: () => {
@@ -418,6 +447,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try { localStorage.removeItem(NEW_CHAT_DRAFT_KEY); } catch { /* ignore */ }
     set({
       messages: [],
+      historyHasMore: false,
+      historyCursor: null,
+      historyLoading: false,
       streaming: false,
       stopping: false,
       streamingContent: "",

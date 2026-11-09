@@ -325,6 +325,12 @@ export interface ConfigFile {
   messagePanelFullWidth?: boolean;
   messagePanelPinnedDefault?: boolean;
   showSessionName?: boolean;
+  /**
+   * Chat message bubbles loaded per page: the initial window for a session AND
+   * the increment added each time the user scrolls to the top. Defaults to
+   * CHAT_HISTORY_PAGE (2). Clamped to [1, 100].
+   */
+  chatHistoryPageSize?: number;
   /** Include failed/aborted turns in conversation history for context (default: true) */
   includeFailedTurnsInHistory?: boolean;
   /** Include tool calls and results from previous turns in SDK messages (default: true) */

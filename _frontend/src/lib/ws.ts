@@ -14,6 +14,7 @@ const TRACED_WS_TYPES = new Set([
   "tool_update",
   "tool_end",
   "session_state",
+  "session_history",
   "session_created",
   "session_stream_start",
   "session_stream_end",

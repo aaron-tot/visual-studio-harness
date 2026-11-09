@@ -3,7 +3,7 @@ import WebSocket from "ws";
 import { handleChatMessage, handleSessionUpdate } from "../features/chat/ws-chat";
 import { cancelSession, setPendingContinue, consumePendingContinue, clearPendingContinue } from "../features/chat/session-abort";
 import { registerConnection } from "../ws/configPush";
-import { setActiveSession, clearActiveSession, sendSessionState, sendSessionStateToSession } from "../features/sessions/view-tracker";
+import { setActiveSession, clearActiveSession, sendSessionState, sendSessionStateToSession, sendSessionHistory } from "../features/sessions/view-tracker";
 import { resolvePermission } from "../features/tools/permission-wait";
 import { resolveSubagentConfig } from "../features/subagents/config-wait";
 import { resolveSlotBusyDecision } from "../features/subagents/slot-busy-wait";
@@ -12,6 +12,7 @@ import { resolveAgentChange } from "../features/tools/agent-change-wait";
 import { setToolMode } from "../features/tools/perms/store";
 import { getLiveSessionMeta } from "../features/sessions/store";
 import type { PermissionDecision, PermissionMode, PermsLayer, ThinkingEffort } from "../../../_shared/types";
+import { resolveHistoryPageSize } from "../../../_shared/chat-history";
 
 type GetDataDir = () => string;
 type GetConfig = () => import("../../../_shared/types").ConfigFile;
@@ -216,7 +217,21 @@ export function registerWsHandler(
             // drop stale responses from rapid session switches.
             const requestId =
               typeof msg.requestId === "number" ? msg.requestId : undefined;
-            sendSessionState(socket, msg.sessionId, requestId, getDataDir());
+            const limit = resolveHistoryPageSize(
+              typeof msg.limit === "number" ? msg.limit : undefined
+            );
+            sendSessionState(socket, msg.sessionId, requestId, getDataDir(), limit);
+          }
+        } else if (msg.type === "request_session_history") {
+          if (msg.sessionId) {
+            const requestId =
+              typeof msg.requestId === "number" ? msg.requestId : undefined;
+            const beforeTurnNumber =
+              typeof msg.beforeTurnNumber === "number" ? msg.beforeTurnNumber : null;
+            const limit = resolveHistoryPageSize(
+              typeof msg.limit === "number" ? msg.limit : undefined
+            );
+            sendSessionHistory(socket, msg.sessionId, requestId, beforeTurnNumber, getDataDir(), limit);
           }
         } else if (msg.type === "session_update") {
           const updatedMeta = await handleSessionUpdate(msg, getDataDir(), getConfig());

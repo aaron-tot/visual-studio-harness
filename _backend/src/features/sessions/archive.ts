@@ -24,6 +24,7 @@
 import { Database } from "bun:sqlite";
 import { statSync } from "node:fs";
 import { openRawDb, liveDbPath, archiveDbPath, evictDbForDataDir } from "../../db/client";
+import { assertArchiveSpace, InsufficientDiskSpaceError } from "./disk-space";
 
 type Row = Record<string, unknown>;
 
@@ -300,6 +301,8 @@ export function moveSessionToArchive(
   dataDir: string | undefined,
   rootSessionId: string
 ): boolean {
+  // Refuse before touching anything when the disk can't hold the copy + VACUUM.
+  assertArchiveSpace(dataDir, `session ${rootSessionId}`);
   const livePath = liveDbPath(dataDir);
   const archPath = archiveDbPath(dataDir);
 
@@ -341,6 +344,10 @@ export function moveSessionToArchive(
 export function compactLiveDb(
   dataDir?: string
 ): { beforeBytes: number; afterBytes: number; freedBytes: number } {
+  // VACUUM rebuilds the DB into a temp file ~1x its size, so it needs a live-DB-
+  // size of free space. Refuse up front on a full disk instead of attempting a
+  // doomed multi-GB rebuild that aborts with SQLITE_FULL.
+  assertArchiveSpace(dataDir, "compact live DB");
   const livePath = liveDbPath(dataDir);
   const sizeOf = (): number => {
     try {
@@ -418,6 +425,13 @@ export function migrateArchivedSessions(dataDir?: string): {
         console.log(`[archive] moved session ${id} -> archive.db`);
       }
     } catch (err) {
+      if (err instanceof InsufficientDiskSpaceError) {
+        // Abort the whole batch loudly — nothing was copied for this session
+        // (the check runs before the copy) and remaining sessions will retry
+        // on a later boot when space is available.
+        console.error(`[archive] migration aborted — ${err.message}`);
+        break;
+      }
       failed.push(id);
       console.error(
         `[archive] migration failed for ${id}:`,
@@ -439,7 +453,13 @@ export function migrateArchivedSessions(dataDir?: string): {
       }
       return { moved, failed, compacted };
     } catch (err) {
-      console.error("[archive] post-migration compaction failed:", err);
+      if (err instanceof InsufficientDiskSpaceError) {
+        // Preflight refused the VACUUM before touching the DB — safe to continue
+        // booting. The freelist stays until a boot with enough free space.
+        console.warn(`[archive] compaction skipped — ${err.message}`);
+      } else {
+        console.error("[archive] post-migration compaction failed:", err);
+      }
     }
   } else if (archived.length === 0) {
     console.log("[archive] migration: nothing to do — no archived sessions in live DB");

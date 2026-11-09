@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import { chatDebug } from "../chat/debug";
 import { getSession } from "./db";
 import { projectSessionChat, projectStreamingContent } from "../chat/project-chat";
+import { projectSessionChatPage } from "../chat/history-page";
 import { sessionHasTurns, getActiveTraceTurn } from "../chat/db-trace";
 import { maxStepPartSeq } from "../chat/project-chat";
 import { getLastContextTokenUsage } from "../chat/auto-compaction";
@@ -55,8 +56,15 @@ export function sendToSession(sessionId: string, data: unknown) {
   chatDebug("sendToSession", "delivered", { sessionId, type, sent, skipped });
 }
 
-function buildSessionStatePayload(sessionId: string, requestId?: number, dataDir?: string): Record<string, unknown> {
-  const history = projectSessionChat(sessionId);
+function buildSessionStatePayload(sessionId: string, requestId?: number, dataDir?: string, limit?: number): Record<string, unknown> {
+  // Navigation/load (requestId present) ships only a window of the newest
+  // bubbles so switching to a long session does not transfer the entire
+  // turn+part set. Broadcasts / mid-turn reconcile (no requestId) keep the full
+  // list so their replace semantics are unchanged.
+  const windowed = requestId != null
+    ? projectSessionChatPage(sessionId, { dataDir, limit })
+    : null;
+  const history = windowed ? windowed.messages : projectSessionChat(sessionId);
   const openTurn = getActiveTraceTurn(sessionId);
   const streaming = openTurn ? projectStreamingContent(sessionId) : null;
   const meta = getSession(sessionId);
@@ -68,13 +76,36 @@ function buildSessionStatePayload(sessionId: string, requestId?: number, dataDir
   return {
     type: "session_state", sessionId, ...(requestId != null ? { requestId } : {}),
     history, streaming, meta,
+    ...(windowed ? { historyHasMore: windowed.hasMore, historyCursor: windowed.cursor } : {}),
     ...(contextTokens ? { contextTokens } : {}),
   };
 }
 
-export function sendSessionState(socket: WebSocket, sessionId: string, requestId?: number, dataDir?: string): void {
+/**
+ * Reply to a `request_session_history` with the page of whole turns immediately
+ * older than `beforeTurnNumber` (the client's current historyCursor).
+ */
+export function sendSessionHistory(
+  socket: WebSocket,
+  sessionId: string,
+  requestId: number | undefined,
+  beforeTurnNumber: number | null,
+  dataDir?: string,
+  limit?: number
+): void {
   if (socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify(buildSessionStatePayload(sessionId, requestId, dataDir)));
+  const page = projectSessionChatPage(sessionId, { beforeTurnNumber, dataDir, limit });
+  socket.send(JSON.stringify({
+    type: "session_history", sessionId, ...(requestId != null ? { requestId } : {}),
+    messages: page.messages,
+    historyHasMore: page.hasMore,
+    historyCursor: page.cursor,
+  }));
+}
+
+export function sendSessionState(socket: WebSocket, sessionId: string, requestId?: number, dataDir?: string, limit?: number): void {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify(buildSessionStatePayload(sessionId, requestId, dataDir, limit)));
 }
 
 export function sendSessionStateToSession(sessionId: string): void {

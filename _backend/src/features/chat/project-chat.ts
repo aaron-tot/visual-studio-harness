@@ -15,7 +15,7 @@ function dbFor(dataDir?: string) {
 
 // ── Narrow column projections (NEVER drag raw_request_json / raw_response_json) ──
 // tune shapes what projectSessionChat (WS chat history) paints — nothing else.
-const turnChatCols = {
+export const turnChatCols = {
   id: turns.id,
   turnNumber: turns.turnNumber,
   kind: turns.kind,
@@ -138,6 +138,9 @@ function parseSummaryMeta(configSnapshotJson: string | null): {
 
 // ── Chat projection: turns → Message[] ───────────────────────────────
 
+/** Row shape selected by `turnChatCols` — reused by the paginated projection. */
+export type TurnChatRow = Pick<typeof turns.$inferSelect, keyof typeof turnChatCols>;
+
 export function projectSessionChat(sessionId: string, dataDir?: string): Message[] {
   const db = dbFor(dataDir);
   const turnRows = db
@@ -145,9 +148,23 @@ export function projectSessionChat(sessionId: string, dataDir?: string): Message
     .from(turns)
     .where(eq(turns.sessionId, sessionId))
     .orderBy(turns.turnNumber)
-    .all();
+    .all() as TurnChatRow[];
 
+  return projectTurnRows(turnRows, sessionId, dataDir);
+}
+
+/**
+ * Project an arbitrary, ascending-by-turn set of turn rows into chat Messages.
+ * Shared by the full-session projection and the paginated window projection so
+ * both stay byte-identical for a given turn set.
+ */
+export function projectTurnRows(
+  turnRows: TurnChatRow[],
+  sessionId: string,
+  dataDir?: string
+): Message[] {
   if (turnRows.length === 0) return [];
+  const db = dbFor(dataDir);
 
   // Single batch fetch: all stepParts for all turns in one query
   const turnIds = turnRows.map((t) => t.id);

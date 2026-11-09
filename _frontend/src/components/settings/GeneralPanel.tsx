@@ -6,6 +6,7 @@ import { ModelDropdown } from "../chat/ModelDropdown";
 import { PricingSettingsCard } from "./PricingSettingsCard";
 import { UpdateIndicator } from "./UpdateIndicator";
 import { compactDb, type CompactDbResult } from "../../lib/api";
+import { CHAT_HISTORY_PAGE, CHAT_HISTORY_PAGE_MIN, CHAT_HISTORY_PAGE_MAX } from "../../../../_shared/chat-history";
 
 const WINDOW_UNITS = ["seconds", "minutes", "hours"] as const;
 
@@ -458,6 +459,31 @@ export function GeneralPanel() {
 
         {/* Checkbox settings */}
         <div className="border border-zinc-800 rounded-lg p-3 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="flex-1">
+              <div className="text-sm text-zinc-200">Messages per page</div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                Bubbles loaded when a session opens and each time you scroll to the
+                top to load earlier messages. {CHAT_HISTORY_PAGE_MIN}–{CHAT_HISTORY_PAGE_MAX} (default {CHAT_HISTORY_PAGE}).
+              </div>
+            </div>
+            <input
+              type="number"
+              min={CHAT_HISTORY_PAGE_MIN}
+              max={CHAT_HISTORY_PAGE_MAX}
+              value={(config.chatHistoryPageSize as number) ?? CHAT_HISTORY_PAGE}
+              onChange={(e) =>
+                patch({
+                  chatHistoryPageSize: Math.max(
+                    CHAT_HISTORY_PAGE_MIN,
+                    Math.min(CHAT_HISTORY_PAGE_MAX, Math.floor(Number(e.target.value) || CHAT_HISTORY_PAGE_MIN))
+                  ),
+                })
+              }
+              className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-200 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
           <label className="flex items-start gap-3 cursor-pointer group">
             <input
               type="checkbox"

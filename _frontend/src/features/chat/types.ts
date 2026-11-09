@@ -10,6 +10,14 @@ export interface RetryCountdownState {
 
 export interface ChatState {
   messages: Message[];
+  /** True when older turns exist on the server to load via loadOlderMessages. */
+  historyHasMore: boolean;
+  /** Real turn_number of the oldest loaded turn; the cursor for the next older page. */
+  historyCursor: number | null;
+  /** True while an older-history page is in flight. */
+  historyLoading: boolean;
+  /** Request the next older page of bubbles (scroll-up). No-op when none remain. */
+  loadOlderMessages: () => void;
   streaming: boolean;
   stopping: boolean;
   streamingContent: string;
